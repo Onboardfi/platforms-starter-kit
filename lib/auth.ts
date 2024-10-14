@@ -6,6 +6,7 @@ import { Adapter } from "next-auth/adapters";
 import { accounts, sessions, users, verificationTokens } from "./schema";
 
 const VERCEL_DEPLOYMENT = !!process.env.VERCEL_URL;
+
 export const authOptions: NextAuthOptions = {
   providers: [
     GitHubProvider({
@@ -16,7 +17,7 @@ export const authOptions: NextAuthOptions = {
           id: profile.id.toString(),
           name: profile.name || profile.login,
           gh_username: profile.login,
-          email: profile.email,
+          email: profile.email || `${profile.login}@github.com`, // Fallback email
           image: profile.avatar_url,
         };
       },
@@ -41,7 +42,6 @@ export const authOptions: NextAuthOptions = {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        // When working on localhost, the cookie domain must be omitted entirely (https://stackoverflow.com/a/1188145)
         domain: VERCEL_DEPLOYMENT
           ? `.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}`
           : undefined,
@@ -65,6 +65,13 @@ export const authOptions: NextAuthOptions = {
         username: token?.user?.username || token?.user?.gh_username,
       };
       return session;
+    },
+    signIn: async ({ user, account, profile }) => {
+      if (account?.provider === "github") {
+        // Ensure email is set
+        user.email = user.email || `${(profile as any).login}@github.com`;
+      }
+      return true;
     },
   },
 };
