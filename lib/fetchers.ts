@@ -5,6 +5,107 @@ import { posts, sites, users } from "./schema";
 import { serialize } from "next-mdx-remote/serialize";
 import { replaceExamples, replaceTweets } from "@/lib/remark-plugins";
 
+import { agents } from "./schema";
+
+
+
+// Fetch agents for a site
+export async function getAgentsForSite(domain: string) {
+  const subdomain = domain.endsWith(`.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}`)
+    ? domain.replace(`.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}`, "")
+    : null;
+
+  return await unstable_cache(
+    async () => {
+      return await db
+        .select({
+          name: agents.name,
+          description: agents.description,
+          slug: agents.slug,
+          image: agents.image,
+          imageBlurhash: agents.imageBlurhash,
+          createdAt: agents.createdAt,
+        })
+        .from(agents)
+        .leftJoin(sites, eq(agents.siteId, sites.id))
+        .where(
+          and(
+            eq(agents.published, true),
+            subdomain
+              ? eq(sites.subdomain, subdomain)
+              : eq(sites.customDomain, domain)
+          )
+        )
+        .orderBy(desc(agents.createdAt));
+    },
+    [`${domain}-agents`],
+    {
+      revalidate: 900,
+      tags: [`${domain}-agents`],
+    }
+  )();
+}
+
+// Fetch a single agent's data
+export async function getAgentData(domain: string, slug: string) {
+  const subdomain = domain.endsWith(`.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}`)
+    ? domain.replace(`.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}`, "")
+    : null;
+
+  return await unstable_cache(
+    async () => {
+      const data = await db
+        .select({
+          agent: agents,
+          site: sites,
+          user: users,
+        })
+        .from(agents)
+        .leftJoin(sites, eq(sites.id, agents.siteId))
+        .leftJoin(users, eq(users.id, sites.userId))
+        .where(
+          and(
+            eq(agents.slug, slug),
+            eq(agents.published, true),
+            subdomain
+              ? eq(sites.subdomain, subdomain)
+              : eq(sites.customDomain, domain)
+          )
+        )
+        .then((res) =>
+          res.length > 0
+            ? {
+                ...res[0].agent,
+                site: res[0].site
+                  ? {
+                      ...res[0].site,
+                      user: res[0].user,
+                    }
+                  : null,
+              }
+            : null
+        );
+
+      if (!data) return null;
+
+      // If you have content that needs to be processed, e.g., MDX
+      // const mdxSource = await getMdxSource(data.content!);
+
+      return {
+        ...data,
+        // mdxSource,
+      };
+    },
+    [`${domain}-${slug}`],
+    {
+      revalidate: 900, // 15 minutes
+      tags: [`${domain}-${slug}`],
+    }
+  )();
+}
+
+
+
 export async function getSiteData(domain: string) {
   const subdomain = domain.endsWith(`.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}`)
     ? domain.replace(`.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}`, "")

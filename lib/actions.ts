@@ -13,11 +13,23 @@ import { customAlphabet } from "nanoid";
 import { revalidateTag } from "next/cache";
 import { withPostAuth, withSiteAuth } from "./auth";
 import db from "./db";
-import { SelectPost, SelectSite, posts, sites, users } from "./schema";
+import { notFound } from "next/navigation";
+import { createId } from "@paralleldrive/cuid2";
+import { json } from "drizzle-orm/pg-core";
+
+import {
+  agents,
+  SelectAgent,
+  SelectPost,
+  SelectSite,
+  posts,
+  sites,
+  users,
+} from "./schema";
 
 const nanoid = customAlphabet(
   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
-  7,
+  7
 ); // 7-character random string
 
 export const createSite = async (formData: FormData) => {
@@ -43,7 +55,7 @@ export const createSite = async (formData: FormData) => {
       .returning();
 
     revalidateTag(
-      `${subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-metadata`,
+      `${subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-metadata`
     );
     return response;
   } catch (error: any) {
@@ -59,6 +71,111 @@ export const createSite = async (formData: FormData) => {
   }
 };
 
+export const createAgent = withSiteAuth(
+  async (_: FormData, site: SelectSite) => {
+    const session = await getSession();
+    if (!session?.user.id) {
+      return {
+        error: "Not authenticated",
+      };
+    }
+
+    const [response] = await db
+      .insert(agents)
+      .values({
+        siteId: site.id,
+        userId: session.user.id,
+        name: "New Agent",
+        description: "",
+        slug: createId(), // Generate a unique slug
+        settings: {}, // Initialize settings as an empty object
+      })
+      .returning();
+
+    revalidateTag(
+      `${site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-agents`
+    );
+    site.customDomain && revalidateTag(`${site.customDomain}-agents`);
+
+    return response;
+  }
+);
+
+export const updateAgent = async (data: SelectAgent) => {
+  const session = await getSession();
+  if (!session?.user.id) {
+    return {
+      error: "Not authenticated",
+    };
+  }
+
+  const agent = await db.query.agents.findFirst({
+    where: eq(agents.id, data.id),
+    with: {
+      site: true,
+    },
+  });
+
+  if (!agent || agent.userId !== session.user.id) {
+    return {
+      error: "Agent not found or unauthorized",
+    };
+  }
+
+  try {
+    const [response] = await db
+      .update(agents)
+      .set({
+        name: data.name,
+        description: data.description,
+        slug: data.slug,
+        published: data.published,
+        settings: data.settings, // Assign settings directly
+      })
+      .where(eq(agents.id, data.id))
+      .returning();
+
+    revalidateTag(
+      `${agent.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-agents`
+    );
+    revalidateTag(
+      `${agent.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-${agent.slug}`
+    );
+
+    // If the site has a custom domain, revalidate those tags too
+    agent.site?.customDomain &&
+      (revalidateTag(`${agent.site?.customDomain}-agents`),
+      revalidateTag(`${agent.site?.customDomain}-${agent.slug}`));
+
+    return response;
+  } catch (error: any) {
+    return {
+      error: error.message,
+    };
+  }
+};
+
+// lib/actions.ts
+export const getAgentById = async (agentId: string) => {
+  const agent = await db.query.agents.findFirst({
+    where: eq(agents.id, agentId),
+    // Include all necessary columns
+    columns: {
+      id: true,
+      name: true,
+      description: true,
+      slug: true,
+      userId: true,
+      siteId: true,
+      createdAt: true,
+      updatedAt: true,
+      published: true,
+      settings: true,
+    },
+  });
+  return agent;
+};
+
 export const updateSite = withSiteAuth(
   async (formData: FormData, site: SelectSite, key: string) => {
     const value = formData.get(key) as string;
@@ -71,8 +188,6 @@ export const updateSite = withSiteAuth(
           return {
             error: "Cannot use vercel.pub subdomain as your custom domain",
           };
-
-          // if the custom domain is valid, we need to add it to Vercel
         } else if (validDomainRegex.test(value)) {
           response = await db
             .update(sites)
@@ -88,8 +203,6 @@ export const updateSite = withSiteAuth(
             // Optional: add www subdomain as well and redirect to apex domain
             // addDomainToVercel(`www.${value}`),
           ]);
-
-          // empty value means the user wants to remove the custom domain
         } else if (value === "") {
           response = await db
             .update(sites)
@@ -101,36 +214,17 @@ export const updateSite = withSiteAuth(
             .then((res) => res[0]);
         }
 
-        // if the site had a different customDomain before, we need to remove it from Vercel
+        // If the site had a different customDomain before, we need to remove it from Vercel
         if (site.customDomain && site.customDomain !== value) {
-          response = await removeDomainFromVercelProject(site.customDomain);
-
-          /* Optional: remove domain from Vercel team 
-
-          // first, we need to check if the apex domain is being used by other sites
-          const apexDomain = getApexDomain(`https://${site.customDomain}`);
-          const domainCount = await db.select({ count: count() }).from(sites).where(or(eq(sites.customDomain, apexDomain), ilike(sites.customDomain, `%.${apexDomain}`))).then((res) => res[0].count);
-
-
-          // if the apex domain is being used by other sites
-          // we should only remove it from our Vercel project
-          if (domainCount >= 1) {
-            await removeDomainFromVercelProject(site.customDomain);
-          } else {
-            // this is the only site using this apex domain
-            // so we can remove it entirely from our Vercel team
-            await removeDomainFromVercelTeam(
-              site.customDomain
-            );
-          }
-          
-          */
+          await removeDomainFromVercelProject(site.customDomain);
+          // Optional: remove domain from Vercel team
+          // ...
         }
       } else if (key === "image" || key === "logo") {
         if (!process.env.BLOB_READ_WRITE_TOKEN) {
           return {
             error:
-              "Missing BLOB_READ_WRITE_TOKEN token. Note: Vercel Blob is currently in beta – please fill out this form for access: https://tally.so/r/nPDMNd",
+              "Missing BLOB_READ_WRITE_TOKEN token. Note: Vercel Blob is currently in beta – please fill out this form for access: https://tally.so/r/nPDMNd",
           };
         }
 
@@ -166,10 +260,10 @@ export const updateSite = withSiteAuth(
       console.log(
         "Updated site data! Revalidating tags: ",
         `${site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-metadata`,
-        `${site.customDomain}-metadata`,
+        `${site.customDomain}-metadata`
       );
       revalidateTag(
-        `${site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-metadata`,
+        `${site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-metadata`
       );
       site.customDomain && revalidateTag(`${site.customDomain}-metadata`);
 
@@ -185,7 +279,7 @@ export const updateSite = withSiteAuth(
         };
       }
     }
-  },
+  }
 );
 
 export const deleteSite = withSiteAuth(
@@ -197,7 +291,7 @@ export const deleteSite = withSiteAuth(
         .returning();
 
       revalidateTag(
-        `${site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-metadata`,
+        `${site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-metadata`
       );
       response.customDomain && revalidateTag(`${site.customDomain}-metadata`);
       return response;
@@ -206,7 +300,7 @@ export const deleteSite = withSiteAuth(
         error: error.message,
       };
     }
-  },
+  }
 );
 
 export const getSiteFromPostId = async (postId: string) => {
@@ -238,15 +332,15 @@ export const createPost = withSiteAuth(
       .returning();
 
     revalidateTag(
-      `${site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-posts`,
+      `${site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-posts`
     );
     site.customDomain && revalidateTag(`${site.customDomain}-posts`);
 
     return response;
-  },
+  }
 );
 
-// creating a separate function for this because we're not using FormData
+// Creating a separate function for this because we're not using FormData
 export const updatePost = async (data: SelectPost) => {
   const session = await getSession();
   if (!session?.user.id) {
@@ -280,13 +374,13 @@ export const updatePost = async (data: SelectPost) => {
       .returning();
 
     revalidateTag(
-      `${post.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-posts`,
+      `${post.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-posts`
     );
     revalidateTag(
-      `${post.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-${post.slug}`,
+      `${post.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-${post.slug}`
     );
 
-    // if the site has a custom domain, we need to revalidate those tags too
+    // If the site has a custom domain, we need to revalidate those tags too
     post.site?.customDomain &&
       (revalidateTag(`${post.site?.customDomain}-posts`),
       revalidateTag(`${post.site?.customDomain}-${post.slug}`));
@@ -305,7 +399,7 @@ export const updatePostMetadata = withPostAuth(
     post: SelectPost & {
       site: SelectSite;
     },
-    key: string,
+    key: string
   ) => {
     const value = formData.get(key) as string;
 
@@ -341,13 +435,13 @@ export const updatePostMetadata = withPostAuth(
       }
 
       revalidateTag(
-        `${post.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-posts`,
+        `${post.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-posts`
       );
       revalidateTag(
-        `${post.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-${post.slug}`,
+        `${post.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-${post.slug}`
       );
 
-      // if the site has a custom domain, we need to revalidate those tags too
+      // If the site has a custom domain, we need to revalidate those tags too
       post.site?.customDomain &&
         (revalidateTag(`${post.site?.customDomain}-posts`),
         revalidateTag(`${post.site?.customDomain}-${post.slug}`));
@@ -364,7 +458,7 @@ export const updatePostMetadata = withPostAuth(
         };
       }
     }
-  },
+  }
 );
 
 export const deletePost = withPostAuth(
@@ -383,13 +477,13 @@ export const deletePost = withPostAuth(
         error: error.message,
       };
     }
-  },
+  }
 );
 
 export const editUser = async (
   formData: FormData,
   _id: unknown,
-  key: string,
+  key: string
 ) => {
   const session = await getSession();
   if (!session?.user.id) {

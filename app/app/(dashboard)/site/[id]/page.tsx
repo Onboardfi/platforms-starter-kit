@@ -1,41 +1,48 @@
-import { getSession } from "@/lib/auth";
-import { notFound, redirect } from "next/navigation";
-import Posts from "@/components/posts";
-import CreatePostButton from "@/components/create-post-button";
-import db from "@/lib/db";
+// app/app/(dashboard)/site/[id]/page.tsx
 
-export default async function SitePosts({
-  params,
-}: {
-  params: { id: string };
-}) {
+import { getSession } from '@/lib/auth';
+import { notFound, redirect } from 'next/navigation';
+import Agents from '@/components/agents';
+import CreateAgentButton from '@/components/create-agent-button';
+import db from '@/lib/db';
+import { eq } from 'drizzle-orm';
+import { Site } from '@/types/site';
+
+export default async function SiteAgents({ params }: { params: { id: string } }) {
   const session = await getSession();
   if (!session) {
-    redirect("/login");
+    redirect('/login');
   }
-  const data = await db.query.sites.findFirst({
-    where: (sites, { eq }) => eq(sites.id, decodeURIComponent(params.id)),
+
+  const siteId = decodeURIComponent(params.id);
+
+  const site: Site | null = await db.query.sites.findFirst({
+    where: (sites) => eq(sites.id, siteId),
+    columns: {
+      id: true,
+      name: true,
+      subdomain: true,
+      userId: true,
+    },
   });
 
-  if (!data || data.userId !== session.user.id) {
+  if (!site || site.userId !== session.user.id) {
     notFound();
   }
 
-  const url = `${data.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}`;
+  const url = process.env.NODE_ENV === 'production'
+    ? `https://${site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}`
+    : `http://${site.subdomain}.localhost:3000`;
 
   return (
     <>
       <div className="flex flex-col items-center justify-between space-y-4 sm:flex-row sm:space-y-0">
         <div className="flex flex-col items-center space-y-2 sm:flex-row sm:space-x-4 sm:space-y-0">
           <h1 className="w-60 truncate font-cal text-xl font-bold sm:w-auto sm:text-3xl dark:text-white">
-            All Posts for {data.name}
+            All Agents for {site.name}
           </h1>
           <a
-            href={
-              process.env.NEXT_PUBLIC_VERCEL_ENV
-                ? `https://${url}`
-                : `http://${data.subdomain}.localhost:3000`
-            }
+            href={url}
             target="_blank"
             rel="noreferrer"
             className="truncate rounded-md bg-stone-100 px-2 py-1 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-200 dark:bg-stone-800 dark:text-stone-400 dark:hover:bg-stone-700"
@@ -43,9 +50,9 @@ export default async function SitePosts({
             {url} ↗
           </a>
         </div>
-        <CreatePostButton />
+        <CreateAgentButton siteId={site.id} />
       </div>
-      <Posts siteId={decodeURIComponent(params.id)} />
+      <Agents siteId={site.id} />
     </>
   );
 }

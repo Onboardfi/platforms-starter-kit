@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1728927351065,
+      "tag": "0000_add_agents_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1728936616435,
+      "tag": "0001_add_agents_table2",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1728939069198,
+      "tag": "0002_add_agents_table3",
+      "breakpoints": true
+    }
+  ]
+}
