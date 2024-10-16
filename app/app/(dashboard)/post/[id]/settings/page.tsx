@@ -5,6 +5,7 @@ import { updatePostMetadata } from "@/lib/actions";
 import DeletePostForm from "@/components/form/delete-post-form";
 import db from "@/lib/db";
 
+
 export default async function PostSettings({
   params,
 }: {

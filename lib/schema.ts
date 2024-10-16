@@ -1,3 +1,5 @@
+// lib/schema.ts
+
 import { createId } from "@paralleldrive/cuid2";
 import { relations } from "drizzle-orm";
 import {
@@ -13,12 +15,13 @@ import {
 } from "drizzle-orm/pg-core";
 import { jsonb } from "drizzle-orm/pg-core";
 
+// Users Table
 export const users = pgTable("users", {
   id: text("id")
     .primaryKey()
     .$defaultFn(() => createId()),
   name: text("name"),
-  // if you are using Github OAuth, you can get rid of the username attribute (that is for Twitter OAuth)
+  // If you are using GitHub OAuth, you can remove the username attribute (used for Twitter OAuth)
   username: text("username"),
   gh_username: text("gh_username"),
   email: text("email").notNull().unique(),
@@ -30,6 +33,7 @@ export const users = pgTable("users", {
     .$onUpdate(() => new Date()),
 });
 
+// Sessions Table
 export const sessions = pgTable(
   "sessions",
   {
@@ -43,9 +47,10 @@ export const sessions = pgTable(
     return {
       userIdIdx: index().on(table.userId),
     };
-  },
+  }
 );
 
+// Verification Tokens Table
 export const verificationTokens = pgTable(
   "verificationTokens",
   {
@@ -57,9 +62,10 @@ export const verificationTokens = pgTable(
     return {
       compositePk: primaryKey({ columns: [table.identifier, table.token] }),
     };
-  },
+  }
 );
 
+// Examples Table
 export const examples = pgTable("examples", {
   id: serial("id").primaryKey(),
   name: text("name"),
@@ -70,6 +76,7 @@ export const examples = pgTable("examples", {
   imageBlurhash: text("imageBlurhash"),
 });
 
+// Accounts Table
 export const accounts = pgTable(
   "accounts",
   {
@@ -97,9 +104,10 @@ export const accounts = pgTable(
         columns: [table.provider, table.providerAccountId],
       }),
     };
-  },
+  }
 );
 
+// Sites Table
 export const sites = pgTable(
   "sites",
   {
@@ -109,19 +117,19 @@ export const sites = pgTable(
     name: text("name"),
     description: text("description"),
     logo: text("logo").default(
-      "https://public.blob.vercel-storage.com/eEZHAoPTOBSYGBE3/JRajRyC-PhBHEinQkupt02jqfKacBVHLWJq7Iy.png",
+      "https://public.blob.vercel-storage.com/eEZHAoPTOBSYGBE3/JRajRyC-PhBHEinQkupt02jqfKacBVHLWJq7Iy.png"
     ),
     font: text("font").default("font-cal").notNull(),
     image: text("image").default(
-      "https://public.blob.vercel-storage.com/eEZHAoPTOBSYGBE3/hxfcV5V-eInX3jbVUhjAt1suB7zB88uGd1j20b.png",
+      "https://public.blob.vercel-storage.com/eEZHAoPTOBSYGBE3/hxfcV5V-eInX3jbVUhjAt1suB7zB88uGd1j20b.png"
     ),
     imageBlurhash: text("imageBlurhash").default(
-      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAhCAYAAACbffiEAAAACXBIWXMAABYlAAAWJQFJUiTwAAABfUlEQVR4nN3XyZLDIAwE0Pz/v3q3r55JDlSBplsIEI49h76k4opexCK/juP4eXjOT149f2Tf9ySPgcjCc7kdpBTgDPKByKK2bTPFEdMO0RDrusJ0wLRBGCIuelmWJAjkgPGDSIQEMBDCfA2CEPM80+Qwl0JkNxBimiaYGOTUlXYI60YoehzHJDEm7kxjV3whOQTD3AaCuhGKHoYhyb+CBMwjIAFz647kTqyapdV4enGINuDJMSScPmijSwjCaHeLcT77C7EC0C1ugaCTi2HYfAZANgj6Z9A8xY5eiYghDMNQBJNCWhASot0jGsSCUiHWZcSGQjaWWCDaGMOWnsCcn2QhVkRuxqqNxMSdUSElCDbp1hbNOsa6Ugxh7xXauF4DyM1m5BLtCylBXgaxvPXVwEoOBjeIFVODtW74oj1yBQah3E8tyz3SkpolKS9Geo9YMD1QJR1Go4oJkgO1pgbNZq0AOUPChyjvh7vlXaQa+X1UXwKxgHokB2XPxbX+AnijwIU4ahazAAAAAElFTkSuQmCC",
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAhCAYAAACbffiEAAAACXBIWXMAABYlAAAWJQFJUiTwAAABfUlEQVR4nN3XyZLDIAwE0Pz/v3q3r55JDlSBplsIEI49h76k4opexCK/juP4eXjOT149f2Tf9ySPgcjCc7kdpBTgDPKByKK2bTPFEdMO0RDrusJ0wLRBGCIuelmWJAjkgPGDSIQEMBDCfA2CEPM80+Qwl0JkNxBimiaYGOTUlXYI60YoehzHJDEm7kxjV3whOQTD3AaCuhGKHoYhyb+CBMwjIAFz647kTqyapdV4enGINuDJMSScPmijSwjCaHeLcT77C7EC0C1ugaCTi2HYfAZANgj6Z9A8xY5eiYghDMNQBJNCWhASot0jGsSCUiHWZcSGQjaWWCDaGMOWnsCcn2QhVkRuxqqNxMSdUSElCDbp1hbNOsa6Ugxh7xXauF4DyM1m5BLtCylBXgaxvPXVwEoOBjeIFVODtW74oj1yBQah3E8tyz3SkpolKS9Geo9YMD1QJR1Go4oJkgO1pgbNZq0AOUPChyjvh7vlXaQa+X1UXwKxgHokB2XPxbX+AnijwIU4ahazAAAAAElFTkSuQmCC"
     ),
     subdomain: text("subdomain").unique(),
     customDomain: text("customDomain").unique(),
     message404: text("message404").default(
-      "Blimey! You''ve found a page that doesn''t exist.",
+      "Blimey! You've found a page that doesn't exist."
     ),
     createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updatedAt", { mode: "date" })
@@ -136,9 +144,16 @@ export const sites = pgTable(
     return {
       userIdIdx: index().on(table.userId),
     };
-  },
+  }
 );
-// lib/schema.ts
+
+// Agents Table
+export interface AgentSettings {
+  headingText?: string;
+  tools?: string[];
+  initialMessage?: string;
+  // Add any other settings fields here
+}
 
 export const agents = pgTable(
   "agents",
@@ -166,12 +181,9 @@ export const agents = pgTable(
       onDelete: "cascade",
       onUpdate: "cascade",
     }),
+    settings: jsonb("settings").$type<AgentSettings>().default({}).notNull(),
 
-    settings: jsonb("settings").default('{}').notNull(),
   },
-
-
-
   (table) => {
     return {
       siteIdIdx: index().on(table.siteId),
@@ -181,17 +193,13 @@ export const agents = pgTable(
   }
 );
 
-
-
-
-// Define relations for agents
-export const agentsRelations = relations(agents, ({ one, many }) => ({
+// Agents Relations
+export const agentsRelations = relations(agents, ({ one }) => ({
   site: one(sites, { references: [sites.id], fields: [agents.siteId] }),
   user: one(users, { references: [users.id], fields: [agents.userId] }),
 }));
 
-
-
+// Posts Table
 export const posts = pgTable(
   "posts",
   {
@@ -205,10 +213,10 @@ export const posts = pgTable(
       .notNull()
       .$defaultFn(() => createId()),
     image: text("image").default(
-      "https://public.blob.vercel-storage.com/eEZHAoPTOBSYGBE3/hxfcV5V-eInX3jbVUhjAt1suB7zB88uGd1j20b.png",
+      "https://public.blob.vercel-storage.com/eEZHAoPTOBSYGBE3/hxfcV5V-eInX3jbVUhjAt1suB7zB88uGd1j20b.png"
     ),
     imageBlurhash: text("imageBlurhash").default(
-      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAhCAYAAACbffiEAAAACXBIWXMAABYlAAAWJQFJUiTwAAABfUlEQVR4nN3XyZLDIAwE0Pz/v3q3r55JDlSBplsIEI49h76k4opexCK/juP4eXjOT149f2Tf9ySPgcjCc7kdpBTgDPKByKK2bTPFEdMO0RDrusJ0wLRBGCIuelmWJAjkgPGDSIQEMBDCfA2CEPM80+Qwl0JkNxBimiaYGOTUlXYI60YoehzHJDEm7kxjV3whOQTD3AaCuhGKHoYhyb+CBMwjIAFz647kTqyapdV4enGINuDJMSScPmijSwjCaHeLcT77C7EC0C1ugaCTi2HYfAZANgj6Z9A8xY5eiYghDMNQBJNCWhASot0jGsSCUiHWZcSGQjaWWCDaGMOWnsCcn2QhVkRuxqqNxMSdUSElCDbp1hbNOsa6Ugxh7xXauF4DyM1m5BLtCylBXgaxvPXVwEoOBjeIFVODtW74oj1yBQah3E8tyz3SkpolKS9Geo9YMD1QJR1Go4oJkgO1pgbNZq0AOUPChyjvh7vlXaQa+X1UXwKxgHokB2XPxbX+AnijwIU4ahazAAAAAElFTkSuQmCC",
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAhCAYAAACbffiEAAAACXBIWXMAABYlAAAWJQFJUiTwAAABfUlEQVR4nN3XyZLDIAwE0Pz/v3q3r55JDlSBplsIEI49h76k4opexCK/juP4eXjOT149f2Tf9ySPgcjCc7kdpBTgDPKByKK2bTPFEdMO0RDrusJ0wLRBGCIuelmWJAjkgPGDSIQEMBDCfA2CEPM80+Qwl0JkNxBimiaYGOTUlXYI60YoehzHJDEm7kxjV3whOQTD3AaCuhGKHoYhyb+CBMwjIAFz647kTqyapdV4enGINuDJMSScPmijSwjCaHeLcT77C7EC0C1ugaCTi2HYfAZANgj6Z9A8xY5eiYghDMNQBJNCWhASot0jGsSCUiHWZcSGQjaWWCDaGMOWnsCcn2QhVkRuxqqNxMSdUSElCDbp1hbNOsa6Ugxh7xXauF4DyM1m5BLtCylBXgaxvPXVwEoOBjeIFVODtW74oj1yBQah3E8tyz3SkpolKS9Geo9YMD1QJR1Go4oJkgO1pgbNZq0AOUPChyjvh7vlXaQa+X1UXwKxgHokB2XPxbX+AnijwIU4ahazAAAAAElFTkSuQmCC"
     ),
     createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updatedAt", { mode: "date" })
@@ -230,52 +238,43 @@ export const posts = pgTable(
       userIdIdx: index().on(table.userId),
       slugSiteIdKey: uniqueIndex().on(table.slug, table.siteId),
     };
-  },
+  }
 );
 
+// Posts Relations
 export const postsRelations = relations(posts, ({ one }) => ({
   site: one(sites, { references: [sites.id], fields: [posts.siteId] }),
   user: one(users, { references: [users.id], fields: [posts.userId] }),
 }));
 
+// Sites Relations
 export const sitesRelations = relations(sites, ({ one, many }) => ({
   posts: many(posts),
   agents: many(agents),
-
   user: one(users, { references: [users.id], fields: [sites.userId] }),
 }));
 
+// Sessions Relations
 export const sessionsRelations = relations(sessions, ({ one }) => ({
   user: one(users, { references: [users.id], fields: [sessions.userId] }),
 }));
 
+// Accounts Relations
 export const accountsRelations = relations(accounts, ({ one }) => ({
   user: one(users, { references: [users.id], fields: [accounts.userId] }),
 }));
 
+// Users Relations
 export const userRelations = relations(users, ({ many }) => ({
   accounts: many(accounts),
   sessions: many(sessions),
   sites: many(sites),
   posts: many(posts),
   agents: many(agents),
-
 }));
-// lib/schema.ts
 
-
-
+// Exported Types
 export type SelectSite = typeof sites.$inferSelect;
 export type SelectPost = typeof posts.$inferSelect;
 export type SelectExample = typeof examples.$inferSelect;
-// lib/schema.ts
-
-export type SelectAgent = {
-  id: string;
-  name: string | null;
-  description: string | null;
-  slug: string;
-  published: boolean;
-  settings: any; // Or define a specific interface for settings
-  // ... other fields ...
-};
+export type SelectAgent = typeof agents.$inferSelect;

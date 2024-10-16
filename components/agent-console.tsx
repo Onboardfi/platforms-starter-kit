@@ -2,7 +2,7 @@
 
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useTransition } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
 
@@ -11,7 +11,6 @@ import { WavRecorder, WavStreamPlayer } from '@/lib/wavtools';
 import { instructions } from '@/app/utils/conversation_config.js';
 import { WavRenderer } from '@/app/utils/wav_renderer';
 import OnboardingProgressCard from '@/components/OnboardingProgressCard';
-import ConfirmationCard from '@/components/ConfirmationCard';
 import Spline from '@splinetool/react-spline';
 import { X, Edit, Zap } from 'react-feather';
 import { Button } from '@/components/button/Button';
@@ -42,8 +41,12 @@ interface Agent {
   createdAt: Date;
   updatedAt: Date;
   published: boolean;
-  settings: any;
-  // ... other properties if needed
+  settings: {
+    headingText?: string;
+    tools?: string[];
+    initialMessage?: string;
+    // ... any other settings
+  };
 }
 
 export default function AgentConsole({ agent }: { agent: Agent }) {
@@ -74,45 +77,13 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
   const [isEditingEmail, setIsEditingEmail] = useState(false);
   const [items, setItems] = useState<any[]>([]);
   const [realtimeEvents, setRealtimeEvents] = useState<RealtimeEvent[]>([]);
-  const [expandedEvents, setExpandedEvents] = useState<{
-    [key: string]: boolean;
-  }>({});
   const [isConnected, setIsConnected] = useState(false);
   const [canPushToTalk, setCanPushToTalk] = useState(true);
   const [isRecording, setIsRecording] = useState(false);
   const [memoryKv, setMemoryKv] = useState<{ [key: string]: any }>({});
   const [emailSent, setEmailSent] = useState(false);
   const [notesTaken, setNotesTaken] = useState(false);
-  // Add state for agent data
   const [data, setData] = useState<Agent>(agent);
-
-  // Use transition for smooth UI updates
-  const [isPendingPublishing, startTransitionPublishing] = useTransition();
-
-  // Publish toggle handler
-  const handlePublishToggle = () => {
-    startTransitionPublishing(async () => {
-      try {
-        const updatedAgent = await updateAgentPublishedStatus(data.id, !data.published);
-        setData((prev) => ({ ...prev, published: updatedAgent.published }));
-        toast.success(
-          `Successfully ${updatedAgent.published ? 'published' : 'unpublished'} the agent.`
-        );
-      } catch (error) {
-        console.error('Failed to update publish status:', error);
-        toast.error('Failed to update publish status.');
-      }
-    });
-  };
-
-  // Function to update the agent's publish status
-  async function updateAgentPublishedStatus(agentId: string, published: boolean) {
-    const response = await axios.post('/api/agents/updatePublishedStatus', {
-      agentId,
-      published,
-    });
-    return response.data;
-  }
 
   const wavRecorderRef = useRef<WavRecorder>(
     new WavRecorder({ sampleRate: 24000 })
@@ -136,8 +107,6 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
   const eventsScrollHeightRef = useRef(0);
   const eventsScrollRef = useRef<HTMLDivElement>(null);
   const startTimeRef = useRef<string>(new Date().toISOString());
-
-  const [isPending, setIsPending] = useState(false); // Optional: for additional transitions
 
   useEffect(() => {
     if (apiKey !== '' && typeof window !== 'undefined') {
@@ -211,24 +180,6 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
     }
   }, [draftEmail]);
 
-  const formatTime = useCallback((timestamp: string) => {
-    const startTime = startTimeRef.current;
-    const t0 = new Date(startTime).valueOf();
-    const t1 = new Date(timestamp).valueOf();
-    const delta = t1 - t0;
-    const hs = Math.floor(delta / 10) % 100;
-    const s = Math.floor(delta / 1000) % 60;
-    const m = Math.floor(delta / 60_000) % 60;
-    const pad = (n: number) => {
-      let s = n + '';
-      while (s.length < 2) {
-        s = '0' + s;
-      }
-      return s;
-    };
-    return `${pad(m)}:${pad(s)}.${pad(hs)}`;
-  }, []);
-
   const resetAPIKey = useCallback(() => {
     const apiKey = prompt('OpenAI API Key');
     if (apiKey !== null) {
@@ -251,17 +202,20 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
     await wavRecorder.begin();
     await wavStreamPlayer.connect();
     await client.connect();
+
+    // Use agent's initial message from settings
+    const initialMessage = agent.settings?.initialMessage || 'Hello!';
     client.sendUserMessageContent([
       {
-        type: `input_text`,
-        text: `Hello, let's get started.`,
+        type: 'input_text',
+        text: initialMessage,
       },
     ]);
 
     if (client.getTurnDetectionType() === 'server_vad') {
       await wavRecorder.record((data) => client.appendInputAudio(data.mono));
     }
-  }, []);
+  }, [agent.settings?.initialMessage]);
 
   const disconnectConversation = useCallback(async () => {
     setIsConnected(false);
@@ -279,11 +233,6 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
 
     const wavStreamPlayer = wavStreamPlayerRef.current;
     await wavStreamPlayer.interrupt();
-  }, []);
-
-  const deleteConversationItem = useCallback(async (id: string) => {
-    const client = clientRef.current;
-    client.deleteItem(id);
   }, []);
 
   const startRecording = async () => {
@@ -410,8 +359,8 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
     };
   }, []);
 
+  // Updated useEffect to add tools only once
   useEffect(() => {
-    const wavStreamPlayer = wavStreamPlayerRef.current;
     const client = clientRef.current;
 
     client.updateSession({ instructions: instructions });
@@ -419,84 +368,118 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
       input_audio_transcription: { model: 'whisper-1' },
     });
 
-    // Add 'set_memory' tool
-    client.addTool(
-      {
-        name: 'set_memory',
-        description: 'Saves important data about the user into memory.',
-        parameters: {
-          type: 'object',
-          properties: {
-            key: {
-              type: 'string',
-              description:
-                'The key of the memory value. Always use lowercase and underscores, no other characters.',
-            },
-            value: {
-              type: 'string',
-              description: 'Value can be anything represented as a string',
+    // Set up initial message when connected
+    client.on('connected', () => {
+      const initialMessage = agent.settings?.initialMessage || 'Hello!';
+      client.sendUserMessageContent([
+        {
+          type: 'input_text',
+          text: initialMessage,
+        },
+      ]);
+    });
+
+    // Add tools once when the component mounts
+    if (agent.settings?.tools) {
+      if (agent.settings.tools.includes('memory')) {
+        client.addTool(
+          {
+            name: 'set_memory',
+            description: 'Saves important data about the user into memory.',
+            parameters: {
+              type: 'object',
+              properties: {
+                key: {
+                  type: 'string',
+                  description:
+                    'The key of the memory value. Always use lowercase and underscores, no other characters.',
+                },
+                value: {
+                  type: 'string',
+                  description: 'Value can be anything represented as a string',
+                },
+              },
+              required: ['key', 'value'],
             },
           },
-          required: ['key', 'value'],
-        },
-      },
-      async ({ key, value }: { [key: string]: any }) => {
-        setMemoryKv((prevMemoryKv) => {
-          const newKv = { ...prevMemoryKv };
-          if (key === 'tasks') {
-            // Parse the tasks string into an array
-            newKv[key] = value.split(',').map((task: string) => task.trim());
-          } else {
-            newKv[key] = value;
+          async ({ key, value }: { [key: string]: any }) => {
+            setMemoryKv((prevMemoryKv) => {
+              const newKv = { ...prevMemoryKv };
+              if (key === 'tasks') {
+                newKv[key] = value.split(',').map((task: string) => task.trim());
+              } else {
+                newKv[key] = value;
+              }
+              return newKv;
+            });
+            return { ok: true };
           }
-          return newKv;
-        });
-        return { ok: true };
+        );
       }
-    );
 
-    // Modify the 'send_email' tool
-    client.addTool(
-      {
-        name: 'send_email',
-        description: 'Prepare a draft email to send to a new client.',
-        parameters: {
-          type: 'object',
-          properties: {
-            to: { type: 'string', description: 'Email address of the recipient.' },
-            subject: { type: 'string', description: 'Subject of the email.' },
-            firstName: { type: 'string', description: 'First name of the recipient.' },
-          },
-          required: ['to', 'subject', 'firstName'],
-        },
-      },
-      async ({ to, subject, firstName }: { [key: string]: any }) => {
-        setDraftEmail({ to, subject, firstName });
-        return { ok: true, message: 'Draft email created. You can now review and edit it before sending.' };
-      }
-    );
-
-    // Modify the 'add_notion_message' tool
-    client.addTool(
-      {
-        name: 'add_notion_message',
-        description: 'Prepare a draft message or note to potentially add to a specified Notion page.',
-        parameters: {
-          type: 'object',
-          properties: {
-            messageContent: {
-              type: 'string',
-              description: 'The content of the draft message or note.',
+      if (agent.settings.tools.includes('email')) {
+        client.addTool(
+          {
+            name: 'send_email',
+            description: 'Prepare a draft email to send to a new client.',
+            parameters: {
+              type: 'object',
+              properties: {
+                to: {
+                  type: 'string',
+                  description: 'Email address of the recipient.',
+                },
+                subject: {
+                  type: 'string',
+                  description: 'Subject of the email.',
+                },
+                firstName: {
+                  type: 'string',
+                  description: 'First name of the recipient.',
+                },
+              },
+              required: ['to', 'subject', 'firstName'],
             },
           },
-          required: ['messageContent'],
-        },
-      },
-      async ({ messageContent }: { [key: string]: any }) => {
-        setDraftNote(messageContent);
-        return { ok: true, message: 'Draft note created. You can now review and edit it before sending.' };
+          async ({ to, subject, firstName }: { [key: string]: any }) => {
+            setDraftEmail({ to, subject, firstName });
+            return {
+              ok: true,
+              message:
+                'Draft email created. You can now review and edit it before sending.',
+            };
+          }
+        );
       }
-    );
+
+      if (agent.settings.tools.includes('notion')) {
+        client.addTool(
+          {
+            name: 'add_notion_message',
+            description:
+              'Prepare a draft message or note to potentially add to a specified Notion page.',
+            parameters: {
+              type: 'object',
+              properties: {
+                messageContent: {
+                  type: 'string',
+                  description: 'The content of the draft message or note.',
+                },
+              },
+              required: ['messageContent'],
+            },
+          },
+          async ({ messageContent }: { [key: string]: any }) => {
+            setDraftNote(messageContent);
+            return {
+              ok: true,
+              message:
+                'Draft note created. You can now review and edit it before sending.',
+            };
+          }
+        );
+      }
+    }
 
     client.on('realtime.event', (realtimeEvent: RealtimeEvent) => {
       setRealtimeEvents((prevEvents) => {
@@ -509,15 +492,20 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
         }
       });
     });
+
     client.on('error', (event: any) => console.error(event));
+
     client.on('conversation.interrupted', async () => {
+      const wavStreamPlayer = wavStreamPlayerRef.current;
       const trackSampleOffset = await wavStreamPlayer.interrupt();
       if (trackSampleOffset?.trackId) {
         const { trackId, offset } = trackSampleOffset;
         await client.cancelResponse(trackId, offset);
       }
     });
+
     client.on('conversation.updated', async ({ item, delta }: any) => {
+      const wavStreamPlayer = wavStreamPlayerRef.current;
       const items = client.conversation.getItems();
       if (delta?.audio) {
         wavStreamPlayer.add16BitPCM(delta.audio, item.id);
@@ -538,10 +526,11 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
     return () => {
       client.reset();
     };
-  }, []);
+  }, []); // Empty dependency array to run only once on mount
 
   return (
-    <div data-component="ConsolePage" className={styles['console-page']}>
+    <div data-component="ConsolePage" className={styles['console-page'] + " h-full flex flex-col"}>
+
       {/* Top Bar */}
       <div className={styles['content-top']}>
         <div className={styles['content-api-key']}>
@@ -555,27 +544,10 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
             />
           )}
         </div>
-
-        {/* Publish Button */}
-        <div className="publish-button-container">
-          <button
-            onClick={handlePublishToggle}
-            className="publish-button"
-            disabled={isPendingPublishing}
-          >
-            {isPendingPublishing ? (
-              'Processing...'
-            ) : data.published ? (
-              'Unpublish'
-            ) : (
-              'Publish'
-            )}
-          </button>
-        </div>
       </div>
 
       {/* Main Content Area */}
-      <div className={styles['content-main']}>
+      <div className={styles['content-main'] + " flex-grow"}>
         {/* Workspace and OnboardingProgressCard Side by Side */}
         <div className={styles['main-left']}>
           {/* Workspace Block */}
@@ -714,13 +686,14 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
           </div>
         </div>
 
-        <div className="content-right">
-          <OnboardingProgressCard 
-            emailSent={emailSent} 
-            notesTaken={notesTaken} 
+        {/* Onboarding Progress Card */}
+        <div className={styles['main-right']}>
+          <OnboardingProgressCard
+            emailSent={emailSent}
+            notesTaken={notesTaken}
             onAllStagesComplete={handleAllStagesComplete}
             memoryKv={memoryKv}
-            headingText={agent.settings?.headingText} // Pass headingText from settings
+            headingText={data.settings?.headingText} // Pass headingText from settings
           />
         </div>
       </div>
@@ -731,18 +704,20 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
           <div className="content-block-title">Conversation</div>
           <div className="content-block-body" data-conversation-content>
             {!items.length && `Awaiting connection...`}
-            {items.map((conversationItem, i) => (
-              <div
-                className={`conversation-item ${conversationItem.role}`}
-                key={conversationItem.id || i}
-              >
-                <div className="speaker-content">
-                  {conversationItem.formatted.transcript ||
-                    conversationItem.formatted.text ||
-                    '(Truncated)'}
+            {items.map((conversationItem, i) => {
+              return (
+                <div
+                  className={`conversation-item ${conversationItem.role}`}
+                  key={conversationItem.id || i}
+                >
+                  <div className="speaker-content">
+                    {conversationItem.formatted.transcript ||
+                      conversationItem.formatted.text ||
+                      '(Truncated)'}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           {/* Visualization Indicators */}
           <div className="visualization">

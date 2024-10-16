@@ -1,3 +1,4 @@
+// lib/actions.ts
 "use server";
 
 import { getSession } from "@/lib/auth";
@@ -101,6 +102,146 @@ export const createAgent = withSiteAuth(
   }
 );
 
+
+// Add this function to update agent metadata
+export const updateAgentMetadata = async (formData: FormData) => {
+  const session = await getSession();
+  if (!session?.user.id) {
+    return { error: 'Not authenticated' };
+  }
+
+  const agentId = formData.get('agentId') as string;
+  const key = formData.get('key') as string;
+  const value = formData.get(key);
+
+  const agent = await db.query.agents.findFirst({
+    where: eq(agents.id, agentId),
+    with: {
+      site: true,
+    },
+  });
+
+  if (!agent || agent.userId !== session.user.id) {
+    return { error: 'Agent not found or unauthorized' };
+  }
+
+  try {
+    let response;
+
+    if (key === 'image') {
+      const file = formData.get('image') as File;
+      if (file && file.size > 0) {
+        const filename = `${nanoid()}.${file.type.split('/')[1]}`;
+        const { url } = await put(filename, file, {
+          access: 'public',
+        });
+        const blurhash = await getBlurDataURL(url);
+        response = await db
+          .update(agents)
+          .set({
+            image: url,
+            imageBlurhash: blurhash,
+          })
+          .where(eq(agents.id, agentId))
+          .returning()
+          .then((res) => res[0]);
+      } else {
+        return { error: 'No image file selected' };
+      }
+    } else {
+      response = await db
+        .update(agents)
+        .set({
+          [key]: value,
+        })
+        .where(eq(agents.id, agentId))
+        .returning()
+        .then((res) => res[0]);
+    }
+    revalidateTag(
+      `${agent.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-agents`
+    );
+    revalidateTag(
+      `${agent.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-${agent.slug}`
+    );
+
+    // If the site has a custom domain, revalidate those tags too
+    agent.site?.customDomain &&
+      (revalidateTag(`${agent.site?.customDomain}-agents`),
+      revalidateTag(`${agent.site?.customDomain}-${agent.slug}`));
+
+    return response;
+  } catch (error: any) {
+    if (error.code === "P2002") {
+      return {
+        error: `This slug is already in use`,
+      };
+    } else {
+      return {
+        error: error.message,
+      };
+    }
+  }
+};
+
+// Add this function to delete an agent
+export const deleteAgent = async (formData: FormData, agentId: string) => {
+  const session = await getSession();
+  if (!session?.user.id) {
+    return {
+      error: "Not authenticated",
+    };
+  }
+
+  const agent = await db.query.agents.findFirst({
+    where: eq(agents.id, agentId),
+    with: {
+      site: true,
+    },
+  });
+
+  if (!agent || agent.userId !== session.user.id) {
+    return {
+      error: "Agent not found or unauthorized",
+    };
+  }
+
+  const confirm = formData.get("confirm") as string;
+  if (confirm !== agent.name) {
+    return {
+      error: "Agent name does not match",
+    };
+  }
+
+  try {
+    const [response] = await db
+      .delete(agents)
+      .where(eq(agents.id, agentId))
+      .returning({
+        siteId: agents.siteId,
+      });
+
+    // Revalidate cache tags
+    revalidateTag(
+      `${agent.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-agents`
+    );
+    revalidateTag(
+      `${agent.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-${agent.slug}`
+    );
+
+    agent.site?.customDomain &&
+      (revalidateTag(`${agent.site?.customDomain}-agents`),
+      revalidateTag(`${agent.site?.customDomain}-${agent.slug}`));
+
+    return response;
+  } catch (error: any) {
+    return {
+      error: error.message,
+    };
+  }
+};
+type UpdateAgentResult = SelectAgent | { error: string };
+
 export const updateAgent = async (data: SelectAgent) => {
   const session = await getSession();
   if (!session?.user.id) {
@@ -130,7 +271,7 @@ export const updateAgent = async (data: SelectAgent) => {
         description: data.description,
         slug: data.slug,
         published: data.published,
-        settings: data.settings, // Assign settings directly
+        settings: data.settings, // Update settings here
       })
       .where(eq(agents.id, data.id))
       .returning();

@@ -83,11 +83,16 @@ export default async function SiteAgentPage({
   if (!data) {
     notFound();
   }
-
   return (
     <>
-      <div className="flex flex-col items-center justify-center">
-        <div className="m-auto w-full text-center md:w-7/12">
+   
+
+
+      {/* Render the Agent Console */}
+      <div className="flex-grow">
+        <AgentConsole agent={data} />
+      </div>
+      <div className="m-auto w-full text-center md:w-7/12">
           <p className="m-auto my-5 w-10/12 text-sm font-light text-stone-500 md:text-base dark:text-stone-400">
             {toDateString(data.createdAt)}
           </p>
@@ -98,15 +103,6 @@ export default async function SiteAgentPage({
             {data.description}
           </p>
         </div>
-        
-      </div>
-
-
-      {/* Render the Agent Console */}
-      <div className="mx-auto max-w-screen-lg">
-        <AgentConsole agent={data} />
-      </div>
-
       {/* Optionally, display adjacent agents */}
       {/* {data.adjacentAgents && data.adjacentAgents.length > 0 && (
         // Display adjacent agents here

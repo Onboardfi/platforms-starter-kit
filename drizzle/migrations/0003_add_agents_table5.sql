@@ -1,0 +1,2 @@
+ALTER TABLE "agents" ALTER COLUMN "settings" SET DEFAULT '{}'::jsonb;--> statement-breakpoint
+ALTER TABLE "sites" ALTER COLUMN "message404" SET DEFAULT 'Blimey! You've found a page that doesn't exist.';
