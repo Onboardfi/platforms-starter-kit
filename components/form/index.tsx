@@ -1,4 +1,4 @@
-// /components/form/index.tsx
+// components/form/index.tsx
 
 'use client';
 
@@ -8,7 +8,8 @@ import { useFormStatus } from 'react-dom';
 import DomainStatus from './domain-status';
 import DomainConfiguration from './domain-configuration';
 import Uploader from './uploader';
-import { updateAgentMetadata } from '@/lib/actions';
+import { useState } from 'react';
+import { UpdateAgentMetadataResponse } from '@/lib/types';
 
 export default function Form({
   title,
@@ -30,14 +31,38 @@ export default function Form({
   };
   agentId: string;
 }) {
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<boolean>(false);
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError(null);
+    setSuccess(false);
+
+    const formData = new FormData(event.currentTarget);
+    const response = await fetch('/api/updateAgentMetadata', {
+      method: 'POST',
+      body: formData, // Ensure FormData is sent correctly
+    });
+
+    const result: UpdateAgentMetadataResponse = await response.json();
+
+    if (response.ok && result.success) {
+      setSuccess(true);
+    } else {
+      setError(result.error || 'An unexpected error occurred.');
+    }
+  };
+
   return (
     <form
-      action={updateAgentMetadata}
+      onSubmit={handleSubmit}
       className="rounded-lg border border-stone-200 bg-white dark:border-stone-700 dark:bg-black"
     >
       {/* Hidden inputs to pass agentId and key to the Server Action */}
       <input type="hidden" name="agentId" value={agentId} />
-      <input type="hidden" name="key" value={inputAttrs.name} />
+      {/* 'key' is not used in batch updates; remove if unnecessary */}
+      {/* <input type="hidden" name="key" value={inputAttrs.name} /> */}
 
       <div className="relative flex flex-col space-y-4 p-5 sm:p-10">
         <h2 className="font-cal text-xl dark:text-white">{title}</h2>
@@ -48,12 +73,12 @@ export default function Form({
         {inputAttrs.name === 'image' || inputAttrs.name === 'logo' ? (
           <Uploader
             defaultValue={inputAttrs.defaultValue}
-            name={inputAttrs.name}
+            name={inputAttrs.name as "image" | "logo" | "value"} // Ensure correct typing
           />
         ) : inputAttrs.name === 'font' ? (
           <div className="flex max-w-sm items-center overflow-hidden rounded-lg border border-stone-600">
             <select
-              name="font"
+              name="font" // Update if necessary
               defaultValue={inputAttrs.defaultValue}
               className="w-full rounded-none border-none bg-white px-4 py-2 text-sm font-medium text-stone-700 focus:outline-none focus:ring-black dark:bg-black dark:text-stone-200 dark:focus:ring-white"
             >
@@ -66,6 +91,7 @@ export default function Form({
           <div className="flex w-full max-w-md">
             <input
               {...inputAttrs}
+              name="subdomain" // Use specific name
               required
               className="z-10 flex-1 rounded-l-md border border-stone-300 text-sm text-stone-900 placeholder-stone-300 focus:border-stone-500 focus:outline-none focus:ring-stone-500 dark:border-stone-600 dark:bg-black dark:text-white dark:placeholder-stone-700"
             />
@@ -77,6 +103,7 @@ export default function Form({
           <div className="relative flex w-full max-w-md">
             <input
               {...inputAttrs}
+              name="customDomain" // Use specific name
               className="z-10 flex-1 rounded-md border border-stone-300 text-sm text-stone-900 placeholder-stone-300 focus:border-stone-500 focus:outline-none focus:ring-stone-500 dark:border-stone-600 dark:bg-black dark:text-white dark:placeholder-stone-700"
             />
             {inputAttrs.defaultValue && (
@@ -88,6 +115,7 @@ export default function Form({
         ) : inputAttrs.name === 'description' ? (
           <textarea
             {...inputAttrs}
+            name="description" // Use specific name
             rows={3}
             required
             className="w-full max-w-xl rounded-md border border-stone-300 text-sm text-stone-900 placeholder-stone-300 focus:border-stone-500 focus:outline-none focus:ring-stone-500 dark:border-stone-600 dark:bg-black dark:text-white dark:placeholder-stone-700"
@@ -95,6 +123,7 @@ export default function Form({
         ) : (
           <input
             {...inputAttrs}
+            name={inputAttrs.name} // Use specific name
             required
             className="w-full max-w-md rounded-md border border-stone-300 text-sm text-stone-900 placeholder-stone-300 focus:border-stone-500 focus:outline-none focus:ring-stone-500 dark:border-stone-600 dark:bg-black dark:text-white dark:placeholder-stone-700"
           />
@@ -109,6 +138,10 @@ export default function Form({
         <p className="text-sm text-stone-500 dark:text-stone-400">{helpText}</p>
         <FormButton />
       </div>
+
+      {/* Display Error and Success Messages */}
+      {error && <p className="mt-2 text-red-500">{error}</p>}
+      {success && <p className="mt-2 text-green-500">Update successful!</p>}
     </form>
   );
 }
@@ -118,6 +151,7 @@ function FormButton() {
 
   return (
     <button
+      type="submit" // Ensure the button submits the form
       className={cn(
         'flex h-8 w-32 items-center justify-center space-x-2 rounded-md border text-sm transition-all focus:outline-none sm:h-10',
         pending

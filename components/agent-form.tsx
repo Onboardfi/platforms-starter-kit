@@ -1,9 +1,10 @@
-// /components/agent-form.tsx
+// components/agent-form.tsx
 
 'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { UpdateAgentMetadataResponse } from '@/lib/types';
 
 interface AgentSettings {
   headingText?: string;
@@ -31,6 +32,7 @@ export default function AgentForm({ agent }: { agent: Agent }) {
   const router = useRouter();
   const [name, setName] = useState(agent.name ?? '');
   const [description, setDescription] = useState(agent.description ?? '');
+  const [slug, setSlug] = useState(agent.slug ?? '');
   const [headingText, setHeadingText] = useState(
     agent.settings?.headingText ?? 'AI Onboarding Platform'
   );
@@ -47,38 +49,42 @@ export default function AgentForm({ agent }: { agent: Agent }) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
+  
     setIsSubmitting(true);
-
+  
     const updatedAgent = {
-      id: agent.id,
       name,
       description,
-      slug: agent.slug, // Ensure slug is included
+      slug,
       published,
       settings: {
-        ...agent.settings,
         headingText,
         tools,
         initialMessage,
       },
     };
-
+  
+    const payload = {
+      agentId: agent.id,
+      ...updatedAgent,
+    };
+  
     try {
-      const response = await fetch('/api/updateAgentMetadata', {
+      const response = await fetch('/api/updateAgentGeneral', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          agentId: agent.id,
-          value: updatedAgent,
-        }),
+        body: JSON.stringify(payload),
       });
+      // Check if response has a body
+      let result: UpdateAgentMetadataResponse = { success: false };
+      const contentType = response.headers.get('Content-Type');
+      if (contentType && contentType.includes('application/json')) {
+        result = await response.json();
+      }
 
-      const result = await response.json();
-
-      if (response.ok) {
+      if (response.ok && result.success) {
         setNotification({
           message: 'Agent updated successfully',
           type: 'success',
@@ -141,6 +147,16 @@ export default function AgentForm({ agent }: { agent: Agent }) {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={3}
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">Slug</label>
+          <input
+            className="border rounded w-full p-2"
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
+            required
           />
         </div>
 

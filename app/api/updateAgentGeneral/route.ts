@@ -1,8 +1,8 @@
-// /app/api/updateAgentMetadata/route.ts
+// /app/api/updateAgentGeneral/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
 import { updateAgentMetadata } from '@/lib/actions';
+import { getSession } from '@/lib/auth';
 import { UpdateAgentMetadataResponse } from '@/lib/types';
 
 export async function POST(request: NextRequest): Promise<NextResponse<UpdateAgentMetadataResponse>> {
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<UpdateAge
 
     return NextResponse.json(result);
   } catch (error: any) {
-    console.error('Error in updateAgentMetadata API route:', error);
+    console.error('Error in updateAgentGeneral API route:', error);
     return NextResponse.json(
       { success: false, error: error.message || 'Internal Server Error' },
       { status: 500 }

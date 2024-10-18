@@ -5,8 +5,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
-
 import { RealtimeClient } from '@openai/realtime-api-beta';
+import { updateStepCompletionStatus } from '@/lib/actions';
+
 import { WavRecorder, WavStreamPlayer } from '@/lib/wavtools';
 import { instructions } from '@/app/utils/conversation_config.js';
 import { WavRenderer } from '@/app/utils/wav_renderer';
@@ -17,6 +18,21 @@ import { Button } from '@/components/button/Button';
 import { Toggle } from '@/components/toggle/Toggle';
 import { EmailTemplate } from '@/components/email-template';
 import styles from '@/styles/ConsolePage.module.scss';
+
+import { AgentSettings, Step } from '@/lib/schema'; // Import AgentSettings and Step
+
+interface Agent {
+  id: string;
+  name: string | null;
+  description: string | null;
+  slug: string;
+  userId: string | null;
+  siteId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  published: boolean;
+  settings: AgentSettings; // Use the imported AgentSettings interface
+}
 
 interface RealtimeEvent {
   time: string;
@@ -31,24 +47,6 @@ interface DraftEmail {
   firstName: string;
 }
 
-interface Agent {
-  id: string;
-  name: string | null;
-  description: string | null;
-  slug: string;
-  userId: string | null;
-  siteId: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-  published: boolean;
-  settings: {
-    headingText?: string;
-    tools?: string[];
-    initialMessage?: string;
-    // ... any other settings
-  };
-}
-
 export default function AgentConsole({ agent }: { agent: Agent }) {
   const LOCAL_RELAY_SERVER_URL: string =
     process.env.NEXT_PUBLIC_LOCAL_RELAY_SERVER_URL || '';
@@ -60,16 +58,6 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
       prompt('OpenAI API Key') ||
       ''
     : '';
-
-  const handleAllStagesComplete = useCallback(() => {
-    const client = clientRef.current;
-    client.sendUserMessageContent([
-      {
-        type: 'input_text',
-        text: 'All onboarding stages are now complete.',
-      },
-    ]);
-  }, []);
 
   const [draftNote, setDraftNote] = useState<string | null>(null);
   const [draftEmail, setDraftEmail] = useState<DraftEmail | null>(null);
@@ -83,6 +71,7 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
   const [memoryKv, setMemoryKv] = useState<{ [key: string]: any }>({});
   const [emailSent, setEmailSent] = useState(false);
   const [notesTaken, setNotesTaken] = useState(false);
+  const [notionMessageSent, setNotionMessageSent] = useState(false);
   const [data, setData] = useState<Agent>(agent);
 
   const wavRecorderRef = useRef<WavRecorder>(
@@ -91,7 +80,7 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
   const wavStreamPlayerRef = useRef<WavStreamPlayer>(
     new WavStreamPlayer({ sampleRate: 24000 })
   );
-  const clientRef = useRef<any>(
+  const clientRef = useRef<InstanceType<typeof RealtimeClient>>(
     new RealtimeClient(
       LOCAL_RELAY_SERVER_URL
         ? { url: LOCAL_RELAY_SERVER_URL }
@@ -107,6 +96,26 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
   const eventsScrollHeightRef = useRef(0);
   const eventsScrollRef = useRef<HTMLDivElement>(null);
   const startTimeRef = useRef<string>(new Date().toISOString());
+
+  const fetchAgentData = useCallback(async () => {
+    try {
+      const response = await axios.get(`/api/getAgent?agentId=${agent.id}`);
+      setData(response.data);
+    } catch (error) {
+      console.error('Failed to fetch agent data:', error);
+    }
+  }, [agent.id]);
+
+
+  
+
+  const updateStepStatus = useCallback(async () => {
+    const stepIndex = agent.settings.steps?.findIndex(step => step.completionTool === 'email') ?? -1;
+    if (stepIndex !== -1) {
+      await updateStepCompletionStatus(agent.id, stepIndex, true);
+      await fetchAgentData();
+    }
+  }, [agent.id, agent.settings.steps, fetchAgentData, updateStepCompletionStatus]);
 
   useEffect(() => {
     if (apiKey !== '' && typeof window !== 'undefined') {
@@ -130,8 +139,9 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
           messageContent: draftNote,
         });
         setNotesTaken(true);
+        setNotionMessageSent(true); // Mark notion step as complete
         setDraftNote(null);
-
+  
         // Inject message to AI after successful note addition
         const client = clientRef.current;
         client.sendUserMessageContent([
@@ -141,12 +151,16 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
           },
         ]);
         toast.success('Note successfully sent to Notion!');
+        
+        // Call updateStepStatus after sending note
+        await updateStepStatus();
       } catch (err: any) {
         console.error('Error in add_notion_message:', err);
         toast.error('Failed to add note to Notion.');
       }
     }
-  }, [draftNote]);
+  }, [draftNote, updateStepStatus]);
+  
 
   const handleEditEmail = useCallback(() => {
     setIsEditingEmail(true);
@@ -163,8 +177,7 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
         const res = await axios.post('/api/send_email', draftEmail);
         setEmailSent(true);
         setDraftEmail(null);
-
-        // Inject message to AI after successful email send
+  
         const client = clientRef.current;
         client.sendUserMessageContent([
           {
@@ -173,12 +186,14 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
           },
         ]);
         toast.success('Email successfully sent!');
+        
+        await updateStepStatus();
       } catch (err: any) {
         console.error('Error in send_email:', err);
         toast.error('Failed to send email.');
       }
     }
-  }, [draftEmail]);
+  }, [draftEmail, updateStepStatus]);
 
   const resetAPIKey = useCallback(() => {
     const apiKey = prompt('OpenAI API Key');
@@ -203,7 +218,6 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
     await wavStreamPlayer.connect();
     await client.connect();
 
-    // Use agent's initial message from settings
     const initialMessage = agent.settings?.initialMessage || 'Hello!';
     client.sendUserMessageContent([
       {
@@ -224,6 +238,7 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
     setMemoryKv({});
     setEmailSent(false);
     setNotesTaken(false);
+    setNotionMessageSent(false);
 
     const client = clientRef.current;
     client.disconnect();
@@ -359,7 +374,6 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
     };
   }, []);
 
-  // Updated useEffect to add tools only once
   useEffect(() => {
     const client = clientRef.current;
 
@@ -368,7 +382,6 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
       input_audio_transcription: { model: 'whisper-1' },
     });
 
-    // Set up initial message when connected
     client.on('connected', () => {
       const initialMessage = agent.settings?.initialMessage || 'Hello!';
       client.sendUserMessageContent([
@@ -379,7 +392,6 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
       ]);
     });
 
-    // Add tools once when the component mounts
     if (agent.settings?.tools) {
       if (agent.settings.tools.includes('memory')) {
         client.addTool(
@@ -526,12 +538,14 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
     return () => {
       client.reset();
     };
-  }, []); // Empty dependency array to run only once on mount
+  }, [agent.settings?.tools, instructions]);
+
+  useEffect(() => {
+    console.log('Agent Data:', data);
+  }, [data]);
 
   return (
-    <div data-component="ConsolePage" className={styles['console-page'] + " h-full flex flex-col"}>
-
-      {/* Top Bar */}
+    <div data-component="ConsolePage" className={`${styles['console-page']} h-full flex flex-col`}>
       <div className={styles['content-top']}>
         <div className={styles['content-api-key']}>
           {!LOCAL_RELAY_SERVER_URL && (
@@ -546,11 +560,8 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
         </div>
       </div>
 
-      {/* Main Content Area */}
-      <div className={styles['content-main'] + " flex-grow"}>
-        {/* Workspace and OnboardingProgressCard Side by Side */}
+      <div className={styles['content-main']}>
         <div className={styles['main-left']}>
-          {/* Workspace Block */}
           <div className={styles['workspace-block']}>
             <div className={styles['content-block-title']}>Workspace</div>
 
@@ -686,19 +697,22 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
           </div>
         </div>
 
-        {/* Onboarding Progress Card */}
         <div className={styles['main-right']}>
-          <OnboardingProgressCard
-            emailSent={emailSent}
-            notesTaken={notesTaken}
-            onAllStagesComplete={handleAllStagesComplete}
-            memoryKv={memoryKv}
-            headingText={data.settings?.headingText} // Pass headingText from settings
-          />
+        <OnboardingProgressCard
+  emailSent={emailSent}
+  notesTaken={notesTaken}
+  notionMessageSent={notionMessageSent}
+  memoryKv={memoryKv}
+  headingText={data.settings?.headingText}
+  availableTools={agent.settings?.tools || []}
+  steps={data.settings?.steps || []}
+  agentId={agent.id}
+  onStepsUpdated={fetchAgentData} // Pass the function here
+/>
+
         </div>
       </div>
 
-      {/* Conversation Section */}
       <div className={styles['content-conversation']}>
         <div className="content-block conversation">
           <div className="content-block-title">Conversation</div>
@@ -719,21 +733,17 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
               );
             })}
           </div>
-          {/* Visualization Indicators */}
           <div className="visualization">
             <div className="visualization-entry client">
-              {/* Client (User) Speaking Indicator */}
               <canvas ref={clientCanvasRef} />
             </div>
             <div className="visualization-entry server">
-              {/* Server (Assistant) Speaking Indicator */}
               <canvas ref={serverCanvasRef} />
             </div>
           </div>
         </div>
       </div>
 
-      {/* Action Buttons */}
       <div className="content-actions">
         <Toggle
           defaultValue={false}

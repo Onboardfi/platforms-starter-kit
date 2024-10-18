@@ -1,194 +1,186 @@
 // lib/schema.ts
 
-import { createId } from "@paralleldrive/cuid2";
-import { relations } from "drizzle-orm";
+import { createId } from '@paralleldrive/cuid2';
+import { relations, sql } from 'drizzle-orm';
 import {
   boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   serial,
   text,
   timestamp,
   uniqueIndex,
-} from "drizzle-orm/pg-core";
-import { jsonb } from "drizzle-orm/pg-core";
+} from 'drizzle-orm/pg-core';
 
 // Users Table
-export const users = pgTable("users", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => createId()),
-  name: text("name"),
-  // If you are using GitHub OAuth, you can remove the username attribute (used for Twitter OAuth)
-  username: text("username"),
-  gh_username: text("gh_username"),
-  email: text("email").notNull().unique(),
-  emailVerified: timestamp("emailVerified", { mode: "date" }),
-  image: text("image"),
-  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt", { mode: "date" })
-    .notNull()
-    .$onUpdate(() => new Date()),
+export const users = pgTable('users', {
+  id: text('id').primaryKey(),
+  name: text('name'),
+  username: text('username'),
+  gh_username: text('gh_username'),
+  email: text('email').notNull().unique(),
+  emailVerified: timestamp('emailVerified', { mode: 'date' }),
+  image: text('image'),
+  createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+  updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
 });
 
 // Sessions Table
 export const sessions = pgTable(
-  "sessions",
+  'sessions',
   {
-    sessionToken: text("sessionToken").primaryKey(),
-    userId: text("userId")
+    sessionToken: text('sessionToken').primaryKey(),
+    userId: text('userId')
       .notNull()
-      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
-    expires: timestamp("expires", { mode: "date" }).notNull(),
+      .references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    expires: timestamp('expires', { mode: 'date' }).notNull(),
   },
   (table) => {
     return {
-      userIdIdx: index().on(table.userId),
+      userIdIdx: index('sessions_userId_idx').on(table.userId),
     };
   }
 );
 
 // Verification Tokens Table
 export const verificationTokens = pgTable(
-  "verificationTokens",
+  'verificationTokens',
   {
-    identifier: text("identifier").notNull(),
-    token: text("token").notNull().unique(),
-    expires: timestamp("expires", { mode: "date" }).notNull(),
+    identifier: text('identifier').notNull(),
+    token: text('token').notNull(),
+    expires: timestamp('expires', { mode: 'date' }).notNull(),
   },
   (table) => {
     return {
-      compositePk: primaryKey({ columns: [table.identifier, table.token] }),
+      compositePk: primaryKey(table.identifier, table.token),
     };
   }
 );
 
 // Examples Table
-export const examples = pgTable("examples", {
-  id: serial("id").primaryKey(),
-  name: text("name"),
-  description: text("description"),
-  domainCount: integer("domainCount"),
-  url: text("url"),
-  image: text("image"),
-  imageBlurhash: text("imageBlurhash"),
+export const examples = pgTable('examples', {
+  id: serial('id').primaryKey(),
+  name: text('name'),
+  description: text('description'),
+  domainCount: integer('domainCount'),
+  url: text('url'),
+  image: text('image'),
+  imageBlurhash: text('imageBlurhash'),
 });
 
 // Accounts Table
 export const accounts = pgTable(
-  "accounts",
+  'accounts',
   {
-    userId: text("userId")
+    userId: text('userId')
       .notNull()
-      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
-    type: text("type").notNull(),
-    provider: text("provider").notNull(),
-    providerAccountId: text("providerAccountId").notNull(),
-    refresh_token: text("refresh_token"),
-    refreshTokenExpiresIn: integer("refresh_token_expires_in"),
-    access_token: text("access_token"),
-    expires_at: integer("expires_at"),
-    token_type: text("token_type"),
-    scope: text("scope"),
-    id_token: text("id_token"),
-    session_state: text("session_state"),
-    oauth_token_secret: text("oauth_token_secret"),
-    oauth_token: text("oauth_token"),
+      .references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    type: text('type').notNull(),
+    provider: text('provider').notNull(),
+    providerAccountId: text('providerAccountId').notNull(),
+    refresh_token: text('refresh_token'),
+    refresh_token_expires_in: integer('refresh_token_expires_in'),
+    access_token: text('access_token'),
+    expires_at: integer('expires_at'),
+    token_type: text('token_type'),
+    scope: text('scope'),
+    id_token: text('id_token'),
+    session_state: text('session_state'),
+    oauth_token_secret: text('oauth_token_secret'),
+    oauth_token: text('oauth_token'),
   },
   (table) => {
     return {
-      userIdIdx: index().on(table.userId),
-      compositePk: primaryKey({
-        columns: [table.provider, table.providerAccountId],
-      }),
+      userIdIdx: index('accounts_userId_idx').on(table.userId),
+      compositePk: primaryKey(table.provider, table.providerAccountId),
     };
   }
 );
 
 // Sites Table
 export const sites = pgTable(
-  "sites",
+  'sites',
   {
-    id: text("id")
-      .primaryKey()
-      .$defaultFn(() => createId()),
-    name: text("name"),
-    description: text("description"),
-    logo: text("logo").default(
-      "https://public.blob.vercel-storage.com/eEZHAoPTOBSYGBE3/JRajRyC-PhBHEinQkupt02jqfKacBVHLWJq7Iy.png"
+    id: text('id').primaryKey(),
+    name: text('name'),
+    description: text('description'),
+    logo: text('logo'),
+    font: text('font').default('font-cal').notNull(),
+    image: text('image'),
+    imageBlurhash: text('imageBlurhash'),
+    subdomain: text('subdomain').unique(),
+    customDomain: text('customDomain').unique(),
+    message404: text('message404').default(
+      sql`'Blimey! exist.'`
     ),
-    font: text("font").default("font-cal").notNull(),
-    image: text("image").default(
-      "https://public.blob.vercel-storage.com/eEZHAoPTOBSYGBE3/hxfcV5V-eInX3jbVUhjAt1suB7zB88uGd1j20b.png"
-    ),
-    imageBlurhash: text("imageBlurhash").default(
-      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAhCAYAAACbffiEAAAACXBIWXMAABYlAAAWJQFJUiTwAAABfUlEQVR4nN3XyZLDIAwE0Pz/v3q3r55JDlSBplsIEI49h76k4opexCK/juP4eXjOT149f2Tf9ySPgcjCc7kdpBTgDPKByKK2bTPFEdMO0RDrusJ0wLRBGCIuelmWJAjkgPGDSIQEMBDCfA2CEPM80+Qwl0JkNxBimiaYGOTUlXYI60YoehzHJDEm7kxjV3whOQTD3AaCuhGKHoYhyb+CBMwjIAFz647kTqyapdV4enGINuDJMSScPmijSwjCaHeLcT77C7EC0C1ugaCTi2HYfAZANgj6Z9A8xY5eiYghDMNQBJNCWhASot0jGsSCUiHWZcSGQjaWWCDaGMOWnsCcn2QhVkRuxqqNxMSdUSElCDbp1hbNOsa6Ugxh7xXauF4DyM1m5BLtCylBXgaxvPXVwEoOBjeIFVODtW74oj1yBQah3E8tyz3SkpolKS9Geo9YMD1QJR1Go4oJkgO1pgbNZq0AOUPChyjvh7vlXaQa+X1UXwKxgHokB2XPxbX+AnijwIU4ahazAAAAAElFTkSuQmCC"
-    ),
-    subdomain: text("subdomain").unique(),
-    customDomain: text("customDomain").unique(),
-    message404: text("message404").default(
-      "Blimey! You've found a page that doesn't exist."
-    ),
-    createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt", { mode: "date" })
-      .notNull()
-      .$onUpdate(() => new Date()),
-    userId: text("userId").references(() => users.id, {
-      onDelete: "cascade",
-      onUpdate: "cascade",
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+    userId: text('userId').references(() => users.id, {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
     }),
   },
   (table) => {
     return {
-      userIdIdx: index().on(table.userId),
+      userIdIdx: index('sites_userId_idx').on(table.userId),
     };
   }
 );
 
-// Agents Table
+// Define the Step interface
+// In /lib/schema.ts
+
+export interface Step {
+  title: string;
+  description: string;
+  completionTool?: "email" | "memory" | "notesTaken" | "notion" | null;
+  completed?: boolean;
+}
+
+// Agent Settings Interface
 export interface AgentSettings {
   headingText?: string;
   tools?: string[];
   initialMessage?: string;
+  steps?: Step[];
   // Add any other settings fields here
 }
 
+// Agents Table
 export const agents = pgTable(
-  "agents",
+  'agents',
   {
-    id: text("id")
-      .primaryKey()
-      .$defaultFn(() => createId()),
-    name: text("name"),
-    description: text("description"),
-    slug: text("slug")
-      .notNull()
-      .$defaultFn(() => createId()), // Generate a unique slug
-    image: text("image"),
-    imageBlurhash: text("imageBlurhash"),
-    createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt", { mode: "date" })
-      .notNull()
-      .$onUpdate(() => new Date()),
-    published: boolean("published").default(false).notNull(),
-    siteId: text("siteId").references(() => sites.id, {
-      onDelete: "cascade",
-      onUpdate: "cascade",
+    id: text('id').primaryKey(),
+    name: text('name'),
+    description: text('description'),
+    slug: text('slug').notNull(),
+    image: text('image'),
+    imageBlurhash: text('imageBlurhash'),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+    published: boolean('published').default(false).notNull(),
+    siteId: text('siteId').references(() => sites.id, {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
     }),
-    userId: text("userId").references(() => users.id, {
-      onDelete: "cascade",
-      onUpdate: "cascade",
+    userId: text('userId').references(() => users.id, {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
     }),
-    settings: jsonb("settings").$type<AgentSettings>().default({}).notNull(),
-
+    settings: jsonb('settings')
+      .$type<AgentSettings>()
+      .default(sql`'{}'::jsonb`)
+      .notNull(),
+    tempColumn: text('temp_column'), // Add this temporary column
   },
   (table) => {
     return {
-      siteIdIdx: index().on(table.siteId),
-      userIdIdx: index().on(table.userId),
-      slugSiteIdKey: uniqueIndex().on(table.slug, table.siteId),
+      siteIdIdx: index('agents_siteId_idx').on(table.siteId),
+      userIdIdx: index('agents_userId_idx').on(table.userId),
+      slugSiteIdKey: uniqueIndex('agents_slug_siteId_key').on(table.slug, table.siteId),
     };
   }
 );
@@ -201,42 +193,32 @@ export const agentsRelations = relations(agents, ({ one }) => ({
 
 // Posts Table
 export const posts = pgTable(
-  "posts",
+  'posts',
   {
-    id: text("id")
-      .primaryKey()
-      .$defaultFn(() => createId()),
-    title: text("title"),
-    description: text("description"),
-    content: text("content"),
-    slug: text("slug")
-      .notNull()
-      .$defaultFn(() => createId()),
-    image: text("image").default(
-      "https://public.blob.vercel-storage.com/eEZHAoPTOBSYGBE3/hxfcV5V-eInX3jbVUhjAt1suB7zB88uGd1j20b.png"
-    ),
-    imageBlurhash: text("imageBlurhash").default(
-      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAhCAYAAACbffiEAAAACXBIWXMAABYlAAAWJQFJUiTwAAABfUlEQVR4nN3XyZLDIAwE0Pz/v3q3r55JDlSBplsIEI49h76k4opexCK/juP4eXjOT149f2Tf9ySPgcjCc7kdpBTgDPKByKK2bTPFEdMO0RDrusJ0wLRBGCIuelmWJAjkgPGDSIQEMBDCfA2CEPM80+Qwl0JkNxBimiaYGOTUlXYI60YoehzHJDEm7kxjV3whOQTD3AaCuhGKHoYhyb+CBMwjIAFz647kTqyapdV4enGINuDJMSScPmijSwjCaHeLcT77C7EC0C1ugaCTi2HYfAZANgj6Z9A8xY5eiYghDMNQBJNCWhASot0jGsSCUiHWZcSGQjaWWCDaGMOWnsCcn2QhVkRuxqqNxMSdUSElCDbp1hbNOsa6Ugxh7xXauF4DyM1m5BLtCylBXgaxvPXVwEoOBjeIFVODtW74oj1yBQah3E8tyz3SkpolKS9Geo9YMD1QJR1Go4oJkgO1pgbNZq0AOUPChyjvh7vlXaQa+X1UXwKxgHokB2XPxbX+AnijwIU4ahazAAAAAElFTkSuQmCC"
-    ),
-    createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt", { mode: "date" })
-      .notNull()
-      .$onUpdate(() => new Date()),
-    published: boolean("published").default(false).notNull(),
-    siteId: text("siteId").references(() => sites.id, {
-      onDelete: "cascade",
-      onUpdate: "cascade",
+    id: text('id').primaryKey(),
+    title: text('title'),
+    description: text('description'),
+    content: text('content'),
+    slug: text('slug').notNull(),
+    image: text('image'),
+    imageBlurhash: text('imageBlurhash'),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+    published: boolean('published').default(false).notNull(),
+    siteId: text('siteId').references(() => sites.id, {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
     }),
-    userId: text("userId").references(() => users.id, {
-      onDelete: "cascade",
-      onUpdate: "cascade",
+    userId: text('userId').references(() => users.id, {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
     }),
   },
   (table) => {
     return {
-      siteIdIdx: index().on(table.siteId),
-      userIdIdx: index().on(table.userId),
-      slugSiteIdKey: uniqueIndex().on(table.slug, table.siteId),
+      siteIdIdx: index('posts_siteId_idx').on(table.siteId),
+      userIdIdx: index('posts_userId_idx').on(table.userId),
+      slugSiteIdKey: uniqueIndex('posts_slug_siteId_key').on(table.slug, table.siteId),
     };
   }
 );
@@ -265,7 +247,7 @@ export const accountsRelations = relations(accounts, ({ one }) => ({
 }));
 
 // Users Relations
-export const userRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ many }) => ({
   accounts: many(accounts),
   sessions: many(sessions),
   sites: many(sites),

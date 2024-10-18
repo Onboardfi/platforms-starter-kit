@@ -1,0 +1,1 @@
+ALTER TABLE "sites" ALTER COLUMN "message404" SET DEFAULT 'Blimey! exist.';

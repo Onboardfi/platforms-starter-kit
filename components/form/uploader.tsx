@@ -1,3 +1,5 @@
+// components/form/uploader.tsx
+
 "use client";
 
 import { cn } from "@/lib/utils";
@@ -9,7 +11,7 @@ export default function Uploader({
   name,
 }: {
   defaultValue: string | null;
-  name: "image" | "logo";
+  name: "image" | "logo" | "value"; // Updated to include "value"
 }) {
   const aspectRatio = name === "image" ? "aspect-video" : "aspect-square";
 
