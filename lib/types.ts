@@ -5,14 +5,12 @@
  * Represents a single step in an agent's onboarding process.
  */
 
-
 export interface Step {
   title: string;
   description: string;
-  completionTool: string | null;
+  completionTool: "email" | "memory" | "notesTaken" | "notion" | null;
   completed: boolean;
 }
-
 
 export interface AgentSettings {
   headingText?: string;

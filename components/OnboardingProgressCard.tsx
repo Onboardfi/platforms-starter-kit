@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Circle } from 'lucide-react';
-import { Step } from '@/lib/schema';
+import { Step } from '@/lib/types';
 
 interface OnboardingProgressCardProps {
   emailSent: boolean;
@@ -28,21 +28,20 @@ const OnboardingProgressCard: React.FC<OnboardingProgressCardProps> = ({
   onStepsUpdated,
 }) => {
   const [clientName, setClientName] = useState('');
-
   const markStepCompleted = async (stepIndex: number) => {
     const updatedSteps = steps.map((step, index) =>
       index === stepIndex ? { ...step, completed: true } : step
     );
   
     try {
-      const response = await fetch('/api/updateAgentGeneral', {
+      const response = await fetch('/api/updateAgentSteps', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           agentId,
-          settings: { steps: updatedSteps },
+          steps: updatedSteps,
         }),
       });
   

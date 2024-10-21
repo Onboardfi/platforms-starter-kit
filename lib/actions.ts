@@ -159,9 +159,9 @@ export const updateAgentMetadata = async (
               settingsUpdate.steps = sValue.map((step: any) => ({
                 title: step.title,
                 description: step.description,
-                completionTool: step.completionTool,
+                completionTool: step.completionTool as "email" | "memory" | "notesTaken" | "notion" | null,
                 completed: step.completed ?? false,
-              })) as Step[];
+              }));
             } else {
               console.error(`Invalid value for settings key: ${sKey}`);
               return { success: false, error: `Invalid value for settings key: ${sKey}` };
@@ -177,7 +177,7 @@ export const updateAgentMetadata = async (
       }
     }
 
-    const newSettings = { ...agent.settings, ...settingsUpdate };
+    const newSettings: AgentSettings = { ...agent.settings, ...settingsUpdate };
 
     await db
       .update(agents)
@@ -202,6 +202,47 @@ export const updateAgentMetadata = async (
     return { success: false, error: error.message || "Failed to update agent metadata." };
   }
 };
+export const updateAgentStepsWithoutAuth = async (
+  agentId: string,
+  steps: Step[]
+): Promise<UpdateAgentMetadataResponse> => {
+  try {
+    const agent = await db.query.agents.findFirst({
+      where: eq(agents.id, agentId),
+      with: { site: true },
+    }) as AgentWithSite | undefined;
+
+    if (!agent) {
+      return { success: false, error: "Agent not found." };
+    }
+
+    // Update only the steps in settings
+    const newSettings = { ...agent.settings, steps };
+
+    await db
+      .update(agents)
+      .set({
+        settings: newSettings,
+        updatedAt: new Date(),
+      })
+      .where(eq(agents.id, agentId))
+      .returning();
+
+    // Revalidate cache tags if necessary
+    revalidateTag(
+      `${agent.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-agents`
+    );
+    if (agent.site?.customDomain) {
+      revalidateTag(`${agent.site.customDomain}-agents`);
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error updating agent steps:", error);
+    return { success: false, error: error.message || "Failed to update agent steps." };
+  }
+};
+
 
 export const createAgent = withSiteAuth(
   async (_: FormData, site: SelectSite): Promise<void> => {

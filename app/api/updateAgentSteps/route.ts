@@ -1,34 +1,29 @@
-// app/api/updateAgentSteps/route.ts
+// /app/api/updateAgentSteps/route.ts
 
 import { NextResponse } from 'next/server';
-import { updateAgentMetadata } from '@/lib/actions';
-import { Step, UpdateAgentMetadataResponse } from '@/lib/types'; // **Import necessary types**
+import { updateAgentStepsWithoutAuth } from '@/lib/actions';
+import { Step } from '@/lib/types';
 
-/**
- * **Update Agent Steps API Route**
- * Handles updating the steps of an agent.
- * This is for Next.js App Router.
- */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { agentId, settings } = body;
+    const { agentId, steps } = body;
 
-    // Validate agentId and settings
-    if (!agentId || !settings || !Array.isArray(settings.steps)) {
+    if (!agentId || !Array.isArray(steps)) {
       return NextResponse.json(
         { success: false, error: 'Invalid request payload.' },
         { status: 400 }
       );
     }
 
-    // Cast steps to Step[] with type safety
-    const steps: Step[] = settings.steps;
+    const formattedSteps: Step[] = steps.map((step) => ({
+      title: step.title,
+      description: step.description,
+      completionTool: step.completionTool,
+      completed: step.completed ?? false,
+    }));
 
-    const data = { steps };
-
-    // Update agent metadata
-    const result: UpdateAgentMetadataResponse = await updateAgentMetadata(agentId, data);
+    const result = await updateAgentStepsWithoutAuth(agentId, formattedSteps);
 
     if (result.success) {
       return NextResponse.json({ success: true }, { status: 200 });

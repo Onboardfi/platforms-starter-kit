@@ -1,11 +1,14 @@
 // /app/api/getAgent/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
 import db from '@/lib/db';
 import { agents } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
 
+// Import getSession for authenticated routes
+import { getSession } from '@/lib/auth';
+
+// Existing POST handler remains the same and requires authentication
 export async function POST(request: NextRequest) {
   try {
     const session = await getSession();
@@ -42,15 +45,9 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// **Add the GET handler below the existing POST handler**
-
+// Updated GET handler to allow unauthenticated access
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session?.user.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const url = new URL(request.url);
     const agentId = url.searchParams.get('agentId');
 
@@ -65,7 +62,6 @@ export async function GET(request: NextRequest) {
         name: true,
         description: true,
         slug: true,
-        userId: true,
         siteId: true,
         createdAt: true,
         updatedAt: true,
@@ -74,12 +70,14 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    if (!agent || agent.userId !== session.user.id) {
-      return NextResponse.json({ error: 'Agent not found or unauthorized' }, { status: 404 });
+    if (!agent) {
+      return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ agent });
+    // Return the agent data without requiring authentication
+    return NextResponse.json({ agent }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('Error fetching agent data:', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

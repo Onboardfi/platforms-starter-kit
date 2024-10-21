@@ -6,7 +6,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { RealtimeClient } from '@openai/realtime-api-beta';
-import { updateStepCompletionStatus } from '@/lib/actions';
+//import { updateStepCompletionStatus } from '@/lib/actions';
 
 import { WavRecorder, WavStreamPlayer } from '@/lib/wavtools';
 import { instructions } from '@/app/utils/conversation_config.js';
@@ -100,23 +100,58 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
   const fetchAgentData = useCallback(async () => {
     try {
       const response = await axios.get(`/api/getAgent?agentId=${agent.id}`);
-      setData(response.data);
+      if (response.data.agent) {
+        console.log('Fetched Agent Data:', response.data.agent);
+        setData(response.data.agent);
+      } else {
+        console.error('Failed to fetch agent data:', response.data.error);
+      }
     } catch (error) {
       console.error('Failed to fetch agent data:', error);
     }
   }, [agent.id]);
-
-
   
 
-  const updateStepStatus = useCallback(async () => {
-    const stepIndex = agent.settings.steps?.findIndex(step => step.completionTool === 'email') ?? -1;
+  const updateStepStatus = useCallback(async (completionTool: string) => {
+    const steps = data.settings.steps ?? []; // Provide a default empty array
+    const stepIndex = steps.findIndex(
+      (step) => step.completionTool === completionTool
+    );
+  
     if (stepIndex !== -1) {
-      await updateStepCompletionStatus(agent.id, stepIndex, true);
-      await fetchAgentData();
+      const updatedSteps = steps.map((step, index) =>
+        index === stepIndex ? { ...step, completed: true } : step
+      );
+  
+      try {
+        const response = await fetch('/api/updateAgentSteps', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            agentId: data.id,
+            steps: updatedSteps,
+          }),
+        });
+  
+        const result = await response.json();
+  
+        if (result.success) {
+          console.log(`Step ${stepIndex} marked as complete.`);
+          await fetchAgentData(); // Refresh the agent data
+        } else {
+          console.error(`Failed to update step: ${result.error}`);
+        }
+      } catch (error) {
+        console.error('Failed to update step:', error);
+      }
+    } else {
+      console.warn(`No step found with completionTool: ${completionTool}`);
     }
-  }, [agent.id, agent.settings.steps, fetchAgentData, updateStepCompletionStatus]);
-
+  }, [data.id, data.settings.steps, fetchAgentData]);
+  
+  
   useEffect(() => {
     if (apiKey !== '' && typeof window !== 'undefined') {
       localStorage.setItem('tmp::voice_api_key', apiKey);
@@ -151,15 +186,19 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
           },
         ]);
         toast.success('Note successfully sent to Notion!');
-        
+  
         // Call updateStepStatus after sending note
-        await updateStepStatus();
+        await updateStepStatus('notion');
       } catch (err: any) {
         console.error('Error in add_notion_message:', err);
         toast.error('Failed to add note to Notion.');
       }
     }
   }, [draftNote, updateStepStatus]);
+  
+  useEffect(() => {
+    fetchAgentData();
+  }, [fetchAgentData]);
   
 
   const handleEditEmail = useCallback(() => {
@@ -186,14 +225,16 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
           },
         ]);
         toast.success('Email successfully sent!');
-        
-        await updateStepStatus();
+  
+        // Update step status for 'email' completion tool
+        await updateStepStatus('email');
       } catch (err: any) {
         console.error('Error in send_email:', err);
         toast.error('Failed to send email.');
       }
     }
   }, [draftEmail, updateStepStatus]);
+  
 
   const resetAPIKey = useCallback(() => {
     const apiKey = prompt('OpenAI API Key');
@@ -543,7 +584,6 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
   useEffect(() => {
     console.log('Agent Data:', data);
   }, [data]);
-
   return (
     <div data-component="ConsolePage" className={`${styles['console-page']} h-full flex flex-col`}>
       <div className={styles['content-top']}>
@@ -559,15 +599,15 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
           )}
         </div>
       </div>
-
+  
       <div className={styles['content-main']}>
         <div className={styles['main-left']}>
           <div className={styles['workspace-block']}>
             <div className={styles['content-block-title']}>Workspace</div>
-
+  
             <div className={styles['content-block-body']}>
               {!draftNote && !draftEmail ? (
-                <div className="spline-container">
+                <div className={styles['spline-container']}>
                   <Spline
                     scene="https://prod.spline.design/tFMrNZoJ2kX1j83X/scene.splinecode"
                   />
@@ -575,19 +615,19 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
               ) : (
                 <>
                   {draftNote && (
-                    <div className="draft-note">
+                    <div className={styles['draft-note']}>
                       <h3>Draft Note:</h3>
                       {isEditingDraft ? (
                         <textarea
                           value={draftNote}
                           onChange={(e) => setDraftNote(e.target.value)}
                           rows={5}
-                          className="draft-note-editor"
+                          className={styles['draft-note-editor']}
                         />
                       ) : (
                         <p>{draftNote}</p>
                       )}
-                      <div className="draft-note-actions">
+                      <div className={styles['draft-note-actions']}>
                         {isEditingDraft ? (
                           <Button
                             label="Save Draft"
@@ -607,12 +647,12 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
                       </div>
                     </div>
                   )}
-
+  
                   {draftEmail && (
-                    <div className="draft-email">
+                    <div className={styles['draft-email']}>
                       <h3>Draft Email:</h3>
                       {isEditingEmail ? (
-                        <div className="draft-email-editor">
+                        <div className={styles['draft-email-editor']}>
                           <input
                             type="email"
                             value={draftEmail.to}
@@ -623,7 +663,7 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
                               })
                             }
                             placeholder="To"
-                            className="draft-email-input"
+                            className={styles['draft-email-input']}
                           />
                           <input
                             type="text"
@@ -635,7 +675,7 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
                               })
                             }
                             placeholder="Subject"
-                            className="draft-email-input"
+                            className={styles['draft-email-input']}
                           />
                           <input
                             type="text"
@@ -647,7 +687,7 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
                               })
                             }
                             placeholder="First Name"
-                            className="draft-email-input"
+                            className={styles['draft-email-input']}
                           />
                         </div>
                       ) : (
@@ -661,9 +701,9 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
                           <p>
                             <strong>First Name:</strong> {draftEmail.firstName}
                           </p>
-                          <div className="email-preview">
+                          <div className={styles['email-preview']}>
                             <h4>Email Preview:</h4>
-                            <div className="email-content">
+                            <div className={styles['email-content']}>
                               <EmailTemplate
                                 firstName={draftEmail.firstName}
                               />
@@ -671,7 +711,7 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
                           </div>
                         </div>
                       )}
-                      <div className="draft-email-actions">
+                      <div className={styles['draft-email-actions']}>
                         {isEditingEmail ? (
                           <Button
                             label="Save Draft"
@@ -696,35 +736,34 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
             </div>
           </div>
         </div>
-
+  
         <div className={styles['main-right']}>
-        <OnboardingProgressCard
-  emailSent={emailSent}
-  notesTaken={notesTaken}
-  notionMessageSent={notionMessageSent}
-  memoryKv={memoryKv}
-  headingText={data.settings?.headingText}
-  availableTools={agent.settings?.tools || []}
-  steps={data.settings?.steps || []}
-  agentId={agent.id}
-  onStepsUpdated={fetchAgentData} // Pass the function here
-/>
-
+          <OnboardingProgressCard
+            emailSent={emailSent}
+            notesTaken={notesTaken}
+            notionMessageSent={notionMessageSent}
+            memoryKv={memoryKv}
+            headingText={data.settings?.headingText}
+            availableTools={data.settings?.tools || []}
+            steps={data.settings?.steps || []}
+            agentId={data.id}
+            onStepsUpdated={fetchAgentData}
+          />
         </div>
       </div>
-
+  
       <div className={styles['content-conversation']}>
-        <div className="content-block conversation">
-          <div className="content-block-title">Conversation</div>
-          <div className="content-block-body" data-conversation-content>
+        <div className={`${styles['content-block']} ${styles['conversation']}`}>
+          <div className={styles['content-block-title']}>Conversation</div>
+          <div className={styles['content-block-body']} data-conversation-content>
             {!items.length && `Awaiting connection...`}
             {items.map((conversationItem, i) => {
               return (
                 <div
-                  className={`conversation-item ${conversationItem.role}`}
+                  className={`${styles['conversation-item']} ${styles[conversationItem.role]}`}
                   key={conversationItem.id || i}
                 >
-                  <div className="speaker-content">
+                  <div className={styles['speaker-content']}>
                     {conversationItem.formatted.transcript ||
                       conversationItem.formatted.text ||
                       '(Truncated)'}
@@ -733,25 +772,25 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
               );
             })}
           </div>
-          <div className="visualization">
-            <div className="visualization-entry client">
+          <div className={styles['visualization']}>
+            <div className={`${styles['visualization-entry']} ${styles['client']}`}>
               <canvas ref={clientCanvasRef} />
             </div>
-            <div className="visualization-entry server">
+            <div className={`${styles['visualization-entry']} ${styles['server']}`}>
               <canvas ref={serverCanvasRef} />
             </div>
           </div>
         </div>
       </div>
-
-      <div className="content-actions">
+  
+      <div className={styles['content-actions']}>
         <Toggle
           defaultValue={false}
           labels={['manual', 'vad']}
           values={['none', 'server_vad']}
           onChange={(_, value) => changeTurnEndType(value)}
         />
-        <div className="spacer" />
+        <div className={styles['spacer']} />
         {isConnected && canPushToTalk && (
           <Button
             label={isRecording ? 'Release to Send' : 'Push to Talk'}
@@ -761,7 +800,7 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
             onMouseUp={stopRecording}
           />
         )}
-        <div className="spacer" />
+        <div className={styles['spacer']} />
         <Button
           label={isConnected ? 'Disconnect' : 'Connect'}
           iconPosition={isConnected ? 'end' : 'start'}

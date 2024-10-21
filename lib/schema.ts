@@ -133,12 +133,12 @@ export const sites = pgTable(
 // Define the Step interface
 // In /lib/schema.ts
 
-export interface Step {
+export type Step = {
   title: string;
   description: string;
-  completionTool?: "email" | "memory" | "notesTaken" | "notion" | null;
-  completed?: boolean;
-}
+  completionTool: "email" | "memory" | "notesTaken" | "notion" | null;
+  completed: boolean;
+};
 
 // Agent Settings Interface
 export interface AgentSettings {
@@ -174,7 +174,7 @@ export const agents = pgTable(
       .$type<AgentSettings>()
       .default(sql`'{}'::jsonb`)
       .notNull(),
-    tempColumn: text('temp_column'), // Add this temporary column
+
   },
   (table) => {
     return {
