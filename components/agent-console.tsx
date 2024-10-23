@@ -3,23 +3,38 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+
 import axios from 'axios';
 import { toast } from 'sonner';
 import { RealtimeClient } from '@openai/realtime-api-beta';
-//import { updateStepCompletionStatus } from '@/lib/actions';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { X, Edit, Zap, Settings, Mic, Send } from "lucide-react";
+
+import OnboardingProgressCard from '@/components/OnboardingProgressCard';
 import { WavRecorder, WavStreamPlayer } from '@/lib/wavtools';
 import { instructions } from '@/app/utils/conversation_config.js';
 import { WavRenderer } from '@/app/utils/wav_renderer';
-import OnboardingProgressCard from '@/components/OnboardingProgressCard';
+
 import Spline from '@splinetool/react-spline';
-import { X, Edit, Zap } from 'react-feather';
-import { Button } from '@/components/button/Button';
+
 import { Toggle } from '@/components/toggle/Toggle';
 import { EmailTemplate } from '@/components/email-template';
 import styles from '@/styles/ConsolePage.module.scss';
 
-import { AgentSettings, Step } from '@/lib/schema'; // Import AgentSettings and Step
+import { AgentSettings, Step } from '@/lib/schema';
+
+import { Input } from "@/components/ui/input"; // Add Input component
+
+import { cn } from "@/lib/utils"; // Add cn utility
+
+// Add type for event handlers
+type InputChangeEvent = React.ChangeEvent<HTMLInputElement>;
 
 interface Agent {
   id: string;
@@ -31,7 +46,7 @@ interface Agent {
   createdAt: Date;
   updatedAt: Date;
   published: boolean;
-  settings: AgentSettings; // Use the imported AgentSettings interface
+  settings: AgentSettings;
 }
 
 interface RealtimeEvent {
@@ -48,6 +63,19 @@ interface DraftEmail {
 }
 
 export default function AgentConsole({ agent }: { agent: Agent }) {
+
+  // Extract primary and secondary colors from agent settings
+  const primaryColor = agent.settings?.primaryColor || "#3b82f6"; // Default primary color
+  const secondaryColor = agent.settings?.secondaryColor || "#10b981"; // Default secondary color
+
+  // Function to apply colors dynamically
+  const getDynamicStyles = () => {
+    return {
+      '--primary-color': primaryColor,
+      '--secondary-color': secondaryColor,
+    } as React.CSSProperties;
+  };
+
   const LOCAL_RELAY_SERVER_URL: string =
     process.env.NEXT_PUBLIC_LOCAL_RELAY_SERVER_URL || '';
 
@@ -110,19 +138,18 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
       console.error('Failed to fetch agent data:', error);
     }
   }, [agent.id]);
-  
 
   const updateStepStatus = useCallback(async (completionTool: string) => {
     const steps = data.settings.steps ?? []; // Provide a default empty array
     const stepIndex = steps.findIndex(
       (step) => step.completionTool === completionTool
     );
-  
+
     if (stepIndex !== -1) {
       const updatedSteps = steps.map((step, index) =>
         index === stepIndex ? { ...step, completed: true } : step
       );
-  
+
       try {
         const response = await fetch('/api/updateAgentSteps', {
           method: 'POST',
@@ -134,9 +161,9 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
             steps: updatedSteps,
           }),
         });
-  
+
         const result = await response.json();
-  
+
         if (result.success) {
           console.log(`Step ${stepIndex} marked as complete.`);
           await fetchAgentData(); // Refresh the agent data
@@ -150,8 +177,7 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
       console.warn(`No step found with completionTool: ${completionTool}`);
     }
   }, [data.id, data.settings.steps, fetchAgentData]);
-  
-  
+
   useEffect(() => {
     if (apiKey !== '' && typeof window !== 'undefined') {
       localStorage.setItem('tmp::voice_api_key', apiKey);
@@ -176,7 +202,7 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
         setNotesTaken(true);
         setNotionMessageSent(true); // Mark notion step as complete
         setDraftNote(null);
-  
+
         // Inject message to AI after successful note addition
         const client = clientRef.current;
         client.sendUserMessageContent([
@@ -186,7 +212,7 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
           },
         ]);
         toast.success('Note successfully sent to Notion!');
-  
+
         // Call updateStepStatus after sending note
         await updateStepStatus('notion');
       } catch (err: any) {
@@ -195,11 +221,10 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
       }
     }
   }, [draftNote, updateStepStatus]);
-  
+
   useEffect(() => {
     fetchAgentData();
   }, [fetchAgentData]);
-  
 
   const handleEditEmail = useCallback(() => {
     setIsEditingEmail(true);
@@ -216,7 +241,7 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
         const res = await axios.post('/api/send_email', draftEmail);
         setEmailSent(true);
         setDraftEmail(null);
-  
+
         const client = clientRef.current;
         client.sendUserMessageContent([
           {
@@ -225,7 +250,7 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
           },
         ]);
         toast.success('Email successfully sent!');
-  
+
         // Update step status for 'email' completion tool
         await updateStepStatus('email');
       } catch (err: any) {
@@ -234,7 +259,6 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
       }
     }
   }, [draftEmail, updateStepStatus]);
-  
 
   const resetAPIKey = useCallback(() => {
     const apiKey = prompt('OpenAI API Key');
@@ -376,7 +400,7 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
               clientCanvas,
               clientCtx,
               result.values,
-              '#0099ff',
+              primaryColor, // Use primaryColor for client visualization
               10,
               0,
               8
@@ -398,7 +422,7 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
               serverCanvas,
               serverCtx,
               result.values,
-              '#009900',
+              secondaryColor, // Use secondaryColor for server visualization
               10,
               0,
               8
@@ -413,7 +437,7 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
     return () => {
       isLoaded = false;
     };
-  }, []);
+  }, [primaryColor, secondaryColor]);
 
   useEffect(() => {
     const client = clientRef.current;
@@ -579,238 +603,284 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
     return () => {
       client.reset();
     };
-  }, [agent.settings?.tools, instructions]);
+  }, [agent.settings?.tools, instructions, primaryColor, secondaryColor]);
 
   useEffect(() => {
     console.log('Agent Data:', data);
   }, [data]);
+
   return (
-    <div data-component="ConsolePage" className={`${styles['console-page']} h-full flex flex-col`}>
-      <div className={styles['content-top']}>
-        <div className={styles['content-api-key']}>
-          {!LOCAL_RELAY_SERVER_URL && (
-            <Button
-              icon={Edit}
-              iconPosition="end"
-              buttonStyle="flush"
-              label={`api key: ${apiKey.slice(0, 3)}...`}
-              onClick={() => resetAPIKey()}
-            />
-          )}
-        </div>
+    <div
+      className="flex flex-col h-full min-h-screen bg-background"
+      style={getDynamicStyles()}
+    >
+      {/* Top Bar */}
+      <div className="border-b bg-muted/50 p-4">
+        {!LOCAL_RELAY_SERVER_URL && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={resetAPIKey}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <Edit className="h-4 w-4 mr-2" />
+            api key: {apiKey.slice(0, 3)}...
+          </Button>
+        )}
       </div>
-  
-      <div className={styles['content-main']}>
-        <div className={styles['main-left']}>
-          <div className={styles['workspace-block']}>
-            <div className={styles['content-block-title']}>Workspace</div>
-  
-            <div className={styles['content-block-body']}>
+
+      {/* Onboarding Progress */}
+      <div className="border-b bg-background p-4">
+        <OnboardingProgressCard
+          emailSent={emailSent}
+          notesTaken={notesTaken}
+          notionMessageSent={notionMessageSent}
+          memoryKv={memoryKv}
+          headingText={data.settings?.headingText}
+          availableTools={data.settings?.tools || []}
+          steps={data.settings?.steps || []}
+          agentId={data.id}
+          onStepsUpdated={fetchAgentData}
+          primaryColor={primaryColor}
+          secondaryColor={secondaryColor}
+        />
+      </div>
+
+      {/* Main Content Grid */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-4 p-4">
+        {/* Workspace Section - 3 columns on large screens */}
+        <div className="lg:col-span-3">
+          <Card className="h-full">
+            <CardHeader className="border-b">
+              <CardTitle>Workspace</CardTitle>
+            </CardHeader>
+            <CardContent className="p-6">
               {!draftNote && !draftEmail ? (
-                <div className={styles['spline-container']}>
-                  <Spline
-                    scene="https://prod.spline.design/tFMrNZoJ2kX1j83X/scene.splinecode"
-                  />
+                <div className="relative h-[500px] rounded-lg overflow-hidden bg-muted">
+                  <Spline scene="https://prod.spline.design/tFMrNZoJ2kX1j83X/scene.splinecode" />
                 </div>
               ) : (
-                <>
+                <div className="space-y-6">
+                  {/* Draft Note */}
                   {draftNote && (
-                    <div className={styles['draft-note']}>
-                      <h3>Draft Note:</h3>
-                      {isEditingDraft ? (
-                        <textarea
-                          value={draftNote}
-                          onChange={(e) => setDraftNote(e.target.value)}
-                          rows={5}
-                          className={styles['draft-note-editor']}
-                        />
-                      ) : (
-                        <p>{draftNote}</p>
-                      )}
-                      <div className={styles['draft-note-actions']}>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Draft Note</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
                         {isEditingDraft ? (
-                          <Button
-                            label="Save Draft"
-                            onClick={() => handleSaveDraft(draftNote)}
+                          <textarea
+                            value={draftNote}
+                            onChange={(e) => setDraftNote(e.target.value)}
+                            rows={5}
+                            className="w-full min-h-[120px] p-3 rounded-md border bg-muted resize-none focus:outline-none focus:ring-2 focus:ring-ring"
                           />
                         ) : (
-                          <Button
-                            label="Edit Draft"
-                            onClick={handleEditDraft}
-                          />
+                          <p className="text-sm text-muted-foreground whitespace-pre-wrap">{draftNote}</p>
                         )}
-                        <Button
-                          label="Send to Notion"
-                          onClick={handleSendNote}
-                          buttonStyle="action"
-                        />
-                      </div>
-                    </div>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={isEditingDraft ? () => handleSaveDraft(draftNote) : handleEditDraft}
+                          >
+                            {isEditingDraft ? "Save Draft" : "Edit Draft"}
+                          </Button>
+                          <Button onClick={handleSendNote}>
+                            Send to Notion
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
                   )}
-  
+
+                  {/* Draft Email */}
                   {draftEmail && (
-                    <div className={styles['draft-email']}>
-                      <h3>Draft Email:</h3>
-                      {isEditingEmail ? (
-                        <div className={styles['draft-email-editor']}>
-                          <input
-                            type="email"
-                            value={draftEmail.to}
-                            onChange={(e) =>
-                              setDraftEmail({
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Draft Email</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {isEditingEmail ? (
+                          <div className="space-y-4">
+                            <Input
+                              type="email"
+                              value={draftEmail.to}
+                              onChange={(e) => setDraftEmail({
                                 ...draftEmail,
                                 to: e.target.value,
-                              })
-                            }
-                            placeholder="To"
-                            className={styles['draft-email-input']}
-                          />
-                          <input
-                            type="text"
-                            value={draftEmail.subject}
-                            onChange={(e) =>
-                              setDraftEmail({
+                              })}
+                              placeholder="To"
+                              className="bg-muted"
+                            />
+                            <Input
+                              type="text"
+                              value={draftEmail.subject}
+                              onChange={(e) => setDraftEmail({
                                 ...draftEmail,
                                 subject: e.target.value,
-                              })
-                            }
-                            placeholder="Subject"
-                            className={styles['draft-email-input']}
-                          />
-                          <input
-                            type="text"
-                            value={draftEmail.firstName}
-                            onChange={(e) =>
-                              setDraftEmail({
+                              })}
+                              placeholder="Subject"
+                              className="bg-muted"
+                            />
+                            <Input
+                              type="text"
+                              value={draftEmail.firstName}
+                              onChange={(e) => setDraftEmail({
                                 ...draftEmail,
                                 firstName: e.target.value,
-                              })
-                            }
-                            placeholder="First Name"
-                            className={styles['draft-email-input']}
-                          />
-                        </div>
-                      ) : (
-                        <div>
-                          <p>
-                            <strong>To:</strong> {draftEmail.to}
-                          </p>
-                          <p>
-                            <strong>Subject:</strong> {draftEmail.subject}
-                          </p>
-                          <p>
-                            <strong>First Name:</strong> {draftEmail.firstName}
-                          </p>
-                          <div className={styles['email-preview']}>
-                            <h4>Email Preview:</h4>
-                            <div className={styles['email-content']}>
-                              <EmailTemplate
-                                firstName={draftEmail.firstName}
-                              />
-                            </div>
+                              })}
+                              placeholder="First Name"
+                              className="bg-muted"
+                            />
                           </div>
-                        </div>
-                      )}
-                      <div className={styles['draft-email-actions']}>
-                        {isEditingEmail ? (
-                          <Button
-                            label="Save Draft"
-                            onClick={() => handleSaveEmail(draftEmail)}
-                          />
                         ) : (
-                          <Button
-                            label="Edit Draft"
-                            onClick={handleEditEmail}
-                          />
+                          <div className="space-y-4">
+                            <div className="grid gap-2 text-sm">
+                              <div className="flex">
+                                <span className="font-medium w-24">To:</span>
+                                <span className="text-muted-foreground">{draftEmail.to}</span>
+                              </div>
+                              <div className="flex">
+                                <span className="font-medium w-24">Subject:</span>
+                                <span className="text-muted-foreground">{draftEmail.subject}</span>
+                              </div>
+                              <div className="flex">
+                                <span className="font-medium w-24">First Name:</span>
+                                <span className="text-muted-foreground">{draftEmail.firstName}</span>
+                              </div>
+                            </div>
+                            <Card className="mt-4">
+                              <CardHeader>
+                                <CardTitle className="text-sm">Email Preview</CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                                <div className="prose prose-sm max-w-none dark:prose-invert">
+                                  <EmailTemplate firstName={draftEmail.firstName} />
+                                </div>
+                              </CardContent>
+                            </Card>
+                          </div>
                         )}
-                        <Button
-                          label="Send Email"
-                          onClick={handleSendEmail}
-                          buttonStyle="action"
-                        />
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={isEditingEmail ? () => handleSaveEmail(draftEmail) : handleEditEmail}
+                          >
+                            {isEditingEmail ? "Save Draft" : "Edit Draft"}
+                          </Button>
+                          <Button onClick={handleSendEmail}>
+                            Send Email
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Conversation Section - 1 column on large screens */}
+        <div className="lg:col-span-1">
+          <Card className="h-full flex flex-col">
+            <CardHeader className="border-b">
+              <CardTitle>Conversation</CardTitle>
+            </CardHeader>
+            <ScrollArea className="flex-1 px-4" style={{ height: '400px' }}>
+              {!items.length ? (
+                <div className="py-4 text-center text-muted-foreground">
+                  Awaiting connection...
+                </div>
+              ) : (
+                <div className="space-y-4 py-4">
+                  {items.map((conversationItem, i) => (
+                    <div
+                      key={conversationItem.id || i}
+                      className={cn(
+                        "flex",
+                        conversationItem.role === "assistant" ? "justify-start" : "justify-end"
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "rounded-lg px-4 py-2 max-w-[80%] text-sm",
+                          conversationItem.role === "assistant"
+                            ? ""
+                            : ""
+                        )}
+                        style={{
+                          backgroundColor:
+                            conversationItem.role === "assistant"
+                              ? secondaryColor
+                              : primaryColor,
+                          color: "#ffffff", // Ensures text is readable on colored backgrounds
+                        }}
+                      >
+                        {conversationItem.formatted.transcript ||
+                          conversationItem.formatted.text ||
+                          "(Truncated)"}
                       </div>
                     </div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-  
-        <div className={styles['main-right']}>
-          <OnboardingProgressCard
-            emailSent={emailSent}
-            notesTaken={notesTaken}
-            notionMessageSent={notionMessageSent}
-            memoryKv={memoryKv}
-            headingText={data.settings?.headingText}
-            availableTools={data.settings?.tools || []}
-            steps={data.settings?.steps || []}
-            agentId={data.id}
-            onStepsUpdated={fetchAgentData}
-          />
-        </div>
-      </div>
-  
-      <div className={styles['content-conversation']}>
-        <div className={`${styles['content-block']} ${styles['conversation']}`}>
-          <div className={styles['content-block-title']}>Conversation</div>
-          <div className={styles['content-block-body']} data-conversation-content>
-            {!items.length && `Awaiting connection...`}
-            {items.map((conversationItem, i) => {
-              return (
-                <div
-                  className={`${styles['conversation-item']} ${styles[conversationItem.role]}`}
-                  key={conversationItem.id || i}
-                >
-                  <div className={styles['speaker-content']}>
-                    {conversationItem.formatted.transcript ||
-                      conversationItem.formatted.text ||
-                      '(Truncated)'}
-                  </div>
+                  ))}
                 </div>
-              );
-            })}
-          </div>
-          <div className={styles['visualization']}>
-            <div className={`${styles['visualization-entry']} ${styles['client']}`}>
-              <canvas ref={clientCanvasRef} />
+              )}
+            </ScrollArea>
+
+            {/* Visualization */}
+            <div className="border-t p-4 bg-muted/50">
+              <div className="flex gap-2 h-8">
+                <div className="flex-1 relative">
+                  <canvas ref={clientCanvasRef} className="w-full h-full" />
+                </div>
+                <div className="flex-1 relative">
+                  <canvas ref={serverCanvasRef} className="w-full h-full" />
+                </div>
+              </div>
             </div>
-            <div className={`${styles['visualization-entry']} ${styles['server']}`}>
-              <canvas ref={serverCanvasRef} />
+
+            {/* Controls */}
+            <div className="border-t p-4 bg-card">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={!canPushToTalk}
+                    onCheckedChange={(checked) => changeTurnEndType(checked ? "server_vad" : "none")}
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    {canPushToTalk ? "Manual" : "VAD"}
+                  </span>
+                </div>
+                <div className="flex-1" />
+                {isConnected && canPushToTalk && (
+                  <Button
+                    variant={isRecording ? "destructive" : "outline"}
+                    size="sm"
+                    disabled={!isConnected || !canPushToTalk}
+                    onMouseDown={startRecording}
+                    onMouseUp={stopRecording}
+                  >
+                    <Mic className="h-4 w-4 mr-2" />
+                    {isRecording ? "Release to Send" : "Push to Talk"}
+                  </Button>
+                )}
+                <Button
+                  variant={isConnected ? "outline" : "default"}
+                  size="sm"
+                  onClick={isConnected ? disconnectConversation : connectConversation}
+                >
+                  {isConnected ? (
+                    <X className="h-4 w-4 mr-2" />
+                  ) : (
+                    <Zap className="h-4 w-4 mr-2" />
+                  )}
+                  {isConnected ? "Disconnect" : "Connect"}
+                </Button>
+              </div>
             </div>
-          </div>
+          </Card>
         </div>
-      </div>
-  
-      <div className={styles['content-actions']}>
-        <Toggle
-          defaultValue={false}
-          labels={['manual', 'vad']}
-          values={['none', 'server_vad']}
-          onChange={(_, value) => changeTurnEndType(value)}
-        />
-        <div className={styles['spacer']} />
-        {isConnected && canPushToTalk && (
-          <Button
-            label={isRecording ? 'Release to Send' : 'Push to Talk'}
-            buttonStyle={isRecording ? 'alert' : 'regular'}
-            disabled={!isConnected || !canPushToTalk}
-            onMouseDown={startRecording}
-            onMouseUp={stopRecording}
-          />
-        )}
-        <div className={styles['spacer']} />
-        <Button
-          label={isConnected ? 'Disconnect' : 'Connect'}
-          iconPosition={isConnected ? 'end' : 'start'}
-          icon={isConnected ? X : Zap}
-          buttonStyle={isConnected ? 'regular' : 'action'}
-          onClick={
-            isConnected ? disconnectConversation : connectConversation
-          }
-        />
       </div>
     </div>
-  );
+  ); 
 }

@@ -36,6 +36,14 @@
   /* Styles for API Key section */
 }
 
+/* Onboarding Progress Banner */
+.onboarding-progress {
+  width: 100%;
+  background-color: #f9f9f9;
+  padding: 10px 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
 /* Main content area */
 .content-main {
   flex-grow: 1;
@@ -49,13 +57,23 @@
 }
 
 .main-left {
-  flex: 1;
+  flex: 6; /* Takes up six-eighths of the space */
   display: flex;
   flex-direction: column;
   gap: 16px;
   overflow: hidden;
 }
 
+.main-right {
+  flex: 2; /* Takes up two-eighths of the space */
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow: hidden;
+  margin-left: 24px;
+}
+
+/* Workspace Block */
 .workspace-block {
   flex: 1;
   background-color: #ffffff;
@@ -87,6 +105,7 @@
   flex-direction: column;
 }
 
+/* Spline Container */
 .spline-container {
   width: 100%;
   height: 100%;
@@ -96,22 +115,12 @@
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
-.main-right {
-  width: 320px;
-  flex-shrink: 0;
-  margin-left: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  overflow: hidden;
-}
-
-/* Conversation Section */
+/* Conversation Section inside main-right */
 .content-conversation {
-  flex-shrink: 0;
-  padding: 20px;
-  background-color: #f1f1f1;
-  border-top: 1px solid #e0e0e0;
+  flex: 1;
+  padding: 0;
+  background-color: transparent;
+  border: none;
   position: relative;
   margin-top: 0;
 }
@@ -120,17 +129,42 @@
   background-color: #ffffff;
   border: 1px solid #e0e0e0;
   border-radius: 12px;
-  padding: 0; /* Remove padding to allow content-block-body to control it */
+  padding: 0;
   overflow: hidden;
   position: relative;
+  display: flex;
+  flex-direction: column; /* Enables stacking of header, body, footer */
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  height: 600px; /* Fixed height for the conversation component */
 }
 
-.content-block-body {
-  max-height: 400px;
-  overflow-y: auto;
+.conversation .content-block-title {
+  font-size: 1.4em;
+  margin-bottom: 12px;
+  color: #333333;
+  font-weight: 500;
+  padding: 20px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.conversation .content-block-body {
+  flex: 1; /* Allows the conversation body to grow and take available space */
+  overflow-y: auto; /* Enables vertical scrolling */
   padding: 20px;
   padding-right: 10px;
+}
+
+/* Conversation Footer */
+.conversation-footer {
+  display: flex;
+  align-items: center;
+  padding: 10px 20px;
+  background-color: #ffffff;
+  border-top: 1px solid #e0e0e0;
+}
+
+.conversation-footer .spacer {
+  flex-grow: 1;
 }
 
 /* Chat Bubbles */
@@ -194,7 +228,7 @@
   position: absolute;
   display: flex;
   flex-direction: row;
-  bottom: 16px;
+  bottom: 80px; /* Adjusted to stay above the footer */
   right: 16px;
   padding: 4px;
   border-radius: 16px;
@@ -226,54 +260,16 @@
   color: currentColor;
 }
 
-/* Action Buttons */
+/* Remove content-actions styles since it's no longer used */
+/*
 .content-actions {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  gap: 20px;
-  background-color: #ffffff;
-  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);
+  display: none;
 }
+*/
 
-.Button {
-  background-color: #2f80ed;
-  color: #ffffff;
-  border: none;
-  border-radius: 24px;
-  padding: 12px 24px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color 0.3s ease, transform 0.2s ease;
-
-  &:hover {
-    background-color: #1c60b3;
-    transform: translateY(-2px);
-  }
-
-  &:active {
-    background-color: #174a8c;
-    transform: translateY(0);
-  }
-
-  &.alert {
-    background-color: #e53935;
-
-    &:hover {
-      background-color: #c62828;
-    }
-
-    &:active {
-      background-color: #b71c1c;
-    }
-  }
-
-  &:disabled {
-    background-color: #bdbdbd;
-    cursor: not-allowed;
-  }
+/* Button Styles (if needed) */
+.conversation-footer .Button {
+  /* Adjust button styles if necessary */
 }
 
 /* Draft Note and Email Styles */
@@ -357,8 +353,13 @@
     padding: 16px;
   }
 
+  /* Adjust conversation height for smaller screens */
+  .conversation {
+    height: 500px; /* Adjust as needed for responsiveness */
+  }
+
   .visualization {
-    bottom: 12px;
+    bottom: 120px; /* Adjusted to stay above the footer */
     right: 12px;
   }
 }
@@ -370,5 +371,10 @@
 
   .visualization-entry {
     width: 90px;
+  }
+
+  /* Further adjust conversation height for very small screens */
+  .conversation {
+    height: 400px; /* Adjust as needed */
   }
 }

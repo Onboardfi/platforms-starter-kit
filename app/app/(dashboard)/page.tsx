@@ -1,59 +1,123 @@
+// app/(dashboard)/page.tsx
+
 import { Suspense } from "react";
-import Sites from "@/components/sites";
-import OverviewStats from "@/components/overview-stats";
-import Posts from "@/components/posts";
+import { Breadcrumbs } from "@/components/parts/breadcrumbs";
+import { Header } from "@/components/parts/header";
+import { Chart } from "@/components/dashboard/chart";
+import { PageWrapper } from "@/components/parts/page-wrapper";
+import { getAgentAndSiteCounts } from "@/lib/data/dashboard"; // Updated import
+import { notFound } from "next/navigation";
+import { getAgents } from "@/lib/data/agents";
+import { getSites } from "@/lib/data/sites"; // Import getSites function
+import { getUsageForUser } from "@/lib/data/users";
+import { Usage } from "@/components/parts/usage";
+import { AgentsDataTable } from "@/components/groups/agents/data-table";
+import { SitesDataTable } from "@/components/groups/sites/data-table"; // Import SitesDataTable component
 import Link from "next/link";
-import PlaceholderCard from "@/components/placeholder-card";
-import OverviewSitesCTA from "@/components/overview-sites-cta";
+import { SelectAgent, SelectSite } from "@/lib/schema"; // Import SelectSite type
 
-export default function Overview() {
+const pageData = {
+  name: "Dashboard",
+  title: "Dashboard",
+  description: "Snapshot of your agents and sites usage",
+};
+
+export default async function Page() {
+  // Fetch chart data
+  const charts = await getAgentAndSiteCounts();
+  const { data: chartData } = charts || {};
+
+  // Fetch agents
+  const agents = await getAgents();
+  const { data: agentsData } = agents || {};
+
+  // Fetch sites
+  const sites = await getSites(); // Fetch sites data
+  const { data: sitesData } = sites || {};
+
+  // Fetch usage data
+  const usage = await getUsageForUser();
+  const { data: usageData } = usage || {};
+
+  // Check for errors
+  if (
+    !agentsData ||
+    !sitesData ||
+    !chartData ||
+    usageData === null ||
+    usageData === undefined
+  ) {
+    notFound();
+  }
+
+  // Get the 5 most recent agents
+  const recentAgents: SelectAgent[] = agentsData.slice(0, 5);
+
+  // Get the 5 most recent sites
+  const recentSites: SelectSite[] = sitesData.slice(0, 5);
+
   return (
-    <div className="flex max-w-screen-xl flex-col space-y-12 p-8">
-      <div className="flex flex-col space-y-6">
-        <h1 className="font-cal text-3xl font-bold dark:text-white">
-          Overview
-        </h1>
-        <OverviewStats />
-      </div>
-
-      <div className="flex flex-col space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="font-cal text-3xl font-bold dark:text-white">
-            Top Sites
-          </h1>
-          <Suspense fallback={null}>
-            <OverviewSitesCTA />
-          </Suspense>
+    <>
+      <Breadcrumbs pageName={pageData.name} />
+      <PageWrapper>
+        <Header title={pageData.title}>{pageData.description}</Header>
+        <div className="grid grid-cols-3 gap-4">
+          <Chart chartData={chartData} className="col-span-2" />
+          <Usage totalUsage={100} used={usageData} plan="Pro" />
         </div>
-        <Suspense
-          fallback={
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <PlaceholderCard key={i} />
-              ))}
-            </div>
-          }
-        >
-          <Sites limit={4} />
-        </Suspense>
+      </PageWrapper>
+
+      {/* Full-width Links Section */}
+      <div className="w-full px-4 sm:px-8 mt-8">
+        <Links />
       </div>
 
-      <div className="flex flex-col space-y-6">
-        <h1 className="font-cal text-3xl font-bold dark:text-white">
-          Recent Posts
-        </h1>
-        <Suspense
-          fallback={
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <PlaceholderCard key={i} />
-              ))}
-            </div>
-          }
-        >
-          <Posts limit={8} />
-        </Suspense>
-      </div>
-    </div>
+      <PageWrapper>
+        <div className="mt-8">
+          <h2 className="text-lg mb-4">Recent Agents</h2>
+          <AgentsDataTable data={recentAgents} />
+          <h2 className="text-lg mb-4 mt-8">Recent Sites</h2>
+          <SitesDataTable data={recentSites} />
+        </div>
+      </PageWrapper>
+    </>
   );
 }
+
+const navLinks = [
+  {
+    name: "Agents",
+    description: "Create and manage your agents",
+    href: "/agents",
+  },
+  {
+    name: "Sites",
+    description: "Create and manage your sites",
+    href: "/sites",
+  },
+  {
+    name: "Sites",
+    description: "Create and manage your sites",
+    href: "/sites",
+  },
+  // Add other relevant links
+];
+
+const Links = () => {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-3 mb-2 gap-4">
+      {navLinks.map((link) => (
+        <Link
+          key={link.href}
+          href={link.href}
+          className="bg-background p-6 rounded-lg border hover:bg-accent/75 transition-all"
+        >
+          <div>
+            <h3 className="text-lg font-medium">{link.name}</h3>
+            <p className="text-sm text-gray-500">{link.description}</p>
+          </div>
+        </Link>
+      ))}
+    </div>
+  );
+};

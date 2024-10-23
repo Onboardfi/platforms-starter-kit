@@ -110,7 +110,6 @@ export const updateStepCompletionStatus = async (
 
   return updateResponse;
 };
-
 export const updateAgentMetadata = async (
   agentId: string,
   data: Record<string, any>
@@ -122,7 +121,16 @@ export const updateAgentMetadata = async (
   }
 
   const topLevelKeys = ["name", "description", "slug", "published"];
-  const settingsKeys = ["headingText", "tools", "initialMessage", "steps"];
+  const settingsKeys = [
+    "headingText",
+    "tools",
+    "initialMessage",
+    "steps",
+    "primaryColor",
+    "secondaryColor",
+    "aiModel", // Include aiModel
+    "apiKeys",  // Include apiKeys
+  ];
 
   const agent = await db.query.agents.findFirst({
     where: eq(agents.id, agentId),
@@ -159,9 +167,20 @@ export const updateAgentMetadata = async (
               settingsUpdate.steps = sValue.map((step: any) => ({
                 title: step.title,
                 description: step.description,
-                completionTool: step.completionTool as "email" | "memory" | "notesTaken" | "notion" | null,
+                completionTool: step.completionTool as 'email' | 'memory' | 'notesTaken' | 'notion' | null,
                 completed: step.completed ?? false,
               }));
+            } else if (sKey === "primaryColor" && typeof sValue === "string") {
+              settingsUpdate.primaryColor = sValue;
+            } else if (sKey === "secondaryColor" && typeof sValue === "string") {
+              settingsUpdate.secondaryColor = sValue;
+            } else if (sKey === "aiModel" && typeof sValue === "string") {
+              settingsUpdate.aiModel = sValue;
+            } else if (sKey === "apiKeys" && typeof sValue === "object" && sValue !== null) {
+              settingsUpdate.apiKeys = {
+                ...settingsUpdate.apiKeys,
+                ...(sValue as Record<string, string>),
+              };
             } else {
               console.error(`Invalid value for settings key: ${sKey}`);
               return { success: false, error: `Invalid value for settings key: ${sKey}` };
@@ -374,7 +393,7 @@ export const deleteAgent = async (
   }
 };
 
-export const getAgentById = async (agentId: string): Promise<Agent | null> => {
+export const getAgentById = async (agentId: string): Promise<SelectAgent | null> => {
   const agent = await db.query.agents.findFirst({
     where: eq(agents.id, agentId),
     columns: {
@@ -387,16 +406,28 @@ export const getAgentById = async (agentId: string): Promise<Agent | null> => {
       createdAt: true,
       updatedAt: true,
       published: true,
+      
       settings: true,
       image: true,
       imageBlurhash: true,
     },
     with: {
       site: true,
+      user: true,
     },
   });
 
-  return agent as Agent | null;
+  if (!agent) return null;
+
+  // Transform the result to match SelectAgent type
+  const selectAgent: SelectAgent = {
+    ...agent,
+    siteName: agent.site?.name ?? null,
+    userName: agent.user?.name ?? null,
+    settings: agent.settings as AgentSettings,
+  };
+
+  return selectAgent;
 };
 
 export const updateSite = withSiteAuth(

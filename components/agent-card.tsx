@@ -1,73 +1,90 @@
 // components/agent-card.tsx
+"use client";
 
-import Link from 'next/link';
-import BlurImage from '@/components/blur-image';
-import { placeholderBlurhash, toDateString } from '@/lib/utils';
-import { Agent } from '@/types/agent';
+import Link from "next/link";
+import BlurImage from "@/components/blur-image";
+import { placeholderBlurhash, toDateString } from "@/lib/utils";
+import { Agent } from "@/types/agent";
+import { Progress } from "@/components/ui/progress";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Step } from "@/lib/schema";
 
 interface AgentCardProps {
   data: Agent;
 }
 
 export default function AgentCard({ data }: AgentCardProps) {
+  const steps: Step[] = data.settings?.steps || [];
+  const totalSteps = steps.length;
+  const completedSteps = steps.filter((step) => step.completed).length;
+  const completionPercentage = totalSteps > 0 ? (completedSteps / totalSteps) * 100 : 0;
+  const clampedValue = Math.min(Math.max(completionPercentage, 0), 100);
+
   return (
-    <div className="group cursor-pointer border rounded-md p-4">
-      {/* Header with Badge */}
-      <div className="flex justify-between items-center">
-        <h3 className="text-2xl font-bold dark:text-white">{data.name}</h3>
-        <span
-          className={`text-sm font-semibold px-2 py-1 rounded-full ${
-            data.published
-              ? 'bg-green-100 text-green-800'
-              : 'bg-red-100 text-red-800'
-          }`}
-        >
-          {data.published ? 'Published' : 'Unpublished'}
-        </span>
-      </div>
-
-      {/* Image */}
-      <div className="relative h-60 w-full overflow-hidden rounded-md mt-4">
-        <BlurImage
-          alt={data.name ?? 'Agent Image'}
-          blurDataURL={data.imageBlurhash ?? placeholderBlurhash}
-          className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
-          width={500}
-          height={300}
-          placeholder="blur"
-          src={data.image ?? '/placeholder.png'}
-        />
-      </div>
-
-      {/* Description and Date */}
-      <p className="mt-2 text-stone-600 dark:text-stone-400">
-        {data.description}
-      </p>
-      <p className="mt-2 text-sm text-stone-500 dark:text-stone-400">
-        {toDateString(data.createdAt)}
-      </p>
-
-      {/* Buttons */}
-      <div className="mt-4 flex space-x-2">
-        <Link
-          href={`/agent/${data.id}`}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md"
-        >
-          Agent Page
-        </Link>
-        {data.site && data.site.subdomain ? (
-          <Link
-            href={`http://${data.site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}/${data.slug}`}
-            className="px-4 py-2 bg-gray-600 text-white rounded-md"
-          >
-            Site Page
-          </Link>
-        ) : (
-          <span className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md">
-            Site Page Unavailable
-          </span>
+    <Card className="group overflow-hidden">
+      <CardHeader className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h3 className="font-cal text-xl">{data.name}</h3>
+          <Badge variant={data.published ? "success" : "secondary"}>
+            {data.published ? "Published" : "Draft"}
+          </Badge>
+        </div>
+        {totalSteps > 0 && (
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">
+                {completedSteps} of {totalSteps} steps
+              </span>
+              <span className="text-muted-foreground">
+                {clampedValue.toFixed(0)}%
+              </span>
+            </div>
+            <Progress value={clampedValue} className="h-2" />
+          </div>
         )}
-      </div>
-    </div>
+      </CardHeader>
+
+      <CardContent className="p-0">
+        <div className="relative aspect-video overflow-hidden">
+          <BlurImage
+            alt={data.name ?? "Agent Image"}
+            blurDataURL={data.imageBlurhash ?? placeholderBlurhash}
+            className="object-cover transition-transform duration-300 group-hover:scale-105"
+            fill
+            placeholder="blur"
+            src={data.image ?? "/placeholder.png"}
+          />
+        </div>
+        <div className="p-6 space-y-2">
+          <p className="text-sm text-muted-foreground line-clamp-2">
+            {data.description}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Created {toDateString(data.createdAt)}
+          </p>
+        </div>
+      </CardContent>
+
+      <CardFooter className="flex justify-between gap-2 p-6 pt-0">
+        <Button asChild className="w-full">
+          <Link href={`/agent/${data.id}`}>Edit Agent</Link>
+        </Button>
+        {data.site && data.site.subdomain ? (
+          <Button asChild variant="secondary" className="w-full">
+            <Link
+              href={`http://${data.site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}/${data.slug}`}
+            >
+              View Live
+            </Link>
+          </Button>
+        ) : (
+          <Button variant="secondary" className="w-full" disabled>
+            Site Unavailable
+          </Button>
+        )}
+      </CardFooter>
+    </Card>
   );
 }

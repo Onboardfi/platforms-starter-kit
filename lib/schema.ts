@@ -15,7 +15,9 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
-// Users Table
+//
+// **Users Table**
+//
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
   name: text('name'),
@@ -28,7 +30,9 @@ export const users = pgTable('users', {
   updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
 });
 
-// Sessions Table
+//
+// **Sessions Table**
+//
 export const sessions = pgTable(
   'sessions',
   {
@@ -38,14 +42,14 @@ export const sessions = pgTable(
       .references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
     expires: timestamp('expires', { mode: 'date' }).notNull(),
   },
-  (table) => {
-    return {
-      userIdIdx: index('sessions_userId_idx').on(table.userId),
-    };
-  }
+  (table) => ({
+    userIdIdx: index('sessions_userId_idx').on(table.userId),
+  })
 );
 
-// Verification Tokens Table
+//
+// **Verification Tokens Table**
+//
 export const verificationTokens = pgTable(
   'verificationTokens',
   {
@@ -53,14 +57,14 @@ export const verificationTokens = pgTable(
     token: text('token').notNull(),
     expires: timestamp('expires', { mode: 'date' }).notNull(),
   },
-  (table) => {
-    return {
-      compositePk: primaryKey(table.identifier, table.token),
-    };
-  }
+  (table) => ({
+    compositePk: primaryKey(table.identifier, table.token),
+  })
 );
 
-// Examples Table
+//
+// **Examples Table**
+//
 export const examples = pgTable('examples', {
   id: serial('id').primaryKey(),
   name: text('name'),
@@ -71,7 +75,9 @@ export const examples = pgTable('examples', {
   imageBlurhash: text('imageBlurhash'),
 });
 
-// Accounts Table
+//
+// **Accounts Table**
+//
 export const accounts = pgTable(
   'accounts',
   {
@@ -92,15 +98,15 @@ export const accounts = pgTable(
     oauth_token_secret: text('oauth_token_secret'),
     oauth_token: text('oauth_token'),
   },
-  (table) => {
-    return {
-      userIdIdx: index('accounts_userId_idx').on(table.userId),
-      compositePk: primaryKey(table.provider, table.providerAccountId),
-    };
-  }
+  (table) => ({
+    userIdIdx: index('accounts_userId_idx').on(table.userId),
+    compositePk: primaryKey(table.provider, table.providerAccountId),
+  })
 );
 
-// Sites Table
+//
+// **Sites Table**
+//
 export const sites = pgTable(
   'sites',
   {
@@ -113,9 +119,7 @@ export const sites = pgTable(
     imageBlurhash: text('imageBlurhash'),
     subdomain: text('subdomain').unique(),
     customDomain: text('customDomain').unique(),
-    message404: text('message404').default(
-      sql`'Blimey! exist.'`
-    ),
+    message404: text('message404').default(sql`'Blimey! This page does not exist.'`),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
     updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
     userId: text('userId').references(() => users.id, {
@@ -123,33 +127,40 @@ export const sites = pgTable(
       onUpdate: 'cascade',
     }),
   },
-  (table) => {
-    return {
-      userIdIdx: index('sites_userId_idx').on(table.userId),
-    };
-  }
+  (table) => ({
+    userIdIdx: index('sites_userId_idx').on(table.userId),
+  })
 );
 
-// Define the Step interface
-// In /lib/schema.ts
-
+//
+// **Define the Step Type**
+//
 export type Step = {
   title: string;
   description: string;
-  completionTool: "email" | "memory" | "notesTaken" | "notion" | null;
+  completionTool: 'email' | 'memory' | 'notesTaken' | 'notion' | null;
   completed: boolean;
 };
 
-// Agent Settings Interface
+//
+// **Agent Settings Interface**
+//
+
 export interface AgentSettings {
   headingText?: string;
   tools?: string[];
   initialMessage?: string;
   steps?: Step[];
-  // Add any other settings fields here
+  primaryColor?: string;
+  secondaryColor?: string;
+  aiModel?: string; // Add AI model selection
+  apiKeys?: {
+    [model: string]: string; // Store API keys per model
+  };
 }
-
-// Agents Table
+//
+// **Agents Table**
+//
 export const agents = pgTable(
   'agents',
   {
@@ -174,24 +185,25 @@ export const agents = pgTable(
       .$type<AgentSettings>()
       .default(sql`'{}'::jsonb`)
       .notNull(),
-
   },
-  (table) => {
-    return {
-      siteIdIdx: index('agents_siteId_idx').on(table.siteId),
-      userIdIdx: index('agents_userId_idx').on(table.userId),
-      slugSiteIdKey: uniqueIndex('agents_slug_siteId_key').on(table.slug, table.siteId),
-    };
-  }
+  (table) => ({
+    siteIdIdx: index('agents_siteId_idx').on(table.siteId),
+    userIdIdx: index('agents_userId_idx').on(table.userId),
+    slugSiteIdKey: uniqueIndex('agents_slug_siteId_key').on(table.slug, table.siteId),
+  })
 );
 
-// Agents Relations
+//
+// **Agents Relations**
+//
 export const agentsRelations = relations(agents, ({ one }) => ({
   site: one(sites, { references: [sites.id], fields: [agents.siteId] }),
   user: one(users, { references: [users.id], fields: [agents.userId] }),
 }));
 
-// Posts Table
+//
+// **Posts Table**
+//
 export const posts = pgTable(
   'posts',
   {
@@ -214,39 +226,47 @@ export const posts = pgTable(
       onUpdate: 'cascade',
     }),
   },
-  (table) => {
-    return {
-      siteIdIdx: index('posts_siteId_idx').on(table.siteId),
-      userIdIdx: index('posts_userId_idx').on(table.userId),
-      slugSiteIdKey: uniqueIndex('posts_slug_siteId_key').on(table.slug, table.siteId),
-    };
-  }
+  (table) => ({
+    siteIdIdx: index('posts_siteId_idx').on(table.siteId),
+    userIdIdx: index('posts_userId_idx').on(table.userId),
+    slugSiteIdKey: uniqueIndex('posts_slug_siteId_key').on(table.slug, table.siteId),
+  })
 );
 
-// Posts Relations
+//
+// **Posts Relations**
+//
 export const postsRelations = relations(posts, ({ one }) => ({
   site: one(sites, { references: [sites.id], fields: [posts.siteId] }),
   user: one(users, { references: [users.id], fields: [posts.userId] }),
 }));
 
-// Sites Relations
+//
+// **Sites Relations**
+//
 export const sitesRelations = relations(sites, ({ one, many }) => ({
   posts: many(posts),
   agents: many(agents),
   user: one(users, { references: [users.id], fields: [sites.userId] }),
 }));
 
-// Sessions Relations
+//
+// **Sessions Relations**
+//
 export const sessionsRelations = relations(sessions, ({ one }) => ({
   user: one(users, { references: [users.id], fields: [sessions.userId] }),
 }));
 
-// Accounts Relations
+//
+// **Accounts Relations**
+//
 export const accountsRelations = relations(accounts, ({ one }) => ({
   user: one(users, { references: [users.id], fields: [accounts.userId] }),
 }));
 
-// Users Relations
+//
+// **Users Relations**
+//
 export const usersRelations = relations(users, ({ many }) => ({
   accounts: many(accounts),
   sessions: many(sessions),
@@ -255,8 +275,21 @@ export const usersRelations = relations(users, ({ many }) => ({
   agents: many(agents),
 }));
 
-// Exported Types
+//
+// **Exported Types**
+//
+
+// Infer the select type from the agents table using Drizzle ORM's type inference.
+// This ensures that `SelectAgent` includes all fields from the `agents` table with the correct types.
+export type SelectAgent = typeof agents.$inferSelect & {
+  // Include additional fields from related tables if needed.
+  siteName?: string | null;
+  userName?: string | null;
+  settings: AgentSettings;
+  // Add any other properties as needed.
+};
+
+// Similarly, you can define other select types as needed.
 export type SelectSite = typeof sites.$inferSelect;
 export type SelectPost = typeof posts.$inferSelect;
 export type SelectExample = typeof examples.$inferSelect;
-export type SelectAgent = typeof agents.$inferSelect;

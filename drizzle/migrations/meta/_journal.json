@@ -57,6 +57,13 @@
       "when": 1729518543543,
       "tag": "0007_add_agents_table14",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1729706902488,
+      "tag": "0008_add_agents_table15",
+      "breakpoints": true
     }
   ]
 }

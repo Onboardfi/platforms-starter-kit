@@ -17,8 +17,13 @@ export interface AgentSettings {
   tools?: string[];
   initialMessage?: string;
   steps?: Step[];
+  primaryColor?: string;
+  secondaryColor?: string;
+  aiModel?: string; // Add AI model selection
+  apiKeys?: {
+    [model: string]: string; // Store API keys per model
+  };
 }
-
 export interface Agent {
   id: string;
   name: string | null;

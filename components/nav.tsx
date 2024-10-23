@@ -21,7 +21,7 @@ import {
   useSelectedLayoutSegments,
 } from "next/navigation";
 import { ReactNode, useEffect, useMemo, useState } from "react";
-import { getSiteFromPostId } from "@/lib/actions";
+//import { getSiteFromAgentId } from "@/lib/actions";
 import Image from "next/image";
 
 const externalLinks = [
@@ -49,13 +49,14 @@ export default function Nav({ children }: { children: ReactNode }) {
 
   const [siteId, setSiteId] = useState<string | null>();
 
-  useEffect(() => {
-    if (segments[0] === "post" && id) {
-      getSiteFromPostId(id).then((id) => {
-        setSiteId(id);
-      });
-    }
-  }, [segments, id]);
+  //useEffect(() => {
+    //if (segments[0] === "agent" && id) {
+     // getSiteFromAgentId(id).then((siteId) => {
+   //     setSiteId(siteId);
+   //   });
+ //   }
+ // }, [segments, id]);
+  
 
   const tabs = useMemo(() => {
     if (segments[0] === "site" && id) {
@@ -84,7 +85,7 @@ export default function Nav({ children }: { children: ReactNode }) {
           icon: <Settings width={18} />,
         },
       ];
-    } else if (segments[0] === "post" && id) {
+    } else if (segments[0] === "agent" && id) {
       return [
         {
           name: "Back to All Posts",
@@ -93,13 +94,13 @@ export default function Nav({ children }: { children: ReactNode }) {
         },
         {
           name: "Editor",
-          href: `/post/${id}`,
+          href: `/agent/${id}`,
           isActive: segments.length === 2,
           icon: <Edit3 width={18} />,
         },
         {
           name: "Settings",
-          href: `/post/${id}/settings`,
+          href: `/agent/${id}/settings`,
           isActive: segments.includes("settings"),
           icon: <Settings width={18} />,
         },
@@ -141,7 +142,7 @@ export default function Nav({ children }: { children: ReactNode }) {
       <button
         className={`fixed z-20 ${
           // left align for Editor, right align for other pages
-          segments[0] === "post" && segments.length === 2 && !showSidebar
+          segments[0] === "agent" && segments.length === 2 && !showSidebar
             ? "left-5 top-5"
             : "right-5 top-7"
         } sm:hidden`}

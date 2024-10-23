@@ -1,56 +1,74 @@
+// components/site-card.tsx
 import BlurImage from "@/components/blur-image";
 import type { SelectSite } from "@/lib/schema";
 import { placeholderBlurhash, random } from "@/lib/utils";
 import { BarChart, ExternalLink } from "lucide-react";
 import Link from "next/link";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 export default function SiteCard({ data }: { data: SelectSite }) {
   const url = `${data.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}`;
+  const siteUrl = process.env.NEXT_PUBLIC_VERCEL_ENV
+    ? `https://${url}`
+    : `http://${data.subdomain}.localhost:3000`;
+
   return (
-    <div className="relative rounded-lg border border-stone-200 pb-10 shadow-md transition-all hover:shadow-xl dark:border-stone-700 dark:hover:border-white">
-      <Link
-        href={`/site/${data.id}`}
-        className="flex flex-col overflow-hidden rounded-lg"
-      >
-        <BlurImage
-          alt={data.name ?? "Card thumbnail"}
-          width={500}
-          height={400}
-          className="h-44 object-cover"
-          src={data.image ?? "/placeholder.png"}
-          placeholder="blur"
-          blurDataURL={data.imageBlurhash ?? placeholderBlurhash}
-        />
-        <div className="border-t border-stone-200 p-4 dark:border-stone-700">
-          <h3 className="my-0 truncate font-cal text-xl font-bold tracking-wide dark:text-white">
-            {data.name}
-          </h3>
-          <p className="mt-2 line-clamp-1 text-sm font-normal leading-snug text-stone-500 dark:text-stone-400">
+    <Card className="group overflow-hidden">
+      <Link href={`/site/${data.id}`}>
+        <CardHeader className="p-0">
+          <div className="relative aspect-video overflow-hidden">
+            <BlurImage
+              alt={data.name ?? "Card thumbnail"}
+              width={500}
+              height={400}
+              className="object-cover transition-transform duration-300 group-hover:scale-105"
+              src={data.image ?? "/placeholder.png"}
+              placeholder="blur"
+              blurDataURL={data.imageBlurhash ?? placeholderBlurhash}
+            />
+          </div>
+        </CardHeader>
+        
+        <CardContent className="p-4">
+          <h3 className="font-cal text-xl truncate">{data.name}</h3>
+          <p className="mt-2 line-clamp-1 text-sm text-muted-foreground">
             {data.description}
           </p>
-        </div>
+        </CardContent>
       </Link>
-      <div className="absolute bottom-4 flex w-full justify-between space-x-4 px-4">
-        <a
-          href={
-            process.env.NEXT_PUBLIC_VERCEL_ENV
-              ? `https://${url}`
-              : `http://${data.subdomain}.localhost:3000`
-          }
-          target="_blank"
-          rel="noreferrer"
-          className="truncate rounded-md bg-stone-100 px-2 py-1 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-200 dark:bg-stone-800 dark:text-stone-400 dark:hover:bg-stone-700"
+
+      <CardFooter className="p-4 pt-0 flex justify-between gap-2">
+        <Button
+          variant="secondary"
+          className="w-full text-xs"
+          asChild
         >
-          {url} ↗
-        </a>
-        <Link
-          href={`/site/${data.id}/analytics`}
-          className="flex items-center rounded-md bg-green-100 px-2 py-1 text-sm font-medium text-green-600 transition-colors hover:bg-green-200 dark:bg-green-900 dark:bg-opacity-50 dark:text-green-400 dark:hover:bg-green-800 dark:hover:bg-opacity-50"
+          <a
+            href={siteUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center justify-center gap-2"
+          >
+            {url}
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </Button>
+        
+        <Button
+          variant="secondary"
+          className="text-green-600 bg-green-100 hover:bg-green-200 dark:bg-green-900/50 dark:hover:bg-green-800/50 dark:text-green-400"
+          asChild
         >
-          <BarChart height={16} />
-          <p>{random(10, 40)}%</p>
-        </Link>
-      </div>
-    </div>
+          <Link
+            href={`/site/${data.id}/analytics`}
+            className="flex items-center gap-2"
+          >
+            <BarChart className="h-4 w-4" />
+            <span>{random(10, 40)}%</span>
+          </Link>
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }

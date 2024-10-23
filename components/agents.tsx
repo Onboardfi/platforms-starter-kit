@@ -1,5 +1,4 @@
 // components/agents.tsx
-
 import { getSession } from '@/lib/auth';
 import db from '@/lib/db';
 import { eq } from 'drizzle-orm';
@@ -13,7 +12,6 @@ interface AgentsProps {
 export default async function Agents({ siteId }: AgentsProps): Promise<JSX.Element | null> {
   const session = await getSession();
   if (!session) {
-    // Handle unauthenticated users, e.g., redirect or display a message
     return null;
   }
 
@@ -27,7 +25,7 @@ export default async function Agents({ siteId }: AgentsProps): Promise<JSX.Eleme
       image: true,
       imageBlurhash: true,
       createdAt: true,
-      // Include other necessary fields
+      settings: true,
     },
     with: {
       site: {
@@ -40,7 +38,7 @@ export default async function Agents({ siteId }: AgentsProps): Promise<JSX.Eleme
   });
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {agentsData.map((agent) => (
         <AgentCard key={agent.id} data={agent} />
       ))}
