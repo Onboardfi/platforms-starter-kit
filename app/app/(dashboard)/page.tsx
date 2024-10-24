@@ -96,9 +96,9 @@ const navLinks = [
     href: "/sites",
   },
   {
-    name: "Sites",
+    name: "Integrations",
     description: "Create and manage your sites",
-    href: "/sites",
+    href: "/integrations",
   },
   // Add other relevant links
 ];

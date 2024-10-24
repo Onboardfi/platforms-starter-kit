@@ -4,6 +4,39 @@
 @tailwind components;
 @tailwind utilities;
 
+
+
+
+/* Confetti Styles */
+.confetti {
+  position: absolute;
+  width: 10px;
+  height: 10px; 
+  transform-origin: center bottom;
+  animation: fall 4s linear infinite;
+}
+
+.confetti.square {
+  clip-path: polygon(0% 0%, 0% 100%, 100% 100%, 100% 0%);
+}
+
+.confetti.triangle {
+  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+
+@keyframes fall {
+  0% {
+    opacity: 1;
+    transform: translateY(0) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(100vh) rotate(720deg);
+  }
+}
+
+
+
 /* CSS Variables and Base Styles from Router.so */
 @layer base {
   :root {

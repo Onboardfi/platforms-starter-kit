@@ -888,7 +888,7 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
                 </Button>
                 </div>
             </div>
-            </Card>
+         </Card>
         </div>
       </div>
     </div>
