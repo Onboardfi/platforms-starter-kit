@@ -92,37 +92,34 @@ export default function OnboardingProgressCard({
 
   const completedSteps = steps.filter(step => getStepCompletion(step)).length;
   const progress = (completedSteps / steps.length) * 100;
-
   return (
     <Card className="w-full bg-muted/50">
-      <CardContent className="pt-6">
-        <div className="space-y-4">
-          <div className="flex items-center justify-between mb-4">
-            <div className="space-y-1">
-              <h2 className="text-xl font-semibold">{headingText || "Onboarding Progress"}</h2>
-              <div className="text-sm text-muted-foreground">
+      <CardContent className="py-2"> {/* Reduced padding */}
+        <div className="space-y-2"> {/* Reduced spacing */}
+          <div className="flex items-center justify-between">
+            <div className="space-y-0"> {/* Removed spacing */}
+              <h2 className="text-base font-semibold">{headingText || "Onboarding Progress"}</h2>
+              <div className="text-xs text-muted-foreground">
                 {completedSteps} of {steps.length} steps completed
               </div>
             </div>
             <Progress
               value={progress}
-              className="w-[100px] h-2 rounded-full"
-              style={{
-                backgroundColor: '#e5e7eb', // Light gray background
-              }}
+              className="w-[100px] h-1.5 rounded-full" 
+              style={{ backgroundColor: '#e5e7eb' }}
             >
               <div
                 className="h-full rounded-full"
                 style={{
                   width: `${progress}%`,
-                  backgroundColor: primaryColor, // Primary color fill
+                  backgroundColor: primaryColor,
                   transition: 'width 0.3s ease-in-out',
                 }}
               ></div>
             </Progress>
           </div>
-
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+  
+          <div className="grid gap-2 grid-cols-3"> {/* Fixed 3 columns, reduced gap */}
             {steps.map((step, index) => {
               const isCompleted = getStepCompletion(step);
               return (
@@ -139,22 +136,22 @@ export default function OnboardingProgressCard({
                     borderColor: isCompleted ? primaryColor : secondaryColor,
                   }}
                 >
-                  <CardContent className="p-4 space-y-2">
+                  <CardContent className="p-2 space-y-1"> {/* Reduced padding and spacing */}
                     <div className="flex items-center justify-between">
-                      <h3 className="font-medium">{step.title}</h3>
+                      <h3 className="text-sm font-medium">{step.title}</h3>
                       {isCompleted ? (
-                        <CheckCircle className="h-5 w-5 text-primary" />
+                        <CheckCircle className="h-4 w-4 text-primary" />
                       ) : (
-                        <Circle className="h-5 w-5 text-muted-foreground" />
+                        <Circle className="h-4 w-4 text-muted-foreground" />
                       )}
                     </div>
-                    <p className="text-sm text-muted-foreground line-clamp-2">
+                    <p className="text-xs text-muted-foreground line-clamp-1">
                       {step.description}
                     </p>
                     {step.completionTool && (
                       <Badge 
                         variant="secondary" 
-                        className="mt-2" 
+                        className="text-[10px] px-1 py-0"
                         style={{ backgroundColor: secondaryColor, color: '#fff' }}
                       >
                         {step.completionTool}
@@ -168,5 +165,4 @@ export default function OnboardingProgressCard({
         </div>
       </CardContent>
     </Card>
-  );
-}
+  );}

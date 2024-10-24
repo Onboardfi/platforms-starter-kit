@@ -3,6 +3,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import Image from "next/image";
 
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -20,6 +21,7 @@ import OnboardingProgressCard from '@/components/OnboardingProgressCard';
 import { WavRecorder, WavStreamPlayer } from '@/lib/wavtools';
 import { instructions } from '@/app/utils/conversation_config.js';
 import { WavRenderer } from '@/app/utils/wav_renderer';
+
 
 import Spline from '@splinetool/react-spline';
 
@@ -47,6 +49,8 @@ interface Agent {
   updatedAt: Date;
   published: boolean;
   settings: AgentSettings;
+  logo?: string | null; // Add this line
+
 }
 
 interface RealtimeEvent {
@@ -610,27 +614,30 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
   }, [data]);
 
   return (
-    <div
-      className="flex flex-col h-full min-h-screen bg-background"
-      style={getDynamicStyles()}
-    >
-      {/* Top Bar */}
-      <div className="border-b bg-muted/50 p-4">
+    <div className="flex flex-col min-h-screen bg-background" style={getDynamicStyles()}>
+      {/* Nav Bar - Reduced height */}
+      <div className="h-12 border-b bg-background px-4 flex items-center justify-between">
+      <div className="flex items-center space-x-4">
+       
+          <span className="font-medium text-sm">{data?.name}</span>
+        </div>
+        
         {!LOCAL_RELAY_SERVER_URL && (
           <Button
             variant="ghost"
             size="sm"
             onClick={resetAPIKey}
-            className="text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground h-8 text-xs"
           >
-            <Edit className="h-4 w-4 mr-2" />
-            api key: {apiKey.slice(0, 3)}...
+            <Edit className="h-3 w-3 mr-2" />
+            API Key: {apiKey.slice(0, 3)}...
           </Button>
         )}
       </div>
-
-      {/* Onboarding Progress */}
-      <div className="border-b bg-background p-4">
+   {/* Content Container - Add padding all around */}
+   <div className="flex-1 flex flex-col p-4 space-y-4">
+   {/* Onboarding Progress - Fixed height, no margin bottom (using space-y from parent) */}
+   <div>
         <OnboardingProgressCard
           emailSent={emailSent}
           notesTaken={notesTaken}
@@ -645,35 +652,35 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
           secondaryColor={secondaryColor}
         />
       </div>
-
-      {/* Main Content Grid */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-4 p-4">
-        {/* Workspace Section - 3 columns on large screens */}
-        <div className="lg:col-span-3">
-          <Card className="h-full">
-            <CardHeader className="border-b">
-              <CardTitle>Workspace</CardTitle>
+  
+    {/* Main Content Grid - Adjusted height to account for all elements */}
+    <div className="grid grid-cols-4 gap-4 h-[calc(100vh-250px)]">
+        {/* Workspace Section */}
+        <div className="col-span-3">
+          <Card className="h-full flex flex-col">
+            <CardHeader className="py-2 px-4 border-b">
+              <CardTitle className="text-sm">Workspace</CardTitle>
             </CardHeader>
-            <CardContent className="p-6">
+            <CardContent className="p-2 flex-1 overflow-auto">
               {!draftNote && !draftEmail ? (
-                <div className="relative h-[500px] rounded-lg overflow-hidden bg-muted">
+                <div className="relative h-full rounded-lg overflow-hidden bg-muted">
                   <Spline scene="https://prod.spline.design/tFMrNZoJ2kX1j83X/scene.splinecode" />
                 </div>
               ) : (
-                <div className="space-y-6">
+                <div className="space-y-2">
                   {/* Draft Note */}
                   {draftNote && (
                     <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg">Draft Note</CardTitle>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-sm">Draft Note</CardTitle>
                       </CardHeader>
-                      <CardContent className="space-y-4">
+                      <CardContent className="space-y-2 p-3">
                         {isEditingDraft ? (
                           <textarea
                             value={draftNote}
                             onChange={(e) => setDraftNote(e.target.value)}
-                            rows={5}
-                            className="w-full min-h-[120px] p-3 rounded-md border bg-muted resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                            rows={4}
+                            className="w-full min-h-[100px] p-2 rounded-md border bg-muted resize-none focus:outline-none focus:ring-2 focus:ring-ring text-sm"
                           />
                         ) : (
                           <p className="text-sm text-muted-foreground whitespace-pre-wrap">{draftNote}</p>
@@ -681,27 +688,28 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
                         <div className="flex justify-end gap-2">
                           <Button
                             variant="outline"
+                            size="sm"
                             onClick={isEditingDraft ? () => handleSaveDraft(draftNote) : handleEditDraft}
                           >
                             {isEditingDraft ? "Save Draft" : "Edit Draft"}
                           </Button>
-                          <Button onClick={handleSendNote}>
+                          <Button size="sm" onClick={handleSendNote}>
                             Send to Notion
                           </Button>
                         </div>
                       </CardContent>
                     </Card>
                   )}
-
+  
                   {/* Draft Email */}
                   {draftEmail && (
                     <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg">Draft Email</CardTitle>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-sm">Draft Email</CardTitle>
                       </CardHeader>
-                      <CardContent className="space-y-4">
+                      <CardContent className="space-y-2 p-3">
                         {isEditingEmail ? (
-                          <div className="space-y-4">
+                          <div className="space-y-2">
                             <Input
                               type="email"
                               value={draftEmail.to}
@@ -710,7 +718,7 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
                                 to: e.target.value,
                               })}
                               placeholder="To"
-                              className="bg-muted"
+                              className="bg-muted h-8 text-sm"
                             />
                             <Input
                               type="text"
@@ -720,7 +728,7 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
                                 subject: e.target.value,
                               })}
                               placeholder="Subject"
-                              className="bg-muted"
+                              className="bg-muted h-8 text-sm"
                             />
                             <Input
                               type="text"
@@ -730,30 +738,30 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
                                 firstName: e.target.value,
                               })}
                               placeholder="First Name"
-                              className="bg-muted"
+                              className="bg-muted h-8 text-sm"
                             />
                           </div>
                         ) : (
-                          <div className="space-y-4">
-                            <div className="grid gap-2 text-sm">
+                          <div className="space-y-2">
+                            <div className="grid gap-1 text-sm">
                               <div className="flex">
-                                <span className="font-medium w-24">To:</span>
+                                <span className="font-medium w-20">To:</span>
                                 <span className="text-muted-foreground">{draftEmail.to}</span>
                               </div>
                               <div className="flex">
-                                <span className="font-medium w-24">Subject:</span>
+                                <span className="font-medium w-20">Subject:</span>
                                 <span className="text-muted-foreground">{draftEmail.subject}</span>
                               </div>
                               <div className="flex">
-                                <span className="font-medium w-24">First Name:</span>
+                                <span className="font-medium w-20">Name:</span>
                                 <span className="text-muted-foreground">{draftEmail.firstName}</span>
                               </div>
                             </div>
-                            <Card className="mt-4">
-                              <CardHeader>
-                                <CardTitle className="text-sm">Email Preview</CardTitle>
+                            <Card className="mt-2">
+                              <CardHeader className="py-2 px-3">
+                                <CardTitle className="text-xs">Email Preview</CardTitle>
                               </CardHeader>
-                              <CardContent>
+                              <CardContent className="p-3">
                                 <div className="prose prose-sm max-w-none dark:prose-invert">
                                   <EmailTemplate firstName={draftEmail.firstName} />
                                 </div>
@@ -764,11 +772,12 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
                         <div className="flex justify-end gap-2">
                           <Button
                             variant="outline"
+                            size="sm"
                             onClick={isEditingEmail ? () => handleSaveEmail(draftEmail) : handleEditEmail}
                           >
                             {isEditingEmail ? "Save Draft" : "Edit Draft"}
                           </Button>
-                          <Button onClick={handleSendEmail}>
+                          <Button size="sm" onClick={handleSendEmail}>
                             Send Email
                           </Button>
                         </div>
@@ -780,20 +789,23 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
             </CardContent>
           </Card>
         </div>
-
-        {/* Conversation Section - 1 column on large screens */}
-        <div className="lg:col-span-1">
+  
+ {/* Conversation Section - Fixed height with scroll */}
+ <div className="col-span-1">
           <Card className="h-full flex flex-col">
-            <CardHeader className="border-b">
-              <CardTitle>Conversation</CardTitle>
+            <CardHeader className="py-2 px-4 border-b">
+              <CardTitle className="text-sm">Conversation</CardTitle>
             </CardHeader>
-            <ScrollArea className="flex-1 px-4" style={{ height: '400px' }}>
+
+
+            {/* Conversation scroll area - Fixed height */}
+            <ScrollArea className="flex-none h-[calc(100vh-400px)]">
               {!items.length ? (
-                <div className="py-4 text-center text-muted-foreground">
+                <div className="py-2 text-center text-muted-foreground text-sm">
                   Awaiting connection...
                 </div>
               ) : (
-                <div className="space-y-4 py-4">
+                <div className="space-y-2 py-2 px-3">
                   {items.map((conversationItem, i) => (
                     <div
                       key={conversationItem.id || i}
@@ -804,17 +816,14 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
                     >
                       <div
                         className={cn(
-                          "rounded-lg px-4 py-2 max-w-[80%] text-sm",
-                          conversationItem.role === "assistant"
-                            ? ""
-                            : ""
+                          "rounded-lg px-3 py-1.5 max-w-[85%] text-xs"
                         )}
                         style={{
                           backgroundColor:
                             conversationItem.role === "assistant"
                               ? secondaryColor
                               : primaryColor,
-                          color: "#ffffff", // Ensures text is readable on colored backgrounds
+                          color: "#ffffff"
                         }}
                       >
                         {conversationItem.formatted.transcript ||
@@ -826,10 +835,9 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
                 </div>
               )}
             </ScrollArea>
-
-            {/* Visualization */}
-            <div className="border-t p-4 bg-muted/50">
-              <div className="flex gap-2 h-8">
+{/* Visualization - Fixed height */}
+<div className="border-t p-2 bg-muted/50 flex-none">
+              <div className="flex gap-2 h-5">
                 <div className="flex-1 relative">
                   <canvas ref={clientCanvasRef} className="w-full h-full" />
                 </div>
@@ -838,16 +846,16 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
                 </div>
               </div>
             </div>
-
-            {/* Controls */}
-            <div className="border-t p-4 bg-card">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
+           
+            {/* Controls - Fixed height */}
+            <div className="border-t p-2 bg-card flex-none">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
                   <Switch
                     checked={!canPushToTalk}
                     onCheckedChange={(checked) => changeTurnEndType(checked ? "server_vad" : "none")}
                   />
-                  <span className="text-sm text-muted-foreground">
+                  <span className="text-xs text-muted-foreground">
                     {canPushToTalk ? "Manual" : "VAD"}
                   </span>
                 </div>
@@ -859,28 +867,35 @@ export default function AgentConsole({ agent }: { agent: Agent }) {
                     disabled={!isConnected || !canPushToTalk}
                     onMouseDown={startRecording}
                     onMouseUp={stopRecording}
+                    className="h-7 text-xs"
                   >
-                    <Mic className="h-4 w-4 mr-2" />
-                    {isRecording ? "Release to Send" : "Push to Talk"}
+                    <Mic className="h-3 w-3 mr-1" />
+                    {isRecording ? "Release" : "Push to Talk"}
                   </Button>
                 )}
                 <Button
                   variant={isConnected ? "outline" : "default"}
                   size="sm"
                   onClick={isConnected ? disconnectConversation : connectConversation}
+                  className="h-7 text-xs"
                 >
                   {isConnected ? (
-                    <X className="h-4 w-4 mr-2" />
+                    <X className="h-3 w-3 mr-1" />
                   ) : (
-                    <Zap className="h-4 w-4 mr-2" />
+                    <Zap className="h-3 w-3 mr-1" />
                   )}
                   {isConnected ? "Disconnect" : "Connect"}
                 </Button>
-              </div>
+                </div>
             </div>
-          </Card>
+            </Card>
         </div>
       </div>
     </div>
-  ); 
-}
+
+    {/* Footer */}
+    <div className="h-12 border-t bg-background flex items-center justify-center text-sm text-muted-foreground">
+      Powered by OnboardFi
+    </div>
+  </div>
+);}
