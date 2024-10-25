@@ -1,37 +1,31 @@
-// components/OnboardingProgressCard.tsx
+'use client';
 
-"use client";
-
-import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle, Circle } from 'lucide-react';
-import { Card, CardContent } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { cn } from "@/lib/utils";
+import React, { useEffect, useState, useCallback } from 'react';
+import { motion } from 'framer-motion';
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { Step } from '@/lib/types';
-import Confetti from './Confetti'; // Import the Confetti component
+import Confetti from './Confetti';
 
-interface OnboardingProgressCardProps {
+interface OnboardingProgressSidebarProps {
   emailSent: boolean;
   notesTaken: boolean;
   notionMessageSent: boolean;
   memoryKv: { [key: string]: any };
   steps?: Step[];
-  headingText?: string;
+  title?: string;
+  logo?: string | null; // Changed from avatarUrl to logo
   availableTools: string[];
   agentId: string;
   onStepsUpdated: () => void;
   primaryColor: string;
   secondaryColor: string;
 }
-
-// Animation variants
 const containerVariants = {
-  hidden: { opacity: 0, y: 20 },
+  hidden: { opacity: 0, x: -20 },
   visible: {
     opacity: 1,
-    y: 0,
+    x: 0,
     transition: {
       duration: 0.5,
       when: "beforeChildren",
@@ -49,30 +43,22 @@ const stepVariants = {
   }
 };
 
-const progressVariants = {
-  hidden: { width: "0%" },
-  visible: (progress: number) => ({
-    width: `${progress}%`,
-    transition: { duration: 0.5, ease: "easeOut" }
-  })
-};
-
-export default function OnboardingProgressCard({
+export default function OnboardingProgressSidebar({
   emailSent,
   notesTaken,
   notionMessageSent,
   memoryKv,
   steps = [],
-  headingText,
+  title = "401 CRM Agent",
+  logo = null, // Changed from avatarUrl to logo with null default
   availableTools,
   agentId,
   onStepsUpdated,
   primaryColor,
   secondaryColor,
-}: OnboardingProgressCardProps) {
-  const [clientName, setClientName] = useState('');
+}: OnboardingProgressSidebarProps) {
+  const [confettiActive, setConfettiActive] = useState(false);
   const [completedStepsCount, setCompletedStepsCount] = useState(0);
-  const [confettiActive, setConfettiActive] = useState(false); // State to control confetti
 
   const getStepCompletion = useCallback((step: Step): boolean => {
     if (step.completed) return true;
@@ -89,10 +75,7 @@ export default function OnboardingProgressCard({
 
   const fireConfetti = useCallback(() => {
     setConfettiActive(true);
-    // Reset confetti after the animation duration
-    setTimeout(() => {
-      setConfettiActive(false);
-    }, 4000); // Duration should match the Confetti component's duration
+    setTimeout(() => setConfettiActive(false), 4000);
   }, []);
 
   const markStepCompleted = async (stepIndex: number) => {
@@ -103,21 +86,13 @@ export default function OnboardingProgressCard({
     try {
       const response = await fetch('/api/updateAgentSteps', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          agentId,
-          steps: updatedSteps,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId, steps: updatedSteps }),
       });
 
-      const result = await response.json();
-
-      if (result.success) {
+      if (response.ok) {
         onStepsUpdated();
-        const newCompletedCount = updatedSteps.filter(step => step.completed).length;
-        if (newCompletedCount === steps.length) {
+        if (updatedSteps.filter(step => step.completed).length === steps.length) {
           fireConfetti();
         }
       }
@@ -125,14 +100,6 @@ export default function OnboardingProgressCard({
       console.error('Failed to update step:', error);
     }
   };
-
-  useEffect(() => {
-    const firstName = memoryKv.first_name || '';
-    const lastName = memoryKv.last_name || '';
-    if (firstName || lastName) {
-      setClientName(`${firstName} ${lastName}`.trim());
-    }
-  }, [memoryKv]);
 
   useEffect(() => {
     const completedCount = steps.filter(step => getStepCompletion(step)).length;
@@ -148,105 +115,169 @@ export default function OnboardingProgressCard({
 
   const completedSteps = steps.filter(step => getStepCompletion(step)).length;
   const progress = (completedSteps / steps.length) * 100;
+  const isComplete = completedSteps === steps.length;
 
   return (
     <motion.div
       initial="hidden"
       animate="visible"
       variants={containerVariants}
-      className="relative"
+      className="flex-shrink-0 w-full bg-black sm:w-96 h-full overflow-scroll border-r border-gray-800"
     >
-      <Card className="w-full bg-muted/50">
-        <CardContent className="py-2">
-          <div className="space-y-2">
-            {/* Header Section */}
-            <div className="flex items-center justify-between">
-              <motion.div 
-                variants={stepVariants}
-                className="space-y-0"
-              >
-                <h2 className="text-base font-semibold">
-                  {headingText || "Onboarding Progress"}
-                </h2>
-                <div className="text-xs text-muted-foreground">
-                  {completedSteps} of {steps.length} steps completed
+      {/* Header Section */}
+      <div className="sticky top-0 bg-black z-20">
+        {/* Banner and Avatar */}
+        <div className="relative">
+          {/* Gradient Banner */}
+          <div 
+            className="h-16 w-full"
+            style={{
+              background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})`
+            }}
+          />
+          
+          {/* Avatar Container - Positioned to overlap banner */}
+          <div className="absolute left-6 -bottom-16">
+            <div className="relative">
+              {/* Avatar Border */}
+              <div className="h-24 w-24 rounded-full border-4 border-black bg-black">
+                {/* Avatar Image */}
+                <div className="h-full w-full rounded-full overflow-hidden bg-purple-600">
+                  {logo ? (
+                    <img src={logo} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="h-full w-full bg-purple-600" />
+                  )}
                 </div>
-              </motion.div>
-
-              <Progress className="w-[100px] h-1.5 rounded-full bg-secondary/20">
-                <motion.div
-                  className="h-full rounded-full"
-                  style={{ backgroundColor: primaryColor }}
-                  variants={progressVariants}
-                  custom={progress}
-                />
-              </Progress>
-            </div>
-
-            {/* Steps Grid */}
-            <div className="grid gap-2 grid-cols-3">
-              {steps.map((step, index) => {
-                const isCompleted = getStepCompletion(step);
-                return (
-                  <motion.div
-                    key={index}
-                    variants={stepVariants}
-                    whileHover={!isCompleted ? { scale: 1.02 } : undefined}
-                    whileTap={!isCompleted ? { scale: 0.98 } : undefined}
-                  >
-                    <Card
-                      className={cn(
-                        "relative overflow-hidden transition-colors",
-                        isCompleted 
-                          ? "bg-primary/5 dark:bg-primary/10" 
-                          : "hover:bg-secondary/50 cursor-pointer"
-                      )}
-                      onClick={() => !isCompleted && markStepCompleted(index)}
-                      style={{
-                        borderColor: isCompleted ? primaryColor : secondaryColor,
-                      }}
-                    >
-                      <CardContent className="p-2 space-y-1">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-sm font-medium">{step.title}</h3>
-                          <AnimatePresence mode="wait">
-                            {isCompleted ? (
-                              <motion.div
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1 }}
-                                exit={{ scale: 0 }}
-                                transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                              >
-                                <CheckCircle className="h-4 w-4 text-primary" />
-                              </motion.div>
-                            ) : (
-                              <Circle className="h-4 w-4 text-muted-foreground" />
-                            )}
-                          </AnimatePresence>
-                        </div>
-                        <p className="text-xs text-muted-foreground line-clamp-1">
-                          {step.description}
-                        </p>
-                        {step.completionTool && (
-                          <Badge 
-                            variant="secondary" 
-                            className="text-[10px] px-1 py-0"
-                            style={{ backgroundColor: secondaryColor, color: '#fff' }}
-                          >
-                            {step.completionTool}
-                          </Badge>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                );
-              })}
+              </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Confetti Component */}
+        {/* Profile Info - Adjusted spacing to account for overlapping avatar */}
+        <div className="px-6 mt-20">
+          <div className="space-y-1">
+            <h2 className="text-xl text-white font-semibold">{title}</h2>
+            <p className="text-sm text-gray-400">Steps Completed</p>
+          </div>
+
+          {/* Progress Section */}
+          <div className="space-y-2 mt-4 mb-6">
+            <div className="flex items-center justify-between">
+              <div className="bg-gray-800 rounded-full px-3 py-1">
+                <span className="text-sm font-medium text-white">
+                  {isComplete ? "100% COMPLETE" : `${Math.round(progress)}% COMPLETE`}
+                </span>
+              </div>
+              <span className="text-sm text-gray-400">
+                {steps.length - completedSteps} remaining
+              </span>
+            </div>
+
+            <div className="h-1 w-full bg-gray-800 rounded-full overflow-hidden">
+              <div
+                className="h-full transition-all duration-500"
+                style={{ 
+                  width: `${progress}%`,
+                  backgroundColor: secondaryColor
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Metadata */}
+          <div className="grid grid-cols-2 gap-4 py-4 border-b border-gray-800">
+            <div>
+              <p className="text-gray-400 text-xs">Last Updated</p>
+              <p className="text-white text-sm mt-1 font-mono">
+                {new Date().toLocaleDateString()}
+              </p>
+            </div>
+            <div>
+              <p className="text-gray-400 text-xs">Est. Time</p>
+              <p className="text-white text-sm mt-1 font-mono">
+                {steps.length * 5}min
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Steps List */}
+      <nav className="px-6 mt-4" aria-label="Progress">
+        {steps.map((step, index) => {
+          const isCompleted = getStepCompletion(step);
+          return (
+            <motion.div
+              key={index}
+              variants={stepVariants}
+              className="relative border-b border-gray-800 last:border-b-0"
+            >
+              <div 
+                className={cn(
+                  "p-4 hover:bg-gray-900 transition-all group rounded-lg mb-2",
+                  isCompleted ? "bg-gray-900/50" : ""
+                )}
+                onClick={() => !isCompleted && markStepCompleted(index)}
+                role="button"
+                tabIndex={0}
+              >
+                <div className="flex items-start space-x-4">
+                  {/* Step Number */}
+                  <div className="flex-shrink-0">
+                    <span className={cn(
+                      "flex items-center justify-center h-8 w-8 rounded-full text-sm border transition-all",
+                      isCompleted 
+                        ? "border-green-500 bg-green-500/10 text-green-500" 
+                        : "border-gray-600 text-gray-400 group-hover:border-white group-hover:text-white"
+                    )}>
+                      {index + 1}
+                    </span>
+                  </div>
+
+                  {/* Step Content */}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-medium text-white">
+                        {step.title}
+                      </h3>
+                      {step.completionTool && (
+                        <Badge 
+                          variant="secondary" 
+                          className="text-[10px] px-2 py-0.5 bg-gray-800 text-gray-400"
+                        >
+                          {step.completionTool}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="mt-1 text-sm text-gray-400">
+                      {step.description}
+                    </p>
+                    
+                    {/* Rich Metadata */}
+                    <div className="mt-2 flex items-center space-x-4 text-[10px] text-gray-400">
+                      <span className="flex items-center">
+                        <span className={cn(
+                          "h-1.5 w-1.5 rounded-full mr-1",
+                          isCompleted ? "bg-green-500" : "bg-gray-600"
+                        )} />
+                        {isCompleted ? "Completed" : "Pending"}
+                      </span>
+                      {step.completionTool && (
+                        <span className="flex items-center">
+                          via {step.completionTool}
+                        </span>
+                      )}
+                      <span>~5 min</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          );
+        })}
+      </nav>
+
       <Confetti active={confettiActive} />
     </motion.div>
   );

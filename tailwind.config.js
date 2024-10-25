@@ -6,7 +6,7 @@ module.exports = {
 
   content: [
     "./pages/**/*.{js,ts,jsx,tsx}",
-    "./components/**/*.{js,ts,jsx,tsx}",
+   './components/**/*.{js,ts,jsx,tsx}',
     "./app/**/*.{js,ts,jsx,tsx}",
     "./lib/**/*.{js,ts,jsx,tsx}",
     "./node_modules/@tremor/**/*.{js,ts,jsx,tsx}", // Tremor module
@@ -25,7 +25,10 @@ module.exports = {
     extend: {
       colors: {
 
-      
+      'dark-accent-1': '#111111',
+        'dark-accent-2': '#333333',
+        'dark-accent-3': '#444444',
+        'dark-accent-5': '#888888',
           border: "hsl(var(--border))",
           input: "hsl(var(--input))",
           ring: "hsl(var(--ring))",
