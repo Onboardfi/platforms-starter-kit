@@ -9,7 +9,7 @@ interface EmailTemplateProps {
 export const EmailTemplate: React.FC<Readonly<EmailTemplateProps>> = ({
   firstName,
 }) => (
-  <div style={{ fontFamily: 'Arial, sans-serif', lineHeight: '1.6', color: '#333333' }}>
+  <div style={{ fontFamily: 'Arial, sans-serif', lineHeight: '1.6', color: '#ffffff' }}>
     <h1 style={{ color: '#2E86C1' }}>Welcome to 401 Financial, {firstName}!</h1>
     <p>
       We are thrilled to have you on board as a valued client. To ensure a smooth and efficient onboarding process, please complete the following steps:

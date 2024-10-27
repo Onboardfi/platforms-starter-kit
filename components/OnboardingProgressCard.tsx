@@ -141,15 +141,15 @@ export default function OnboardingProgressSidebar({
             <div className="relative">
               {/* Avatar Border */}
               <div className="h-24 w-24 rounded-full border-4 border-black bg-black">
-                {/* Avatar Image */}
-                <div className="h-full w-full rounded-full overflow-hidden bg-purple-600">
-                  {logo ? (
-                    <img src={logo} alt="" className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="h-full w-full bg-purple-600" />
-                  )}
-                </div>
-              </div>
+  <div className="h-full w-full rounded-full overflow-hidden bg-purple-600">
+    {logo ? (
+      <img src={logo} alt="" className="h-full w-full object-cover" />
+    ) : (
+      // Default 401.png image
+      <img src="/401.png" alt="Default logo" className="h-full w-full object-cover" />
+    )}
+  </div>
+</div>
             </div>
           </div>
         </div>

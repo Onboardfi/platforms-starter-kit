@@ -25,6 +25,12 @@ module.exports = {
     extend: {
       colors: {
 
+        'vercel-pink': '#FF0080',
+      'vercel-blue': '#0070F3',
+      'vercel-cyan': '#50E3C2',
+      'vercel-violet': '#7928CA',
+      'vercel-orange': '#F5A623',
+'gray-1100': 'rgb(10,10,11)',
       'dark-accent-1': '#111111',
         'dark-accent-2': '#333333',
         'dark-accent-3': '#444444',
@@ -125,6 +131,12 @@ module.exports = {
           },
         },
       },
+
+      backgroundImage: ({ theme }) => ({
+        'vc-border-gradient': `radial-gradient(at left top, ${theme(
+          'colors.gray.500',
+        )}, 50px, ${theme('colors.gray.800')} 50%)`,
+      }),
       boxShadow: {
         // light
         "tremor-input": "0 1px 2px 0 rgb(0 0 0 / 0.05)",
