@@ -1,3 +1,4 @@
+// components/modal/create-site.tsx
 "use client";
 
 import { toast } from "sonner";
@@ -30,22 +31,21 @@ export default function CreateSiteModal() {
     }));
   }, [data.name]);
 
-  return (
+
+    return (
     <form
-      action={async (data: FormData) =>
-        createSite(data).then((res: any) => {
-          if (res.error) {
-            toast.error(res.error);
-          } else {
-            va.track("Created Site");
-            const { id } = res;
-            router.refresh();
-            router.push(`/site/${id}`);
-            modal?.hide();
-            toast.success(`Successfully created site!`);
-          }
-        })
-      }
+      action={async (formData: FormData) => {
+        const response = await createSite(formData);
+        if (response.error) {
+          toast.error(response.error);
+        } else if (response.id) {
+          va.track("Created Site");
+          router.refresh();
+          router.push(`/site/${response.id}`);
+          modal?.hide();
+          toast.success(`Successfully created site!`);
+        }
+      }}
       className="w-full rounded-md bg-white md:max-w-md md:border md:border-stone-200 md:shadow dark:bg-black dark:md:border-stone-700"
     >
       <div className="relative flex flex-col space-y-4 p-5 md:p-10">
@@ -121,6 +121,8 @@ export default function CreateSiteModal() {
     </form>
   );
 }
+
+
 function CreateSiteFormButton() {
   const { pending } = useFormStatus();
   return (

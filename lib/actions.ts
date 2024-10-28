@@ -27,6 +27,15 @@ import {
   Step as SchemaStep,
 } from "./schema";
 
+interface CreateSiteResponse {
+  error?: string;
+  id?: string;
+}
+
+interface CreateAgentResponse {
+  error?: string;
+  id?: string;
+}
 const nanoid = customAlphabet(
   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
   7
@@ -39,12 +48,10 @@ type PostWithSite = InferModel<typeof posts, "select"> & {
 type AgentWithSite = InferModel<typeof agents, "select"> & {
   site: SelectSite;
 };
-
-export const createSite = async (formData: FormData): Promise<void> => {
+export const createSite = async (formData: FormData): Promise<CreateSiteResponse> => {
   const session = await getSession();
   if (!session?.user.id) {
-    redirect("/login");
-    return;
+    return { error: "Unauthorized" };
   }
 
   const name = formData.get("name") as string;
@@ -52,7 +59,7 @@ export const createSite = async (formData: FormData): Promise<void> => {
   const subdomain = formData.get("subdomain") as string;
 
   try {
-    await db
+    const result = await db
       .insert(sites)
       .values({
         id: createId(),
@@ -63,18 +70,21 @@ export const createSite = async (formData: FormData): Promise<void> => {
       })
       .returning();
 
+    const site = result[0];
+    
     revalidateTag(
       `${subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-metadata`
     );
+    
+    return { id: site.id };
   } catch (error: any) {
     if (error.code === "P2002") {
-      redirect(`/sites/new?error=This+subdomain+is+already+taken`);
-    } else {
-      redirect(`/sites/new?error=${encodeURIComponent(error.message)}`);
+      return { error: "This subdomain is already taken" };
     }
-    return;
+    return { error: error.message || "Failed to create site" };
   }
 };
+
 
 export const updateStepCompletionStatus = async (
   agentId: string,
@@ -110,6 +120,9 @@ export const updateStepCompletionStatus = async (
 
   return updateResponse;
 };
+
+
+
 export const updateAgentMetadata = async (
   agentId: string,
   data: Record<string, any>
@@ -262,17 +275,15 @@ export const updateAgentStepsWithoutAuth = async (
   }
 };
 
-
 export const createAgent = withSiteAuth(
-  async (_: FormData, site: SelectSite): Promise<void> => {
+  async (_: FormData, site: SelectSite): Promise<CreateAgentResponse> => {
     const session = await getSession();
     if (!session?.user.id) {
-      redirect("/login");
-      return;
+      return { error: "Unauthorized" };
     }
 
     try {
-      await db
+      const result = await db
         .insert(agents)
         .values({
           id: createId(),
@@ -285,13 +296,16 @@ export const createAgent = withSiteAuth(
         })
         .returning();
 
+      const agent = result[0];
+
       revalidateTag(
         `${site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-agents`
       );
       site.customDomain && revalidateTag(`${site.customDomain}-agents`);
+
+      return { id: agent.id };
     } catch (error: any) {
-      redirect(`/agents?error=${encodeURIComponent(error.message)}`);
-      return;
+      return { error: error.message || "Failed to create agent" };
     }
   }
 );

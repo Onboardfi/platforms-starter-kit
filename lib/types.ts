@@ -4,7 +4,6 @@
  * **Step Interface**
  * Represents a single step in an agent's onboarding process.
  */
-
 export interface Step {
   title: string;
   description: string;
@@ -19,11 +18,12 @@ export interface AgentSettings {
   steps?: Step[];
   primaryColor?: string;
   secondaryColor?: string;
-  aiModel?: string; // Add AI model selection
+  aiModel?: string;
   apiKeys?: {
-    [model: string]: string; // Store API keys per model
+    [model: string]: string;
   };
 }
+
 export interface Agent {
   id: string;
   name: string | null;
@@ -36,10 +36,22 @@ export interface Agent {
   published: boolean;
   settings: AgentSettings;
 }
+
+/** 
+ * **CreateAgentResponse Interface**
+ * Represents the response structure when creating a new agent.
+ * Either returns the created agent's ID on success or an error message on failure.
+ */
+export interface CreateAgentResponse {
+  id?: string;
+  error?: string;
+}
+
 export interface UpdateAgentMetadataResponse {
   success: boolean;
   error?: string;
 }
+
 
 /** 
  * **Agent Interface**
