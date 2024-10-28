@@ -5,35 +5,40 @@ import { updateAgentMetadata } from '@/lib/actions';
 import { getSession } from '@/lib/auth';
 import { UpdateAgentMetadataResponse } from '@/lib/types';
 
-export async function POST(request: NextRequest): Promise<NextResponse<UpdateAgentMetadataResponse>> {
+export async function POST(
+  request: NextRequest
+): Promise<NextResponse<UpdateAgentMetadataResponse>> {
   const session = await getSession();
 
-  if (!session || !session.user) {
+  if (!session?.user.id) {
     return NextResponse.json(
-      { success: false, error: 'Not authenticated' },
+      { success: false, error: "Not authenticated" },
       { status: 401 }
     );
   }
 
   try {
-    const body = await request.json();
-    const { agentId, ...data } = body;
+    const formData = await request.formData();
+    const agentId = formData.get("agentId") as string;
+    const key = "general"; // Use a specific key for general updates
 
     if (!agentId) {
       return NextResponse.json(
-        { success: false, error: 'agentId is required.' },
+        { success: false, error: "agentId is required." },
         { status: 400 }
       );
     }
 
-    // Call updateAgentMetadata with agentId and data
-    const result = await updateAgentMetadata(agentId, data);
+    const result = await updateAgentMetadata(formData, agentId, key);
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      success: result.success ?? true,
+      error: result.error,
+    });
   } catch (error: any) {
-    console.error('Error in updateAgentGeneral API route:', error);
+    console.error("Error in updateAgentGeneral API route:", error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Internal Server Error' },
+      { success: false, error: error.message || "Internal Server Error" },
       { status: 500 }
     );
   }

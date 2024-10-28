@@ -1,15 +1,32 @@
 import { unstable_cache } from "next/cache";
 import db from "./db";
 import { and, desc, eq, not } from "drizzle-orm";
-import { posts, sites, users } from "./schema";
+import { posts, sites, users, agents } from "./schema";
 import { serialize } from "next-mdx-remote/serialize";
 import { replaceExamples, replaceTweets } from "@/lib/remark-plugins";
+import { AgentSettings } from "@/lib/types";
 
-import { agents } from "./schema";
+interface Site {
+  id: string;
+  name: string | null;
+  description: string | null;
+  logo: string | null;
+}
 
+interface Agent {
+  id: string;
+  name: string | null;
+  description: string | null;
+  slug: string;
+  userId: string | null;
+  siteId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  published: boolean;
+  settings: AgentSettings;
+  site: Site;
+}
 
-
-// Fetch agents for a site
 export async function getAgentsForSite(domain: string) {
   const subdomain = domain.endsWith(`.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}`)
     ? domain.replace(`.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}`, "")
@@ -46,7 +63,6 @@ export async function getAgentsForSite(domain: string) {
   )();
 }
 
-// Fetch a single agent's data
 export async function getAgentData(domain: string, slug: string) {
   const subdomain = domain.endsWith(`.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}`)
     ? domain.replace(`.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}`, "")
@@ -72,39 +88,43 @@ export async function getAgentData(domain: string, slug: string) {
               : eq(sites.customDomain, domain)
           )
         )
-        .then((res) =>
-          res.length > 0
-            ? {
-                ...res[0].agent,
-                site: res[0].site
-                  ? {
-                      ...res[0].site,
-                      user: res[0].user,
-                    }
-                  : null,
-              }
-            : null
-        );
+        .then((res) => {
+          if (res.length === 0) return null;
+
+          // Transform the data to match the Agent interface
+          const transformedData: Agent = {
+            id: res[0].agent.id,
+            name: res[0].agent.name,
+            description: res[0].agent.description,
+            slug: res[0].agent.slug,
+            userId: res[0].agent.userId,
+            siteId: res[0].agent.siteId,
+            createdAt: res[0].agent.createdAt,
+            updatedAt: res[0].agent.updatedAt,
+            published: res[0].agent.published,
+            settings: res[0].agent.settings as AgentSettings,
+            site: {
+              id: res[0].site?.id ?? '',
+              name: res[0].site?.name ?? null,
+              description: res[0].site?.description ?? null,
+              logo: res[0].site?.logo ?? null,
+            }
+          };
+
+          return transformedData;
+        });
 
       if (!data) return null;
 
-      // If you have content that needs to be processed, e.g., MDX
-      // const mdxSource = await getMdxSource(data.content!);
-
-      return {
-        ...data,
-        // mdxSource,
-      };
+      return data;
     },
     [`${domain}-${slug}`],
     {
-      revalidate: 900, // 15 minutes
+      revalidate: 900,
       tags: [`${domain}-${slug}`],
     }
   )();
 }
-
-
 
 export async function getSiteData(domain: string) {
   const subdomain = domain.endsWith(`.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}`)
@@ -126,9 +146,10 @@ export async function getSiteData(domain: string) {
     {
       revalidate: 900,
       tags: [`${domain}-metadata`],
-    },
+    }
   )();
 }
+
 
 export async function getPostsForSite(domain: string) {
   const subdomain = domain.endsWith(`.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}`)

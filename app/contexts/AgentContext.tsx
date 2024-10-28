@@ -51,7 +51,16 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     if (agent) {
       startTransitionPublishing(async () => {
         const updatedAgent = { ...agent, published: !agent.published };
-        await updateAgentMetadata(agent.id, { published: updatedAgent.published });
+        // Create FormData and append the necessary values
+        const formData = new FormData();
+        formData.append('published', String(updatedAgent.published));
+        
+        await updateAgentMetadata(
+          formData,
+          agent.id,
+          'published'  // Add the key parameter
+        );
+        
         setAgent(updatedAgent);
       });
     }

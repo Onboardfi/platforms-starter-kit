@@ -1,13 +1,28 @@
 import { notFound } from "next/navigation";
-import { getAgentData, getSiteData } from "@/lib/fetchers";
-import BlurImage from "@/components/blur-image";
-import { placeholderBlurhash, toDateString } from "@/lib/utils";
-import db from "@/lib/db";
-import { agents, sites } from "@/lib/schema";
-import { eq } from "drizzle-orm";
+import { getAgentData } from "@/lib/fetchers";
 import AgentConsole from "@/components/agent-console";
+import { AgentSettings } from "@/lib/types";
 
-// Keep existing generateMetadata and generateStaticParams functions...
+interface Site {
+  id: string;
+  name: string | null;
+  description: string | null;
+  logo: string | null;
+}
+
+interface Agent {
+  id: string;
+  name: string | null;
+  description: string | null;
+  slug: string;
+  userId: string | null;
+  siteId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  published: boolean;
+  settings: AgentSettings;
+  site: Site;
+}
 
 export default async function SiteAgentPage({
   params,
@@ -22,14 +37,20 @@ export default async function SiteAgentPage({
     notFound();
   }
 
+  const agent: Agent = {
+    ...data,
+    site: {
+      id: data.site.id,
+      name: data.site.name,
+      description: data.site.description,
+      logo: data.site.logo,
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen overflow-hidden">
-      {/* Navigation with Agent Info */}
-    
-
-      {/* Main Content - Agent Console */}
       <div className="flex-1">
-        <AgentConsole agent={data} />
+        <AgentConsole agent={agent} />
       </div>
     </div>
   );

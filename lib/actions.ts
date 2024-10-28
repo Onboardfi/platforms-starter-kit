@@ -1,3 +1,5 @@
+
+
 "use server";
 
 import { getSession } from "@/lib/auth";
@@ -208,11 +210,14 @@ export const updateAgentMetadata = withAgentAuth(
       site: SelectSite;
     },
     key: string
-  ): Promise<{ error?: string }> => {  // Change return type to match expected format
+  ): Promise<UpdateAgentMetadataResponse> => {
     try {
       if (key === "image") {
         if (!process.env.BLOB_READ_WRITE_TOKEN) {
-          return { error: "Missing BLOB_READ_WRITE_TOKEN token" };
+          return { 
+            success: false,
+            error: "Missing BLOB_READ_WRITE_TOKEN token" 
+          };
         }
 
         const file = formData.get("image") as File;
@@ -254,12 +259,18 @@ export const updateAgentMetadata = withAgentAuth(
         revalidateTag(`${agent.site.customDomain}-${agent.slug}`);
       }
 
-      return {};  // Return empty object on success
+      return { success: true };  // Return success true on successful execution
     } catch (error: any) {
       if (error.code === "P2002") {
-        return { error: `This ${key} is already in use` };
+        return { 
+          success: false,
+          error: `This ${key} is already in use` 
+        };
       } else {
-        return { error: error.message || "An error occurred" };
+        return { 
+          success: false,
+          error: error.message || "An error occurred" 
+        };
       }
     }
   }
@@ -361,7 +372,6 @@ export const deleteAgent = async (
     return;
   }
 };
-
 export const getAgentById = async (agentId: string): Promise<SelectAgent | null> => {
   const agent = await db.query.agents.findFirst({
     where: eq(agents.id, agentId),
@@ -375,22 +385,52 @@ export const getAgentById = async (agentId: string): Promise<SelectAgent | null>
       createdAt: true,
       updatedAt: true,
       published: true,
-      
       settings: true,
       image: true,
       imageBlurhash: true,
     },
     with: {
-      site: true,
+      site: {
+        columns: {
+          id: true,
+          name: true,
+          description: true,
+          logo: true,  
+          font: true,
+          image: true,  // Added image
+          imageBlurhash: true,  // Added imageBlurhash
+          subdomain: true,
+          customDomain: true,
+          message404: true,
+          createdAt: true,
+          updatedAt: true,
+          userId: true,
+        }
+      },
       user: true,
     },
   });
 
   if (!agent) return null;
 
-  // Transform the result to match SelectAgent type
+  // Transform the result to match SelectAgent type, ensuring site is not null
   const selectAgent: SelectAgent = {
     ...agent,
+    site: agent.site || {
+      id: '',
+      name: null,
+      description: null,
+      logo: null,
+      font: 'font-cal',
+      image: null,  // Added image
+      imageBlurhash: null,  // Added imageBlurhash
+      subdomain: null,
+      customDomain: null,
+      message404: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      userId: null,
+    },
     siteName: agent.site?.name ?? null,
     userName: agent.user?.name ?? null,
     settings: agent.settings as AgentSettings,
@@ -398,7 +438,6 @@ export const getAgentById = async (agentId: string): Promise<SelectAgent | null>
 
   return selectAgent;
 };
-
 export const updateSite = withSiteAuth(
   async (
     formData: FormData,

@@ -1,25 +1,27 @@
-
-// Modified create-agent-button.tsx
+// components/create-agent-button.tsx
 "use client";
 
 import { useTransition } from "react";
 import { createAgent } from "@/lib/actions";
 import { cn } from "@/lib/utils";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import LoadingDots from "@/components/icons/loading-dots";
 import va from "@vercel/analytics";
 import { toast } from "sonner";
 
-export default function CreateAgentButton() {
+interface CreateAgentButtonProps {
+  siteId: string;
+}
+
+export default function CreateAgentButton({ siteId }: CreateAgentButtonProps) {
   const router = useRouter();
-  const { id } = useParams() as { id: string };
   const [isPending, startTransition] = useTransition();
 
   return (
     <button
       onClick={() =>
         startTransition(async () => {
-          const response = await createAgent(null, id, null);
+          const response = await createAgent(null, siteId, null);
           if (response.error) {
             toast.error(response.error);
           } else if (response.id) {

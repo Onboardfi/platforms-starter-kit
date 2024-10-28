@@ -1,5 +1,3 @@
-// components/form/delete-agent-form.tsx
-
 "use client";
 
 import LoadingDots from "@/components/icons/loading-dots";
@@ -14,21 +12,25 @@ export default function DeleteAgentForm({ agentName }: { agentName: string }) {
   const { id } = useParams() as { id: string };
   const router = useRouter();
 
+  const handleSubmit = async (formData: FormData) => {
+    if (!window.confirm("Are you sure you want to delete your agent?")) {
+      return;
+    }
+
+    try {
+      await deleteAgent(formData, id);
+      va.track("Deleted Agent");
+      router.refresh();
+      router.push(`/sites`); // Adjust the route as needed
+      toast.success(`Successfully deleted agent!`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete agent");
+    }
+  };
+
   return (
     <form
-      action={async (formData: FormData) => {
-        if (window.confirm("Are you sure you want to delete your agent?")) {
-          const res = await deleteAgent(formData, id);
-          if ('error' in res && res.error) {
-            toast.error(res.error);
-          } else {
-            va.track("Deleted Agent");
-            router.refresh();
-            router.push(`/app/agents`); // Adjust the route as needed
-            toast.success(`Successfully deleted agent!`);
-          }
-        }
-      }}
+      action={handleSubmit}
       className="rounded-lg border border-red-600 bg-white dark:bg-black"
     >
       <div className="relative flex flex-col space-y-4 p-5 sm:p-10">
@@ -64,6 +66,7 @@ function FormButton() {
   const { pending } = useFormStatus();
   return (
     <button
+      type="submit"
       className={cn(
         "flex h-8 w-32 items-center justify-center space-x-2 rounded-md border text-sm transition-all focus:outline-none sm:h-10",
         pending
@@ -72,7 +75,11 @@ function FormButton() {
       )}
       disabled={pending}
     >
-      {pending ? <LoadingDots color="#808080" /> : <p>Confirm Delete</p>}
+      {pending ? (
+        <LoadingDots color="#808080" />
+      ) : (
+        <span>Confirm Delete</span>
+      )}
     </button>
   );
 }

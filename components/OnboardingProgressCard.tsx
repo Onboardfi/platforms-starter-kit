@@ -14,13 +14,14 @@ interface OnboardingProgressSidebarProps {
   memoryKv: { [key: string]: any };
   steps?: Step[];
   title?: string;
-  logo?: string | null; // Changed from avatarUrl to logo
+  logo?: string | null;
   availableTools: string[];
   agentId: string;
   onStepsUpdated: () => void;
   primaryColor: string;
   secondaryColor: string;
 }
+
 const containerVariants = {
   hidden: { opacity: 0, x: -20 },
   visible: {
@@ -50,7 +51,7 @@ export default function OnboardingProgressSidebar({
   memoryKv,
   steps = [],
   title = "401 CRM Agent",
-  logo = null, // Changed from avatarUrl to logo with null default
+  logo = null,
   availableTools,
   agentId,
   onStepsUpdated,
@@ -59,6 +60,7 @@ export default function OnboardingProgressSidebar({
 }: OnboardingProgressSidebarProps) {
   const [confettiActive, setConfettiActive] = useState(false);
   const [completedStepsCount, setCompletedStepsCount] = useState(0);
+  const [imgError, setImgError] = useState(false);
 
   const getStepCompletion = useCallback((step: Step): boolean => {
     if (step.completed) return true;
@@ -111,11 +113,38 @@ export default function OnboardingProgressSidebar({
     }
   }, [steps, completedStepsCount, getStepCompletion, fireConfetti]);
 
+  useEffect(() => {
+    // Reset image error state when logo prop changes
+    setImgError(false);
+  }, [logo]);
+
   if (!steps.length) return null;
 
   const completedSteps = steps.filter(step => getStepCompletion(step)).length;
   const progress = (completedSteps / steps.length) * 100;
   const isComplete = completedSteps === steps.length;
+
+  const renderAvatar = () => {
+    if (logo && !imgError) {
+      return (
+        <img 
+          src={logo} 
+          alt={`${title} logo`}
+          className="h-full w-full object-cover" 
+          onError={() => setImgError(true)}
+        />
+      );
+    }
+
+    // Fallback to initials if no logo or logo failed to load
+    return (
+      <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-purple-600 to-purple-800">
+        <span className="text-2xl font-bold text-white">
+          {title?.charAt(0) || "A"}
+        </span>
+      </div>
+    );
+  };
 
   return (
     <motion.div
@@ -141,15 +170,10 @@ export default function OnboardingProgressSidebar({
             <div className="relative">
               {/* Avatar Border */}
               <div className="h-24 w-24 rounded-full border-4 border-black bg-black">
-  <div className="h-full w-full rounded-full overflow-hidden bg-purple-600">
-    {logo ? (
-      <img src={logo} alt="" className="h-full w-full object-cover" />
-    ) : (
-      // Default 401.png image
-      <img src="/401.png" alt="Default logo" className="h-full w-full object-cover" />
-    )}
-  </div>
-</div>
+                <div className="h-full w-full rounded-full overflow-hidden">
+                  {renderAvatar()}
+                </div>
+              </div>
             </div>
           </div>
         </div>

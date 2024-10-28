@@ -11,23 +11,30 @@ import va from "@vercel/analytics";
 export default function DeleteSiteForm({ siteName }: { siteName: string }) {
   const { id } = useParams() as { id: string };
   const router = useRouter();
+
+  const handleSubmit = async (formData: FormData) => {
+    if (!window.confirm("Are you sure you want to delete your site?")) {
+      return;
+    }
+
+    try {
+      const res = await deleteSite(formData, id, "delete");
+      if (res.error) {
+        toast.error(res.error);
+      } else {
+        va.track("Deleted Site");
+        router.refresh();
+        router.push("/sites");
+        toast.success(`Successfully deleted site!`);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete site");
+    }
+  };
+
   return (
     <form
-      action={async (data: FormData) =>
-        window.confirm("Are you sure you want to delete your site?") &&
-        deleteSite(data, id, "delete")
-          .then(async (res) => {
-            if (res.error) {
-              toast.error(res.error);
-            } else {
-              va.track("Deleted Site");
-              router.refresh();
-              router.push("/sites");
-              toast.success(`Successfully deleted site!`);
-            }
-          })
-          .catch((err: Error) => toast.error(err.message))
-      }
+      action={handleSubmit}
       className="rounded-lg border border-red-600 bg-white dark:bg-black"
     >
       <div className="relative flex flex-col space-y-4 p-5 sm:p-10">
@@ -70,6 +77,7 @@ function FormButton() {
           : "border-red-600 bg-red-600 text-white hover:bg-white hover:text-red-600 dark:hover:bg-transparent",
       )}
       disabled={pending}
+      type="submit"
     >
       {pending ? <LoadingDots color="#808080" /> : <p>Confirm Delete</p>}
     </button>

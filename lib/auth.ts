@@ -1,3 +1,5 @@
+
+
 import { getServerSession, type NextAuthOptions } from "next-auth";
 import GitHubProvider from "next-auth/providers/github";
 import db from "./db";
@@ -5,6 +7,9 @@ import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { Adapter } from "next-auth/adapters";
 import { accounts, sessions, users, verificationTokens } from "./schema";
 import { eq } from "drizzle-orm";
+import { SelectAgent, SelectSite } from './schema';
+import { UpdateAgentMetadataResponse } from './types';
+
 
 const VERCEL_DEPLOYMENT = !!process.env.VERCEL_URL;
 
@@ -23,7 +28,7 @@ export const authOptions: NextAuthOptions = {
         };
       },
     }),
-  ],
+  ], 
   pages: {
     signIn: `/login`,
     verifyRequest: `/login`,
@@ -88,15 +93,23 @@ export function getSession() {
     };
   } | null>;
 }
-
-export function withAgentAuth<T extends any[]>(
-  action: (...args: T) => Promise<{ error?: string }>
+export function withAgentAuth(
+  action: (
+    formData: FormData,
+    agent: SelectAgent & { site: SelectSite }, // Remove nullability from site
+    key: string
+  ) => Promise<UpdateAgentMetadataResponse>
 ) {
-  return async (formData: FormData, agentId: string, key: string) => {
+  return async (
+    formData: FormData,
+    agentId: string,
+    key: string
+  ): Promise<UpdateAgentMetadataResponse> => {
     const session = await getSession();
     if (!session?.user.id) {
       return {
-        error: "Not authenticated",
+        success: false,
+        error: "Not authenticated"
       };
     }
 
@@ -107,13 +120,23 @@ export function withAgentAuth<T extends any[]>(
       },
     });
 
-    if (!agent || agent.userId !== session.user.id) {
+    if (!agent || !agent.site || agent.userId !== session.user.id) {
       return {
-        error: "Agent not found or unauthorized",
+        success: false,
+        error: "Agent not found or unauthorized"
       };
     }
 
-    return action(formData, agent, key);
+    // Create a properly typed agent object
+    const typedAgent: SelectAgent & { site: SelectSite } = {
+      ...agent,
+      site: agent.site,
+      siteName: agent.site?.name ?? null,
+      userName: null, // Add any missing required properties
+      settings: agent.settings
+    };
+
+    return action(formData, typedAgent, key);
   };
 }
 

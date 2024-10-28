@@ -23,7 +23,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from "@/lib/utils";
 
 
-import OnboardingProgressCard from '@/components/OnboardingProgressCard';
+import OnboardingProgressSidebar from '@/components/OnboardingProgressCard';
 import { WavRecorder, WavStreamPlayer } from '@/lib/wavtools';
 import { instructions } from '@/app/utils/conversation_config.js';
 import { WavRenderer } from '@/app/utils/wav_renderer';
@@ -44,6 +44,18 @@ interface Agent {
   published: boolean;
   settings: AgentSettings;
   logo?: string | null;
+
+
+
+
+
+  site: {
+    id: string;
+    name: string | null;
+    description: string | null;
+    logo: string | null;
+    // ... other site fields
+  };
 }
 
 interface RealtimeEvent {
@@ -554,18 +566,18 @@ useEffect(() => {
     <TooltipProvider>
 <div className="min-h-screen bg-gray-1100 bg-[url('/grid.svg')]">
 {/* Fixed Left Sidebar */}
-        <div className="fixed left-0 top-0 bottom-0 w-96 border-r border-gray-800 bg-black overflow-y-auto">
+<div className="fixed left-0 top-0 bottom-0 w-96 border-r border-gray-800 bg-black overflow-y-auto">
           <div className="flex-1 flex flex-col">
-         
-            <OnboardingProgressCard
+            <OnboardingProgressSidebar
               emailSent={emailSent}
               notesTaken={notesTaken}
               notionMessageSent={notionMessageSent}
               memoryKv={memoryKv}
-              headingText={agent.settings?.headingText}
-              availableTools={agent.settings?.tools || []}
               steps={data.settings?.steps || []}
-              agentId={agent.id}
+              title={data.name || undefined}
+              logo={data.site?.logo || null} // Pass the site logo here
+              availableTools={data.settings?.tools || []}
+              agentId={data.id}
               onStepsUpdated={fetchAgentData}
               primaryColor={primaryColor}
               secondaryColor={secondaryColor}

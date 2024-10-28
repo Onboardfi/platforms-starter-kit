@@ -1,16 +1,17 @@
 import React from 'react';
 import './Button.scss';
 
-import { Icon } from 'react-feather';
+import * as Icons from 'react-feather';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   label?: string;
-  icon?: Icon;
+  icon?: React.FC<React.SVGProps<SVGSVGElement>>; // Updated type
   iconPosition?: 'start' | 'end';
   iconColor?: 'red' | 'green' | 'grey';
   iconFill?: boolean;
   buttonStyle?: 'regular' | 'action' | 'alert' | 'flush';
 }
+
 
 export function Button({
   label = 'Okay',
