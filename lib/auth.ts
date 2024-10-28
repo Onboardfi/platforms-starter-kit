@@ -4,6 +4,7 @@ import db from "./db";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { Adapter } from "next-auth/adapters";
 import { accounts, sessions, users, verificationTokens } from "./schema";
+import { eq } from "drizzle-orm";
 
 const VERCEL_DEPLOYMENT = !!process.env.VERCEL_URL;
 
@@ -88,6 +89,34 @@ export function getSession() {
   } | null>;
 }
 
+export function withAgentAuth<T extends any[]>(
+  action: (...args: T) => Promise<{ error?: string }>
+) {
+  return async (formData: FormData, agentId: string, key: string) => {
+    const session = await getSession();
+    if (!session?.user.id) {
+      return {
+        error: "Not authenticated",
+      };
+    }
+
+    const agent = await db.query.agents.findFirst({
+      where: (agents) => eq(agents.id, agentId),
+      with: {
+        site: true,
+      },
+    });
+
+    if (!agent || agent.userId !== session.user.id) {
+      return {
+        error: "Agent not found or unauthorized",
+      };
+    }
+
+    return action(formData, agent, key);
+  };
+}
+
 export function withSiteAuth(action: any) {
   return async (
     formData: FormData | null,
@@ -102,7 +131,7 @@ export function withSiteAuth(action: any) {
     }
 
     const site = await db.query.sites.findFirst({
-      where: (sites, { eq }) => eq(sites.id, siteId),
+      where: (sites) => eq(sites.id, siteId),
     });
 
     if (!site || site.userId !== session.user.id) {
@@ -129,7 +158,7 @@ export function withPostAuth(action: any) {
     }
 
     const post = await db.query.posts.findFirst({
-      where: (posts, { eq }) => eq(posts.id, postId),
+      where: (posts) => eq(posts.id, postId),
       with: {
         site: true,
       },

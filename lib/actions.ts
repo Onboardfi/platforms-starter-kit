@@ -11,7 +11,7 @@ import { put } from "@vercel/blob";
 import { eq, InferModel } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 import { revalidateTag } from "next/cache";
-import { withPostAuth, withSiteAuth } from "./auth";
+import { withPostAuth, withSiteAuth, withAgentAuth } from "./auth";
 import db from "./db";
 import { redirect } from "next/navigation";
 import { createId } from "@paralleldrive/cuid2";
@@ -36,6 +36,7 @@ interface CreateAgentResponse {
   error?: string;
   id?: string;
 }
+
 const nanoid = customAlphabet(
   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
   7
@@ -48,6 +49,7 @@ type PostWithSite = InferModel<typeof posts, "select"> & {
 type AgentWithSite = InferModel<typeof agents, "select"> & {
   site: SelectSite;
 };
+
 export const createSite = async (formData: FormData): Promise<CreateSiteResponse> => {
   const session = await getSession();
   if (!session?.user.id) {
@@ -85,196 +87,6 @@ export const createSite = async (formData: FormData): Promise<CreateSiteResponse
   }
 };
 
-
-export const updateStepCompletionStatus = async (
-  agentId: string,
-  stepIndex: number,
-  completed: boolean
-): Promise<UpdateAgentMetadataResponse> => {
-  const agent = await getAgentById(agentId);
-
-  if (!agent) {
-    console.error(`Agent with ID ${agentId} not found.`);
-    return { success: false, error: "Agent not found." };
-  }
-
-  if (!agent.settings.steps || stepIndex < 0 || stepIndex >= agent.settings.steps.length) {
-    console.error(`Invalid step index ${stepIndex} for agent ${agentId}.`);
-    return { success: false, error: "Invalid step index." };
-  }
-
-  const updatedSteps = agent.settings.steps.map((step, index) => 
-    index === stepIndex ? { ...step, completed } : step
-  );
-
-  const updateResponse = await updateAgentMetadata(agentId, {
-    settings: {
-      ...agent.settings,
-      steps: updatedSteps,
-    },
-  });
-
-  if (!updateResponse.success) {
-    console.error(`Failed to update agent metadata: ${updateResponse.error}`);
-  }
-
-  return updateResponse;
-};
-
-
-
-export const updateAgentMetadata = async (
-  agentId: string,
-  data: Record<string, any>
-): Promise<UpdateAgentMetadataResponse> => {
-  const session = await getSession();
-  if (!session?.user.id) {
-    console.error("Unauthorized access attempt to update agent metadata.");
-    return { success: false, error: "Unauthorized" };
-  }
-
-  const topLevelKeys = ["name", "description", "slug", "published"];
-  const settingsKeys = [
-    "headingText",
-    "tools",
-    "initialMessage",
-    "steps",
-    "primaryColor",
-    "secondaryColor",
-    "aiModel", // Include aiModel
-    "apiKeys",  // Include apiKeys
-  ];
-
-  const agent = await db.query.agents.findFirst({
-    where: eq(agents.id, agentId),
-    with: { site: true },
-  }) as AgentWithSite | undefined;
-
-  if (!agent) {
-    console.error(`Agent with ID ${agentId} not found.`);
-    return { success: false, error: "Agent not found." };
-  }
-
-  if (agent.userId !== session.user.id) {
-    console.error(`User ${session.user.id} unauthorized to update agent ${agentId}.`);
-    return { success: false, error: "Unauthorized to update this agent." };
-  }
-
-  try {
-    let updateData: Partial<SelectAgent> = {};
-    let settingsUpdate: Partial<AgentSettings> = { ...agent.settings };
-
-    for (const [key, value] of Object.entries(data)) {
-      if (topLevelKeys.includes(key)) {
-        updateData[key as keyof SelectAgent] = value;
-      } else if (key === "settings" && typeof value === "object" && value !== null) {
-        for (const [sKey, sValue] of Object.entries(value)) {
-          if (settingsKeys.includes(sKey)) {
-            if (sKey === "headingText" && typeof sValue === "string") {
-              settingsUpdate.headingText = sValue;
-            } else if (sKey === "tools" && Array.isArray(sValue)) {
-              settingsUpdate.tools = sValue as string[];
-            } else if (sKey === "initialMessage" && typeof sValue === "string") {
-              settingsUpdate.initialMessage = sValue;
-            } else if (sKey === "steps" && Array.isArray(sValue)) {
-              settingsUpdate.steps = sValue.map((step: any) => ({
-                title: step.title,
-                description: step.description,
-                completionTool: step.completionTool as 'email' | 'memory' | 'notesTaken' | 'notion' | null,
-                completed: step.completed ?? false,
-              }));
-            } else if (sKey === "primaryColor" && typeof sValue === "string") {
-              settingsUpdate.primaryColor = sValue;
-            } else if (sKey === "secondaryColor" && typeof sValue === "string") {
-              settingsUpdate.secondaryColor = sValue;
-            } else if (sKey === "aiModel" && typeof sValue === "string") {
-              settingsUpdate.aiModel = sValue;
-            } else if (sKey === "apiKeys" && typeof sValue === "object" && sValue !== null) {
-              settingsUpdate.apiKeys = {
-                ...settingsUpdate.apiKeys,
-                ...(sValue as Record<string, string>),
-              };
-            } else {
-              console.error(`Invalid value for settings key: ${sKey}`);
-              return { success: false, error: `Invalid value for settings key: ${sKey}` };
-            }
-          } else {
-            console.error(`Invalid settings key: ${sKey}`);
-            return { success: false, error: `Invalid settings key: ${sKey}` };
-          }
-        }
-      } else {
-        console.error(`Invalid metadata key: ${key}`);
-        return { success: false, error: `Invalid metadata key: ${key}` };
-      }
-    }
-
-    const newSettings: AgentSettings = { ...agent.settings, ...settingsUpdate };
-
-    await db
-      .update(agents)
-      .set({
-        ...updateData,
-        settings: newSettings,
-        updatedAt: new Date(),
-      })
-      .where(eq(agents.id, agentId))
-      .returning();
-
-    revalidateTag(
-      `${agent.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-agents`
-    );
-    if (agent.site?.customDomain) {
-      revalidateTag(`${agent.site.customDomain}-agents`);
-    }
-
-    return { success: true };
-  } catch (error: any) {
-    console.error("Error updating agent metadata:", error);
-    return { success: false, error: error.message || "Failed to update agent metadata." };
-  }
-};
-export const updateAgentStepsWithoutAuth = async (
-  agentId: string,
-  steps: Step[]
-): Promise<UpdateAgentMetadataResponse> => {
-  try {
-    const agent = await db.query.agents.findFirst({
-      where: eq(agents.id, agentId),
-      with: { site: true },
-    }) as AgentWithSite | undefined;
-
-    if (!agent) {
-      return { success: false, error: "Agent not found." };
-    }
-
-    // Update only the steps in settings
-    const newSettings = { ...agent.settings, steps };
-
-    await db
-      .update(agents)
-      .set({
-        settings: newSettings,
-        updatedAt: new Date(),
-      })
-      .where(eq(agents.id, agentId))
-      .returning();
-
-    // Revalidate cache tags if necessary
-    revalidateTag(
-      `${agent.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-agents`
-    );
-    if (agent.site?.customDomain) {
-      revalidateTag(`${agent.site.customDomain}-agents`);
-    }
-
-    return { success: true };
-  } catch (error: any) {
-    console.error("Error updating agent steps:", error);
-    return { success: false, error: error.message || "Failed to update agent steps." };
-  }
-};
-
 export const createAgent = withSiteAuth(
   async (_: FormData, site: SelectSite): Promise<CreateAgentResponse> => {
     const session = await getSession();
@@ -306,6 +118,149 @@ export const createAgent = withSiteAuth(
       return { id: agent.id };
     } catch (error: any) {
       return { error: error.message || "Failed to create agent" };
+    }
+  }
+);
+
+export const updateStepCompletionStatus = async (
+  agentId: string,
+  stepIndex: number,
+  completed: boolean
+): Promise<UpdateAgentMetadataResponse> => {
+  const agent = await getAgentById(agentId);
+
+  if (!agent) {
+    console.error(`Agent with ID ${agentId} not found.`);
+    return { success: false, error: "Agent not found." };
+  }
+
+  if (!agent.settings.steps || stepIndex < 0 || stepIndex >= agent.settings.steps.length) {
+    console.error(`Invalid step index ${stepIndex} for agent ${agentId}.`);
+    return { success: false, error: "Invalid step index." };
+  }
+
+  const updatedSteps = agent.settings.steps.map((step, index) => 
+    index === stepIndex ? { ...step, completed } : step
+  );
+
+  try {
+    await db
+      .update(agents)
+      .set({
+        settings: {
+          ...agent.settings,
+          steps: updatedSteps,
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(agents.id, agentId))
+      .returning();
+
+    return { success: true };
+  } catch (error: any) {
+    console.error(`Failed to update agent steps: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+};
+
+export const updateAgentStepsWithoutAuth = async (
+  agentId: string,
+  steps: Step[]
+): Promise<UpdateAgentMetadataResponse> => {
+  try {
+    const agent = await db.query.agents.findFirst({
+      where: eq(agents.id, agentId),
+      with: { site: true },
+    }) as AgentWithSite | undefined;
+
+    if (!agent) {
+      return { success: false, error: "Agent not found." };
+    }
+
+    const newSettings = { ...agent.settings, steps };
+
+    await db
+      .update(agents)
+      .set({
+        settings: newSettings,
+        updatedAt: new Date(),
+      })
+      .where(eq(agents.id, agentId))
+      .returning();
+
+    revalidateTag(
+      `${agent.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-agents`
+    );
+    if (agent.site?.customDomain) {
+      revalidateTag(`${agent.site.customDomain}-agents`);
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error updating agent steps:", error);
+    return { success: false, error: error.message || "Failed to update agent steps." };
+  }
+};
+export const updateAgentMetadata = withAgentAuth(
+  async (
+    formData: FormData,
+    agent: SelectAgent & {
+      site: SelectSite;
+    },
+    key: string
+  ): Promise<{ error?: string }> => {  // Change return type to match expected format
+    try {
+      if (key === "image") {
+        if (!process.env.BLOB_READ_WRITE_TOKEN) {
+          return { error: "Missing BLOB_READ_WRITE_TOKEN token" };
+        }
+
+        const file = formData.get("image") as File;
+        const filename = `${nanoid()}.${file.type.split("/")[1]}`;
+
+        const { url } = await put(filename, file, {
+          access: "public",
+        });
+
+        const blurhash = await getBlurDataURL(url);
+        await db
+          .update(agents)
+          .set({
+            image: url,
+            imageBlurhash: blurhash,
+          })
+          .where(eq(agents.id, agent.id))
+          .returning();
+      } else {
+        const value = formData.get(key) as string;
+        await db
+          .update(agents)
+          .set({
+            [key]: value,
+          })
+          .where(eq(agents.id, agent.id))
+          .returning();
+      }
+
+      revalidateTag(
+        `${agent.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-agents`
+      );
+      revalidateTag(
+        `${agent.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-${agent.slug}`
+      );
+
+      if (agent.site?.customDomain) {
+        revalidateTag(`${agent.site.customDomain}-agents`);
+        revalidateTag(`${agent.site.customDomain}-${agent.slug}`);
+      }
+
+      return {};  // Return empty object on success
+    } catch (error: any) {
+      if (error.code === "P2002") {
+        return { error: `This ${key} is already in use` };
+      } else {
+        return { error: error.message || "An error occurred" };
+      }
     }
   }
 );
