@@ -1,5 +1,5 @@
 
-// ClientAgentStepsWrapper.tsx
+// components/ClientAgentStepsWrapper.tsx
 'use client';
 
 import { useCallback } from 'react';
@@ -7,7 +7,7 @@ import AgentStepsForm from '@/components/AgentStepsForm';
 import { useRouter } from 'next/navigation';
 import { Step } from '@/lib/schema';
 
-interface ClientAgentStepsWrapperProps {
+export interface ClientAgentStepsWrapperProps {
   existingSteps: Step[];
   tools: string[];
 }
