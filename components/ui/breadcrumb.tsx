@@ -1,7 +1,5 @@
 import * as React from "react";
-import { Slot } from "@radix-ui/react-slot";
 import { ChevronRight, MoreHorizontal } from "lucide-react";
-
 import { cn } from "@/lib/utils";
 
 const Breadcrumb = React.forwardRef<
@@ -41,20 +39,14 @@ BreadcrumbItem.displayName = "BreadcrumbItem";
 
 const BreadcrumbLink = React.forwardRef<
   HTMLAnchorElement,
-  React.ComponentPropsWithoutRef<"a"> & {
-    asChild?: boolean;
-  }
->(({ asChild, className, ...props }, ref) => {
-  const Comp = asChild ? Slot : "a";
-
-  return (
-    <Comp
-      ref={ref}
-      className={cn("transition-colors hover:text-foreground", className)}
-      {...props}
-    />
-  );
-});
+  React.ComponentPropsWithoutRef<"a">
+>(({ className, ...props }, ref) => (
+  <a
+    ref={ref}
+    className={cn("transition-colors hover:text-foreground", className)}
+    {...props}
+  />
+));
 BreadcrumbLink.displayName = "BreadcrumbLink";
 
 const BreadcrumbPage = React.forwardRef<
@@ -102,7 +94,7 @@ const BreadcrumbEllipsis = ({
     <span className="sr-only">More</span>
   </span>
 );
-BreadcrumbEllipsis.displayName = "BreadcrumbElipssis";
+BreadcrumbEllipsis.displayName = "BreadcrumbEllipsis";
 
 export {
   Breadcrumb,
