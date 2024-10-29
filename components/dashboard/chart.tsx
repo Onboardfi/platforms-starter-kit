@@ -1,10 +1,15 @@
-// components/dashboard/chart.tsx
-
 "use client";
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { CartesianGrid, Line, LineChart, XAxis } from "recharts";
+import { 
+  CartesianGrid, 
+  Line, 
+  LineChart, 
+  XAxis,
+  ResponsiveContainer,
+  Tooltip
+} from "recharts";
 
 import {
   Card,
@@ -20,24 +25,29 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 
+interface ChartDataPoint {
+  date: string;
+  agents: number;
+  sites: number;
+}
+
+interface ChartProps {
+  chartData: ChartDataPoint[];
+  className?: string;
+}
+
 const chartConfig = {
   agents: {
     label: "Onboards",
-    color: "#8884d8", // Use a valid color for agents
+    color: "#8884d8",
   },
   sites: {
     label: "Sites",
-    color: "#82ca9d", // Use a different color for sites
+    color: "#82ca9d",
   },
 } satisfies ChartConfig;
 
-export function Chart({
-  chartData,
-  className,
-}: {
-  chartData: { date: string; agents: number; sites: number }[];
-  className?: string;
-}) {
+export function Chart({ chartData, className }: ChartProps) {
   const totalAgents = React.useMemo(
     () => chartData.reduce((acc, curr) => acc + Number(curr.agents), 0),
     [chartData]
@@ -87,61 +97,63 @@ export function Chart({
           config={chartConfig}
           className="aspect-auto h-[250px] w-full"
         >
-          <LineChart
-            data={chartData}
-            margin={{
-              left: 12,
-              right: 12,
-            }}
-          >
-            <CartesianGrid vertical={false} />
-            <XAxis
-              dataKey="date"
-              tickLine={false}
-              axisLine={false}
-              tickMargin={8}
-              minTickGap={32}
-              tickFormatter={(value) => {
-                const date = new Date(value);
-                return date.toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                });
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart
+              data={chartData}
+              margin={{
+                left: 12,
+                right: 12,
               }}
-            />
-            <ChartTooltip
-              content={
-                <ChartTooltipContent
-                  className="w-[150px]"
-                  nameKey="name"
-                  labelFormatter={(value) => {
-                    return new Date(value).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                      timeZone: "UTC",
-                    });
-                  }}
-                />
-              }
-            />
-            <Line
-              dataKey="agents"
-              name="Onboards"
-              type="monotone"
-              stroke={chartConfig.agents.color}
-              strokeWidth={2}
-              dot={false}
-            />
-            <Line
-              dataKey="sites"
-              name="Sites"
-              type="monotone"
-              stroke={chartConfig.sites.color}
-              strokeWidth={2}
-              dot={false}
-            />
-          </LineChart>
+            >
+              <CartesianGrid vertical={false} strokeDasharray="3 3" />
+              <XAxis
+                dataKey="date"
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                minTickGap={32}
+                tickFormatter={(value) => {
+                  const date = new Date(value);
+                  return date.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  });
+                }}
+              />
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent
+                    className="w-[150px]"
+                    nameKey="name"
+                    labelFormatter={(value) => {
+                      return new Date(value).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                        timeZone: "UTC",
+                      });
+                    }}
+                  />
+                }
+              />
+              <Line
+                dataKey="agents"
+                name="Onboards"
+                type="monotone"
+                stroke={chartConfig.agents.color}
+                strokeWidth={2}
+                dot={false}
+              />
+              <Line
+                dataKey="sites"
+                name="Sites"
+                type="monotone"
+                stroke={chartConfig.sites.color}
+                strokeWidth={2}
+                dot={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
         </ChartContainer>
       </CardContent>
     </Card>
