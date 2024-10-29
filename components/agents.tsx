@@ -1,5 +1,3 @@
-// components/agents.tsx
-import { getSession } from '@/lib/auth';
 import db from '@/lib/db';
 import { eq } from 'drizzle-orm';
 import AgentCard from '@/components/agent-card';
@@ -7,14 +5,10 @@ import { Agent } from '@/types/agent';
 
 interface AgentsProps {
   siteId: string;
+  userId: string;
 }
 
-export default async function Agents({ siteId }: AgentsProps): Promise<JSX.Element | null> {
-  const session = await getSession();
-  if (!session) {
-    return null;
-  }
-
+export default async function Agents({ siteId, userId }: AgentsProps): Promise<JSX.Element | null> {
   const agentsData: Agent[] = await db.query.agents.findMany({
     columns: {
       id: true,
@@ -30,11 +24,17 @@ export default async function Agents({ siteId }: AgentsProps): Promise<JSX.Eleme
     with: {
       site: {
         columns: {
+          id: true,
+          name: true,
+          description: true,
+          logo: true,
           subdomain: true,
+          customDomain: true,
         },
       },
     },
     where: (table) => eq(table.siteId, siteId),
+    orderBy: (table) => table.createdAt,
   });
 
   return (

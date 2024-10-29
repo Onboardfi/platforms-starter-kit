@@ -37,7 +37,7 @@ export const Usage = ({
       <CardHeader className="mb-6 border-b">
         <CardTitle>Usage Overview</CardTitle>
         <CardDescription>
-          Total leads captured out of your current plan limit.
+          Total onboards captured out of your current plan limit.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6 flex-grow">
@@ -46,7 +46,7 @@ export const Usage = ({
             <p>
               {used} / {totalUsage}{" "}
               <span className="text-muted-foreground text-xs">
-                Leads Captured
+                Onboards created
               </span>
             </p>
             <Badge variant={plan === "Free" ? "outline" : "default"}>
@@ -56,7 +56,7 @@ export const Usage = ({
           <Progress value={usagePercentage} className="h-2" />
           <div className="flex justify-between">
             <p className="text-xs text-muted-foreground">
-              {remaining} leads remaining
+              {remaining} Onboards remaining
             </p>
             <p className="flex items-center space-x-1 text-xs">
               <CircleAlert className="h-3 w-3 text-green-500" />

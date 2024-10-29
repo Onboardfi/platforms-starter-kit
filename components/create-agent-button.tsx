@@ -40,7 +40,7 @@ export default function CreateAgentButton({ siteId }: CreateAgentButtonProps) {
       )}
       disabled={isPending}
     >
-      {isPending ? <LoadingDots color="#808080" /> : <p>Create New Agent</p>}
+      {isPending ? <LoadingDots color="#808080" /> : <p>New Onboard</p>}
     </button>
   );
 }

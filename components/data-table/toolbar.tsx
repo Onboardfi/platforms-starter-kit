@@ -31,7 +31,7 @@ export function DataTableToolbar<TData>({
       />
       <Button onClick={handleCreateAgent}>
         <Plus className="mr-2 h-4 w-4" />
-        Create Agent
+        Create Onboard
       </Button>
     </div>
   );

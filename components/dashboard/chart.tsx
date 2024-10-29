@@ -22,7 +22,7 @@ import {
 
 const chartConfig = {
   agents: {
-    label: "Agents",
+    label: "Onboards",
     color: "#8884d8", // Use a valid color for agents
   },
   sites: {
@@ -127,7 +127,7 @@ export function Chart({
             />
             <Line
               dataKey="agents"
-              name="Agents"
+              name="Onboards"
               type="monotone"
               stroke={chartConfig.agents.color}
               strokeWidth={2}

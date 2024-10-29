@@ -5,29 +5,27 @@ import { Providers } from "./providers";
 import { Metadata } from "next";
 import { cn } from "@/lib/utils";
 
-const title =
-  "Platforms Starter Kit – The all-in-one starter kit for building multi-tenant applications.";
+const title = "OnboardFi – AI powered onboarding.";
 const description =
-  "The Platforms Starter Kit is a full-stack Next.js app with multi-tenancy and custom domain support. Built with Next.js App Router, Vercel Postgres and the Vercel Domains API.";
-const image = "https://vercel.pub/thumbnail.png";
+  "OnboardFi provides AI-powered onboarding solutions to streamline and enhance your customer onboarding experience.";
 
 export const metadata: Metadata = {
   title,
   description,
-  icons: ["https://vercel.pub/favicon.ico"],
+  icons: ["/favicon.ico"], // Updated to use local favicon
   openGraph: {
     title,
     description,
-    images: [image],
+    images: ["/onboardfi-logo-q4.png"], // Optional: You can use your logo for social sharing
   },
   twitter: {
     card: "summary_large_image",
     title,
     description,
-    images: [image],
-    creator: "@vercel",
+    images: ["/onboardfi-logo-q4.png"], // Optional: You can use your logo for social sharing
+    creator: "@onboardfi", // Update this to your Twitter handle if you have one
   },
-  metadataBase: new URL("https://vercel.pub"),
+  metadataBase: new URL("https://onboardfi.com"), // Update this to your actual domain
 };
 
 export default function RootLayout({

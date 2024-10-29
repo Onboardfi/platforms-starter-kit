@@ -19,7 +19,7 @@ import { SelectAgent, SelectSite } from "@/lib/schema"; // Import SelectSite typ
 const pageData = {
   name: "Dashboard",
   title: "Dashboard",
-  description: "Snapshot of your agents and sites usage",
+  description: "Snapshot of your onboards and sites usage",
 };
 
 export default async function Page() {
@@ -75,7 +75,7 @@ export default async function Page() {
 
       <PageWrapper>
         <div className="mt-8">
-          <h2 className="text-lg mb-4">Recent Agents</h2>
+          <h2 className="text-lg mb-4">Recent Onboards</h2>
           <AgentsDataTable data={recentAgents} />
           <h2 className="text-lg mb-4 mt-8">Recent Sites</h2>
           <SitesDataTable data={recentSites} />
@@ -87,8 +87,8 @@ export default async function Page() {
 
 const navLinks = [
   {
-    name: "Agents",
-    description: "Create and manage your agents",
+    name: "Onboards",
+    description: "Create and manage your onboards",
     href: "/agents",
   },
   {
@@ -98,7 +98,7 @@ const navLinks = [
   },
   {
     name: "Integrations",
-    description: "Create and manage your sites",
+    description: "Create and manage your integrations",
     href: "/integrations",
   },
   // Add other relevant links

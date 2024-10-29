@@ -52,7 +52,7 @@ export const columns: ColumnDef<SelectAgent>[] = [
   {
     accessorKey: "name",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Agent Name" />
+      <DataTableColumnHeader column={column} title="Onboard Name" />
     ),
     cell: ({ row }) => {
       const name: string = row.getValue("name") || "Untitled";

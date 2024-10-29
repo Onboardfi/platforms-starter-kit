@@ -2,7 +2,6 @@ import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
 import { Loader2 } from "lucide-react"
-
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
@@ -10,7 +9,8 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        default: "bg-[#0F5842] text-white hover:bg-[#0F5842]/90", // New default color
+        black: "bg-primary text-primary-foreground hover:bg-primary/90", // Previous default style
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/90",
         outline:

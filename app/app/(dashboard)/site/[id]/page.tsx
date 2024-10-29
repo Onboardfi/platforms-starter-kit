@@ -1,4 +1,3 @@
-// app/app/(dashboard)/site/[id]/page.tsx
 import { getSession } from '@/lib/auth';
 import { notFound, redirect } from 'next/navigation';
 import Agents from '@/components/agents';
@@ -6,9 +5,6 @@ import SiteHeader from '@/components/site-header';
 import db from '@/lib/db';
 import { eq } from 'drizzle-orm';
 import { Site } from '@/types/site';
-
-// Update the type to include all required fields
-type RequiredSite = Pick<Site, 'id' | 'name' | 'subdomain' | 'userId' | 'createdAt' | 'updatedAt'>;
 
 export default async function SiteAgents({ params }: { params: { id: string } }) {
   const session = await getSession();
@@ -22,10 +18,15 @@ export default async function SiteAgents({ params }: { params: { id: string } })
     columns: {
       id: true,
       name: true,
+      description: true,
+      logo: true,
+      font: true,
       subdomain: true,
+      customDomain: true,
+      message404: true,
       userId: true,
-      createdAt: true,  // Added required field
-      updatedAt: true,  // Added required field
+      createdAt: true,
+      updatedAt: true,
     },
   });
 
@@ -33,12 +34,16 @@ export default async function SiteAgents({ params }: { params: { id: string } })
     notFound();
   }
 
-  // Transform to ensure non-null values where required
-  const site: RequiredSite = {
+  const site: Site = {
     id: data.id,
-    name: data.name || '',
-    subdomain: data.subdomain || '',
-    userId: data.userId || '',
+    name: data.name,
+    description: data.description,
+    logo: data.logo,
+    font: data.font || 'font-cal', // Provide default font if null
+    subdomain: data.subdomain,
+    customDomain: data.customDomain,
+    message404: data.message404,
+    userId: data.userId,
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
   };
@@ -51,8 +56,8 @@ export default async function SiteAgents({ params }: { params: { id: string } })
     <div className="container mx-auto p-6 space-y-6">
       <SiteHeader site={site} url={url} />
       <div className="space-y-6">
-        <h1 className="text-3xl font-cal">Agents</h1>
-        <Agents siteId={site.id} />
+        <h1 className="text-3xl font-cal">Onboards</h1>
+        <Agents siteId={site.id} userId={session.user.id} />
       </div>
     </div>
   );

@@ -1,16 +1,13 @@
-// types/site.ts
-
 export interface Site {
-    id: string;
-    name: string;
-    description?: string | null;
-    subdomain: string;
-    customDomain?: string | null;
-    userId: string;
-    createdAt: Date;
-    updatedAt: Date;
-    image?: string | null;
-    imageBlurhash?: string | null;
-    // Include other properties if necessary
-  }
-  
+  id: string;
+  name: string | null;
+  description: string | null;
+  logo: string | null;
+  font: string;
+  subdomain: string | null;
+  customDomain: string | null;
+  message404: string | null;
+  userId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
