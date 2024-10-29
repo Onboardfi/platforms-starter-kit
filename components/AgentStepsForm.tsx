@@ -1,3 +1,4 @@
+// AgentStepsForm.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -17,10 +18,20 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Trash2 } from "lucide-react";
 
-export default function AgentStepsForm() {
+interface AgentStepsFormProps {
+  existingSteps?: Step[];
+  onStepsUpdated?: () => void;
+  tools?: string[];
+}
+
+export default function AgentStepsForm({ 
+  existingSteps,
+  onStepsUpdated,
+  tools: providedTools 
+}: AgentStepsFormProps) {
   const { agent, setAgent } = useAgent();
-  const [steps, setSteps] = useState<Step[]>(agent?.settings?.steps ?? []);
-  const tools = agent?.settings?.tools ?? [];
+  const [steps, setSteps] = useState<Step[]>(existingSteps ?? agent?.settings?.steps ?? []);
+  const tools = providedTools ?? agent?.settings?.tools ?? [];
 
   useEffect(() => {
     if (agent) {
@@ -37,8 +48,9 @@ export default function AgentStepsForm() {
           steps,
         },
       });
+      onStepsUpdated?.();
     }
-  }, [steps]);
+  }, [steps, agent, setAgent, onStepsUpdated]);
 
   const addStep = () => {
     setSteps([
