@@ -78,30 +78,53 @@ export async function getAgents() {
 
   const userId = await authenticateUser();
   const agentsData = await db
-  .select()
-  .from(agents)
-  .leftJoin(sites, eq(agents.siteId, sites.id))
-  .where(eq(agents.userId, userId))
-  .orderBy(desc(agents.createdAt));
+    .select({
+      agents: agents,
+      sites: sites,
+    })
+    .from(agents)
+    .leftJoin(sites, eq(agents.siteId, sites.id))
+    .where(eq(agents.userId, userId))
+    .orderBy(desc(agents.createdAt));
 
-const data = agentsData.map((agent) => ({
-  id: agent.agents.id,
-  name: agent.agents.name,
-  description: agent.agents.description,
-  slug: agent.agents.slug,
-  image: agent.agents.image,
-  imageBlurhash: agent.agents.imageBlurhash,
-  published: agent.agents.published,
-  settings: agent.agents.settings, // Ensure settings is included
-  createdAt: agent.agents.createdAt,
-  updatedAt: agent.agents.updatedAt,
-  site: {
-    subdomain: agent.sites?.subdomain || null,
-  },
-  userId: agent.agents.userId,
-}));
+  const data = agentsData.map((row) => ({
+    // Agent fields
+    id: row.agents.id,
+    name: row.agents.name,
+    description: row.agents.description,
+    slug: row.agents.slug,
+    image: row.agents.image,
+    imageBlurhash: row.agents.imageBlurhash,
+    published: row.agents.published,
+    settings: row.agents.settings,
+    createdAt: row.agents.createdAt,
+    updatedAt: row.agents.updatedAt,
+    siteId: row.agents.siteId,
+    userId: row.agents.userId,
+    
+    // Site information
+    site: row.sites ? {
+      id: row.sites.id,
+      name: row.sites.name,
+      description: row.sites.description,
+      logo: row.sites.logo,
+      font: row.sites.font,
+      image: row.sites.image,
+      imageBlurhash: row.sites.imageBlurhash,
+      subdomain: row.sites.subdomain,
+      customDomain: row.sites.customDomain,
+      message404: row.sites.message404,
+      createdAt: row.sites.createdAt,
+      updatedAt: row.sites.updatedAt,
+      userId: row.sites.userId,
+    } : null,
+    
+    // Additional fields
+    siteName: row.sites?.name ?? null,
+    userName: null
+  }));
 
-return { data };
+  return { data };
 }
 /**
  * Get agent data for one specific agent

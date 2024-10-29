@@ -282,12 +282,11 @@ export const usersRelations = relations(users, ({ many }) => ({
 // Infer the select type from the agents table using Drizzle ORM's type inference.
 // This ensures that `SelectAgent` includes all fields from the `agents` table with the correct types.
 export type SelectAgent = typeof agents.$inferSelect & {
-  site: SelectSite; // Ensure site is included
+  site: typeof sites.$inferSelect | null; // Make site nullable
   siteName?: string | null;
   userName?: string | null;
   settings: AgentSettings;
 };
-
 // Similarly, you can define other select types as needed.
 export type SelectSite = typeof sites.$inferSelect;
 export type SelectPost = typeof posts.$inferSelect;

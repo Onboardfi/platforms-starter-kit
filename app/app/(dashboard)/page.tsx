@@ -53,7 +53,6 @@ export default async function Page() {
   // Get the 5 most recent agents
   const recentAgents: SelectAgent[] = agentsData.slice(0, 5);
 
-  
   // Get the 5 most recent sites
   const recentSites: SelectSite[] = sitesData.slice(0, 5);
 
