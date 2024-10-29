@@ -62,11 +62,11 @@ export default function AgentCard({ data }: AgentCardProps) {
           )}
           
           <Badge 
-            variant={data.published ? "success" : "secondary"}
-            className="absolute top-3 right-3"
-          >
-            {data.published ? "Published" : "Draft"}
-          </Badge>
+  variant={data.published ? "default" : "secondary"}
+  className="absolute top-3 right-3"
+>
+  {data.published ? "Published" : "Draft"}
+</Badge>
         </div>
 
         {/* Logo Circle - Overlapping Banner */}
