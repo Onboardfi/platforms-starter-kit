@@ -203,6 +203,9 @@ dependencies:
   react-canvas-confetti:
     specifier: ^2.0.7
     version: 2.0.7(react@18.3.1)
+  react-day-picker:
+    specifier: ^9.2.1
+    version: 9.2.1(react@18.3.1)
   react-dom:
     specifier: ^18.2.0
     version: 18.3.1(react@18.3.1)
@@ -429,6 +432,10 @@ packages:
     dependencies:
       '@babel/helper-string-parser': 7.25.9
       '@babel/helper-validator-identifier': 7.25.9
+    dev: false
+
+  /@date-fns/tz@1.1.2:
+    resolution: {integrity: sha512-Xmg2cPmOPQieCLAdf62KtFPU9y7wbQDq1OAzrs/bEQFvhtCPXDiks1CHDE/sTXReRfh/MICVkw/vY6OANHUGiA==}
     dev: false
 
   /@drizzle-team/brocli@0.10.2:
@@ -5328,6 +5335,10 @@ packages:
     resolution: {integrity: sha512-fRHTG8g/Gif+kSh50gaGEdToemgfj74aRX3swtiouboip5JDLAyDE9F11nHMIcvOaXeOC6D7SpNhi7uFyB7Uww==}
     dev: false
 
+  /date-fns@4.1.0:
+    resolution: {integrity: sha512-Ukq0owbQXxa/U3EGtsdVBkR1w7KOQ5gIBqdH2hkvknzZPYvBxb/aa6E8L7tmjFtkwZBu3UXBbjIgPo/Ez4xaNg==}
+    dev: false
+
   /debug@3.2.7:
     resolution: {integrity: sha512-CFjzYYAi4ThfiQvizrFQevTTXHtnCqWfe7x1AhgEscTz6ZbLbfoLRLPugTQyBth6f8ZERVUSyWHFD/7Wu4t1XQ==}
     peerDependencies:
@@ -9171,6 +9182,17 @@ packages:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0
     dependencies:
       date-fns: 3.6.0
+      react: 18.3.1
+    dev: false
+
+  /react-day-picker@9.2.1(react@18.3.1):
+    resolution: {integrity: sha512-rCoK4oJi9NBXt1nNdQFSa7gBG+hWsqVCtoLFLxvMzkVxDp+rSqsuUQ0LccJyLigwp/hX8XnAokTsT03+5lbjyA==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      react: '>=16.8.0'
+    dependencies:
+      '@date-fns/tz': 1.1.2
+      date-fns: 4.1.0
       react: 18.3.1
     dev: false
 
