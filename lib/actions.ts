@@ -103,7 +103,7 @@ export const createAgent = withSiteAuth(
           id: createId(),
           siteId: site.id,
           userId: session.user.id,
-          name: "New Agent",
+          name: "New Onboard",
           description: "",
           slug: createId(),
           settings: {},
