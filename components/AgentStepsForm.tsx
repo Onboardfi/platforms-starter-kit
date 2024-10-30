@@ -1,4 +1,3 @@
-// AgentStepsForm.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -8,13 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Trash2 } from "lucide-react";
 
@@ -33,36 +25,40 @@ export default function AgentStepsForm({
   const [steps, setSteps] = useState<Step[]>(existingSteps ?? agent?.settings?.steps ?? []);
   const tools = providedTools ?? agent?.settings?.tools ?? [];
 
+  // Initialize steps when agent changes
   useEffect(() => {
     if (agent) {
       setSteps(agent.settings?.steps ?? []);
     }
   }, [agent]);
 
-  useEffect(() => {
+  const saveSteps = (newSteps: Step[]) => {
     if (agent) {
       setAgent({
         ...agent,
         settings: {
           ...agent.settings,
-          steps,
+          steps: newSteps,
         },
       });
       onStepsUpdated?.();
     }
-  }, [steps, agent, setAgent, onStepsUpdated]);
+  };
 
   const addStep = () => {
-    setSteps([
+    const newSteps = [
       ...steps,
       { title: "", description: "", completionTool: null, completed: false },
-    ]);
+    ];
+    setSteps(newSteps);
+    saveSteps(newSteps);
   };
 
   const removeStep = (index: number) => {
     const newSteps = [...steps];
     newSteps.splice(index, 1);
     setSteps(newSteps);
+    saveSteps(newSteps);
   };
 
   const handleStepChange = <K extends keyof Step>(
@@ -73,7 +69,35 @@ export default function AgentStepsForm({
     const newSteps = [...steps];
     newSteps[index][field] = value;
     setSteps(newSteps);
+    
+    // For input fields, save when focus is lost instead of on every change
+    if (field === 'completionTool') {
+      saveSteps(newSteps);
+    }
   };
+
+  const handleBlur = () => {
+    saveSteps(steps);
+  };
+
+  const renderToolSelect = (index: number, step: Step) => (
+    <select
+      value={step.completionTool ?? "none"}
+      onChange={(e) => handleStepChange(
+        index,
+        "completionTool",
+        e.target.value === "none" ? null : e.target.value as Step["completionTool"]
+      )}
+      className="w-full p-2 bg-secondary border rounded-md"
+    >
+      <option value="none">No Tool</option>
+      {tools.map((tool) => (
+        <option key={tool} value={tool}>
+          {tool.charAt(0).toUpperCase() + tool.slice(1)}
+        </option>
+      ))}
+    </select>
+  );
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -105,6 +129,7 @@ export default function AgentStepsForm({
                     onChange={(e) =>
                       handleStepChange(index, "title", e.target.value)
                     }
+                    onBlur={handleBlur}
                     className="bg-secondary"
                     placeholder="Enter step title..."
                     required
@@ -119,6 +144,7 @@ export default function AgentStepsForm({
                     onChange={(e) =>
                       handleStepChange(index, "description", e.target.value)
                     }
+                    onBlur={handleBlur}
                     className="bg-secondary"
                     placeholder="Enter step description..."
                     rows={3}
@@ -127,28 +153,7 @@ export default function AgentStepsForm({
 
                 <div className="space-y-2">
                   <Label htmlFor={`step-tool-${index}`}>Completion Tool</Label>
-                  <Select
-                    value={step.completionTool ?? "none"}
-                    onValueChange={(value) =>
-                      handleStepChange(
-                        index,
-                        "completionTool",
-                        value === "none" ? null : value as Step["completionTool"]
-                      )
-                    }
-                  >
-                    <SelectTrigger className="bg-secondary">
-                      <SelectValue placeholder="Select a tool" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No Tool</SelectItem>
-                      {tools.map((tool) => (
-                        <SelectItem key={tool} value={tool}>
-                          {tool.charAt(0).toUpperCase() + tool.slice(1)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {renderToolSelect(index, step)}
                 </div>
               </CardContent>
             </Card>

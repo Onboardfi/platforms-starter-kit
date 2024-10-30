@@ -47,6 +47,7 @@
     "@splinetool/runtime": "^1.9.30",
     "@tanstack/react-table": "^8.20.5",
     "@tremor/react": "^3.11.1",
+    "@types/lodash": "^4.17.13",
     "@types/recharts": "^1.8.29",
     "@upstash/ratelimit": "^0.4.4",
     "@vercel/analytics": "^1.1.1",
@@ -100,7 +101,7 @@
     "tailwind-merge": "^2.0.0",
     "tailwind-variants": "^0.2.1",
     "unist-util-visit": "^5.0.0",
-    "use-debounce": "^10.0.0",
+    "use-debounce": "^10.0.4",
     "web-vitals": "^4.2.3",
     "ws": "^8.18.0",
     "zod": "^3.23.8"

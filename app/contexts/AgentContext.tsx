@@ -1,13 +1,13 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useTransition } from "react";
+import React, { createContext, useContext, useState, useEffect } from "react";
 import { SelectAgent } from "@/lib/schema";
 import { useParams } from "next/navigation";
 import { getAgentById, updateAgent, updateAgentMetadata } from "@/lib/actions";
 
 interface AgentContextProps {
   agent: SelectAgent | null;
-  setAgent: React.Dispatch<React.SetStateAction<SelectAgent | null>>;
+  setAgent: (agent: SelectAgent | null) => void;
   isPendingSaving: boolean;
   isPendingPublishing: boolean;
   handleTogglePublish: () => void;
@@ -15,54 +15,58 @@ interface AgentContextProps {
 
 const AgentContext = createContext<AgentContextProps | undefined>(undefined);
 
-export function useAgent() {
+function useAgent() {
   const context = useContext(AgentContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error("useAgent must be used within an AgentProvider");
   }
   return context;
 }
 
-export function AgentProvider({ children }: { children: React.ReactNode }) {
+function AgentProvider({ children }: { children: React.ReactNode }) {
   const { id } = useParams() as { id?: string };
-  const [agent, setAgent] = useState<SelectAgent | null>(null);
-  const [isPendingSaving, startTransitionSaving] = useTransition();
-  const [isPendingPublishing, startTransitionPublishing] = useTransition();
+  const [agent, setAgentState] = useState<SelectAgent | null>(null);
+  const [isPendingSaving, setIsPendingSaving] = useState(false);
+  const [isPendingPublishing, setIsPendingPublishing] = useState(false);
 
   useEffect(() => {
     async function fetchAgent() {
       if (id) {
         const fetchedAgent = await getAgentById(id);
-        setAgent(fetchedAgent);
+        setAgentState(fetchedAgent);
       }
     }
     fetchAgent();
   }, [id]);
 
-  useEffect(() => {
-    if (agent) {
-      startTransitionSaving(async () => {
-        await updateAgent(agent);
-      });
+  const setAgent = (newAgent: SelectAgent | null) => {
+    setAgentState(newAgent);
+    if (newAgent) {
+      setIsPendingSaving(true);
+      updateAgent(newAgent)
+        .then(() => setIsPendingSaving(false))
+        .catch((error) => {
+          console.error('Failed to update agent:', error);
+          setIsPendingSaving(false);
+        });
     }
-  }, [agent]);
+  };
 
-  const handleTogglePublish = () => {
-    if (agent) {
-      startTransitionPublishing(async () => {
-        const updatedAgent = { ...agent, published: !agent.published };
-        // Create FormData and append the necessary values
-        const formData = new FormData();
-        formData.append('published', String(updatedAgent.published));
-        
-        await updateAgentMetadata(
-          formData,
-          agent.id,
-          'published'  // Add the key parameter
-        );
-        
-        setAgent(updatedAgent);
-      });
+  const handleTogglePublish = async () => {
+    if (!agent) return;
+
+    setIsPendingPublishing(true);
+    try {
+      const updatedAgent = { ...agent, published: !agent.published };
+      const formData = new FormData();
+      formData.append('published', String(updatedAgent.published));
+      
+      await updateAgentMetadata(formData, agent.id, 'published');
+      setAgentState(updatedAgent);
+    } catch (error) {
+      console.error('Failed to toggle publish:', error);
+    } finally {
+      setIsPendingPublishing(false);
     }
   };
 
@@ -81,5 +85,4 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Export the context and provider as a single default export
-export { AgentContext };
+export { useAgent, AgentProvider, AgentContext };

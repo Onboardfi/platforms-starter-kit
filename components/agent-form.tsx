@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAgent } from "@/app/contexts/AgentContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SelectAgent } from "@/lib/schema";
+import { debounce } from "lodash";
 
 interface AgentFormProps {
   agent: SelectAgent;
@@ -20,55 +21,89 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
   const isValidHex = (hex: string) => /^#([0-9A-F]{3}){1,2}$/i.test(hex);
 
   // Form state
-  const [name, setName] = useState(initialAgent?.name ?? "");
-  const [description, setDescription] = useState(initialAgent?.description ?? "");
-  const [slug, setSlug] = useState(initialAgent?.slug ?? "");
-  const [headingText, setHeadingText] = useState(initialAgent?.settings?.headingText ?? "AI Onboarding Platform");
-  const [tools, setTools] = useState<string[]>(initialAgent?.settings?.tools ?? []);
-  const [initialMessage, setInitialMessage] = useState(initialAgent?.settings?.initialMessage ?? "");
-  const [primaryColor, setPrimaryColor] = useState(initialAgent?.settings?.primaryColor ?? "#3b82f6");
-  const [secondaryColor, setSecondaryColor] = useState(initialAgent?.settings?.secondaryColor ?? "#10b981");
-  const [aiModel, setAiModel] = useState(initialAgent?.settings?.aiModel ?? "openai");
-  const [apiKey, setApiKey] = useState(initialAgent?.settings?.apiKeys?.openai ?? "");
+  const [formState, setFormState] = useState({
+    name: initialAgent?.name ?? "",
+    description: initialAgent?.description ?? "",
+    slug: initialAgent?.slug ?? "",
+    settings: {
+      headingText: initialAgent?.settings?.headingText ?? "AI Onboarding Platform",
+      tools: initialAgent?.settings?.tools ?? [],
+      initialMessage: initialAgent?.settings?.initialMessage ?? "",
+      primaryColor: initialAgent?.settings?.primaryColor ?? "#3b82f6",
+      secondaryColor: initialAgent?.settings?.secondaryColor ?? "#10b981",
+      aiModel: initialAgent?.settings?.aiModel ?? "openai",
+      apiKeys: {
+        openai: initialAgent?.settings?.apiKeys?.openai ?? ""
+      }
+    }
+  });
 
-  // Initialize context with initial agent
+  // Debounced update function
+  const debouncedUpdate = useCallback(
+    debounce((updatedState) => {
+      if (agent) {
+        const updatedAgent = {
+          ...agent,
+          ...updatedState,
+          settings: {
+            ...agent.settings,
+            ...updatedState.settings
+          }
+        };
+        setAgent(updatedAgent);
+      }
+    }, 1000),
+    [agent, setAgent]
+  );
+
+  // Update handler
+  const handleUpdate = useCallback((field: string, value: any) => {
+    setFormState(prev => {
+      const newState = field.startsWith('settings.')
+        ? {
+            ...prev,
+            settings: {
+              ...prev.settings,
+              [field.split('.')[1]]: value
+            }
+          }
+        : {
+            ...prev,
+            [field]: value
+          };
+      
+      debouncedUpdate(newState);
+      return newState;
+    });
+  }, [debouncedUpdate]);
+
+  // Initialize form with agent data
   useEffect(() => {
     if (initialAgent) {
-      setAgent(initialAgent);
-    }
-  }, [initialAgent, setAgent]);
-
-  // Update agent in context when form values change
-  useEffect(() => {
-    if (agent) {
-      setAgent({
-        ...agent,
-        name,
-        description,
-        slug,
+      setFormState({
+        name: initialAgent.name ?? "",
+        description: initialAgent.description ?? "",
+        slug: initialAgent.slug ?? "",
         settings: {
-          ...agent.settings,
-          headingText,
-          tools,
-          initialMessage,
-          primaryColor,
-          secondaryColor,
-          aiModel,
+          headingText: initialAgent.settings?.headingText ?? "AI Onboarding Platform",
+          tools: initialAgent.settings?.tools ?? [],
+          initialMessage: initialAgent.settings?.initialMessage ?? "",
+          primaryColor: initialAgent.settings?.primaryColor ?? "#3b82f6",
+          secondaryColor: initialAgent.settings?.secondaryColor ?? "#10b981",
+          aiModel: initialAgent.settings?.aiModel ?? "openai",
           apiKeys: {
-            ...agent.settings?.apiKeys,
-            [aiModel]: apiKey,
-          },
-        },
+            openai: initialAgent.settings?.apiKeys?.openai ?? ""
+          }
+        }
       });
     }
-  }, [name, description, slug, headingText, tools, initialMessage, primaryColor, secondaryColor, aiModel, apiKey]);
+  }, [initialAgent]);
 
   const availableTools = ["memory", "email", "notion"];
   const availableModels = ["openai"];
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-[1200px]">
-      {/* Basic Information Card */}
       <Card className="h-fit">
         <CardHeader>
           <CardTitle>Basic Information</CardTitle>
@@ -78,8 +113,8 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
             <Label htmlFor="name">Name</Label>
             <Input
               id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              value={formState.name}
+              onChange={(e) => handleUpdate('name', e.target.value)}
               placeholder="Enter agent name..."
               className="bg-secondary"
             />
@@ -89,8 +124,8 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
             <Label htmlFor="description">Description</Label>
             <Textarea
               id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              value={formState.description}
+              onChange={(e) => handleUpdate('description', e.target.value)}
               placeholder="Describe your agent..."
               className="bg-secondary"
               rows={3}
@@ -101,8 +136,8 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
             <Label htmlFor="slug">Slug</Label>
             <Input
               id="slug"
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
+              value={formState.slug}
+              onChange={(e) => handleUpdate('slug', e.target.value)}
               placeholder="agent-slug"
               className="bg-secondary"
             />
@@ -110,7 +145,6 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
         </CardContent>
       </Card>
 
-      {/* Settings Card */}
       <Card className="h-fit">
         <CardHeader>
           <CardTitle>Settings</CardTitle>
@@ -120,8 +154,8 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
             <Label htmlFor="headingText">Heading Text</Label>
             <Input
               id="headingText"
-              value={headingText}
-              onChange={(e) => setHeadingText(e.target.value)}
+              value={formState.settings.headingText}
+              onChange={(e) => handleUpdate('settings.headingText', e.target.value)}
               placeholder="AI Onboarding Platform"
               className="bg-secondary"
             />
@@ -134,13 +168,12 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
                 <div key={tool} className="flex items-center space-x-2">
                   <Checkbox
                     id={tool}
-                    checked={tools.includes(tool)}
+                    checked={formState.settings.tools.includes(tool)}
                     onCheckedChange={(checked) => {
-                      if (checked) {
-                        setTools([...tools, tool]);
-                      } else {
-                        setTools(tools.filter((t) => t !== tool));
-                      }
+                      const newTools = checked
+                        ? [...formState.settings.tools, tool]
+                        : formState.settings.tools.filter(t => t !== tool);
+                      handleUpdate('settings.tools', newTools);
                     }}
                   />
                   <Label htmlFor={tool} className="capitalize">
@@ -155,8 +188,8 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
             <Label htmlFor="initialMessage">Initial Message</Label>
             <Textarea
               id="initialMessage"
-              value={initialMessage}
-              onChange={(e) => setInitialMessage(e.target.value)}
+              value={formState.settings.initialMessage}
+              onChange={(e) => handleUpdate('settings.initialMessage', e.target.value)}
               placeholder="Enter the initial message..."
               className="bg-secondary"
               rows={4}
@@ -165,7 +198,6 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
         </CardContent>
       </Card>
 
-      {/* AI Model & Color Scheme Card */}
       <Card className="h-fit">
         <CardHeader>
           <CardTitle>AI Model & Branding</CardTitle>
@@ -173,7 +205,10 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label>AI Model</Label>
-            <Select value={aiModel} onValueChange={setAiModel}>
+            <Select 
+              value={formState.settings.aiModel} 
+              onValueChange={(value) => handleUpdate('settings.aiModel', value)}
+            >
               <SelectTrigger className="bg-secondary">
                 <SelectValue placeholder="Select AI Model" />
               </SelectTrigger>
@@ -187,14 +222,14 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
             </Select>
           </div>
 
-          {aiModel === "openai" && (
+          {formState.settings.aiModel === "openai" && (
             <div className="space-y-2">
               <Label htmlFor="apiKey">OpenAI API Key</Label>
               <Input
                 id="apiKey"
                 type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
+                value={formState.settings.apiKeys.openai}
+                onChange={(e) => handleUpdate('settings.apiKeys.openai', e.target.value)}
                 placeholder="Enter your OpenAI API key..."
                 className="bg-secondary"
               />
@@ -207,18 +242,17 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
               <Input
                 id="primaryColor"
                 type="color"
-                value={primaryColor}
-                onChange={(e) => setPrimaryColor(e.target.value)}
+                value={formState.settings.primaryColor}
+                onChange={(e) => handleUpdate('settings.primaryColor', e.target.value)}
                 className="w-16 h-10 p-0 border-0 bg-transparent cursor-pointer"
               />
               <Input
                 id="primaryColorHex"
                 type="text"
-                value={primaryColor}
+                value={formState.settings.primaryColor}
                 onChange={(e) => {
-                  const value = e.target.value;
-                  if (isValidHex(value)) {
-                    setPrimaryColor(value);
+                  if (isValidHex(e.target.value)) {
+                    handleUpdate('settings.primaryColor', e.target.value);
                   }
                 }}
                 placeholder="#3b82f6"
@@ -233,18 +267,17 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
               <Input
                 id="secondaryColor"
                 type="color"
-                value={secondaryColor}
-                onChange={(e) => setSecondaryColor(e.target.value)}
+                value={formState.settings.secondaryColor}
+                onChange={(e) => handleUpdate('settings.secondaryColor', e.target.value)}
                 className="w-16 h-10 p-0 border-0 bg-transparent cursor-pointer"
               />
               <Input
                 id="secondaryColorHex"
                 type="text"
-                value={secondaryColor}
+                value={formState.settings.secondaryColor}
                 onChange={(e) => {
-                  const value = e.target.value;
-                  if (isValidHex(value)) {
-                    setSecondaryColor(value);
+                  if (isValidHex(e.target.value)) {
+                    handleUpdate('settings.secondaryColor', e.target.value);
                   }
                 }}
                 placeholder="#10b981"
