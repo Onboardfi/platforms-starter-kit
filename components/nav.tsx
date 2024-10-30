@@ -70,7 +70,7 @@ export default function Nav({ children }: { children: ReactNode }) {
           icon: <ArrowLeft width={18} />,
         },
         {
-          name: "Posts",
+          name: "Onboards",
           href: `/site/${id}`,
           isActive: segments.length === 2,
           icon: <Newspaper width={18} />,
@@ -86,7 +86,7 @@ export default function Nav({ children }: { children: ReactNode }) {
     } else if (segments[0] === "agent" && id) {
       return [
         {
-          name: "Back to All Posts",
+          name: "Back to All Onboards",
           href: siteId ? `/site/${siteId}` : "/sites",
           icon: <ArrowLeft width={18} />,
         },
