@@ -1,6 +1,7 @@
 
 
 "use server";
+import { redis, setAgentState, AgentState } from './upstash';
 
 import { getSession } from "@/lib/auth";
 import {
@@ -106,11 +107,26 @@ export const createAgent = withSiteAuth(
           name: "New Onboard",
           description: "",
           slug: createId(),
-          settings: {},
+          settings: {
+            onboardingType: "external",
+            allowMultipleSessions: false,
+            headingText: "AI Onboarding Platform",
+            tools: [],
+            initialMessage: "",
+          },
         })
         .returning();
 
       const agent = result[0];
+
+
+       // Initialize Redis state
+       await setAgentState(agent.id, {
+        agentId: agent.id,
+        onboardingType: "external",
+        lastActive: Date.now(),
+        context: {}
+      });
 
       revalidateTag(
         `${site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-agents`
@@ -203,6 +219,7 @@ export const updateAgentStepsWithoutAuth = async (
     return { success: false, error: error.message || "Failed to update agent steps." };
   }
 };
+
 export const updateAgentMetadata = withAgentAuth(
   async (
     formData: FormData,
@@ -212,7 +229,12 @@ export const updateAgentMetadata = withAgentAuth(
     key: string
   ): Promise<UpdateAgentMetadataResponse> => {
     try {
+      // Initialize updated data object
+      let updatedData: Record<string, any> = {};
+
+      // Handle different types of updates
       if (key === "image") {
+        // Image upload handling
         if (!process.env.BLOB_READ_WRITE_TOKEN) {
           return { 
             success: false,
@@ -228,53 +250,115 @@ export const updateAgentMetadata = withAgentAuth(
         });
 
         const blurhash = await getBlurDataURL(url);
-        await db
-          .update(agents)
-          .set({
-            image: url,
-            imageBlurhash: blurhash,
-          })
-          .where(eq(agents.id, agent.id))
-          .returning();
+        updatedData = {
+          image: url,
+          imageBlurhash: blurhash,
+        };
+      } else if (key === "settings") {
+        // Settings update handling
+        try {
+          const newSettings = JSON.parse(formData.get(key) as string);
+          updatedData = {
+            settings: {
+              ...agent.settings,
+              ...newSettings
+            }
+          };
+
+          // Update Redis state if onboarding type changes
+          if (newSettings.onboardingType && 
+              newSettings.onboardingType !== agent.settings.onboardingType) {
+            await redis.set(`agent:${agent.id}:state`, {
+              agentId: agent.id,
+              onboardingType: newSettings.onboardingType,
+              lastActive: Date.now(),
+              context: {},
+              settings: newSettings
+            }, { ex: 24 * 60 * 60 }); // 24 hour expiration
+          }
+        } catch (e) {
+          return {
+            success: false,
+            error: "Invalid settings data"
+          };
+        }
       } else {
+        // Handle regular field updates
         const value = formData.get(key) as string;
-        await db
-          .update(agents)
-          .set({
-            [key]: value,
-          })
-          .where(eq(agents.id, agent.id))
-          .returning();
+        updatedData = { [key]: value };
       }
 
-      revalidateTag(
-        `${agent.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-agents`
+      // Update database
+      const updatedAgent = await db
+        .update(agents)
+        .set({
+          ...updatedData,
+          updatedAt: new Date(),
+        })
+        .where(eq(agents.id, agent.id))
+        .returning()
+        .then(res => res[0]);
+
+      // Cache the updated agent in Redis for quick access
+      await redis.set(
+        `agent:${agent.id}:metadata`,
+        updatedAgent,
+        { ex: 3600 } // 1 hour expiration
       );
-      revalidateTag(
+
+      // Revalidate tags for updated content
+      const tags = [
+        `${agent.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-agents`,
         `${agent.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-${agent.slug}`
-      );
+      ];
 
       if (agent.site?.customDomain) {
-        revalidateTag(`${agent.site.customDomain}-agents`);
-        revalidateTag(`${agent.site.customDomain}-${agent.slug}`);
+        tags.push(
+          `${agent.site.customDomain}-agents`,
+          `${agent.site.customDomain}-${agent.slug}`
+        );
       }
 
-      return { success: true };  // Return success true on successful execution
+      // Revalidate all tags in parallel
+      await Promise.all(tags.map(tag => revalidateTag(tag)));
+
+      // Publish update event to Redis for real-time updates
+      await redis.publish('agent-updates', {
+        agentId: agent.id,
+        type: 'metadata-update',
+        timestamp: Date.now(),
+        changes: updatedData
+      });
+
+      return { 
+        success: true,
+        data: updatedAgent 
+      };
+
     } catch (error: any) {
+      // Error handling with specific error types
+      const errorResponse = {
+        success: false,
+        error: error.message || "An error occurred"
+      };
+
       if (error.code === "P2002") {
-        return { 
-          success: false,
-          error: `This ${key} is already in use` 
-        };
-      } else {
-        return { 
-          success: false,
-          error: error.message || "An error occurred" 
-        };
+        errorResponse.error = `This ${key} is already in use`;
       }
+
+      // Log error for monitoring
+      console.error('Agent metadata update failed:', {
+        agentId: agent.id,
+        key,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+
+      return errorResponse;
     }
   }
 );
+
 
 export const updateAgentAPI = async (
   data: Partial<SelectAgent> & { id: string },

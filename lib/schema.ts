@@ -157,6 +157,12 @@ export interface AgentSettings {
   apiKeys?: {
     [model: string]: string; // Store API keys per model
   };
+
+    // Add new fields
+    onboardingType: 'internal' | 'external';
+    allowMultipleSessions?: boolean;
+
+    
 }
 //
 // **Agents Table**

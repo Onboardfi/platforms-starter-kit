@@ -34,7 +34,9 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
       aiModel: initialAgent?.settings?.aiModel ?? "openai",
       apiKeys: {
         openai: initialAgent?.settings?.apiKeys?.openai ?? ""
-      }
+      },
+      onboardingType: initialAgent?.settings?.onboardingType ?? "external",
+      allowMultipleSessions: initialAgent?.settings?.allowMultipleSessions ?? false
     }
   });
 
@@ -93,7 +95,9 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
           aiModel: initialAgent.settings?.aiModel ?? "openai",
           apiKeys: {
             openai: initialAgent.settings?.apiKeys?.openai ?? ""
-          }
+          },
+          onboardingType: initialAgent.settings?.onboardingType ?? "external",
+          allowMultipleSessions: initialAgent.settings?.allowMultipleSessions ?? false
         }
       });
     }
@@ -150,6 +154,52 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
           <CardTitle>Settings</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Onboarding Type</Label>
+            <Select 
+              value={formState.settings.onboardingType}
+              onValueChange={(value) => handleUpdate('settings.onboardingType', value)}
+            >
+              <SelectTrigger className="bg-secondary">
+                <SelectValue placeholder="Select onboarding type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="external">
+                  External (Client Self-Steered)
+                </SelectItem>
+                <SelectItem value="internal">
+                  Internal (Business-Steered)
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-sm text-muted-foreground">
+              {formState.settings.onboardingType === "external" 
+                ? "Clients will guide themselves through the onboarding process"
+                : "You will guide clients through the onboarding process"
+              }
+            </p>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="allowMultipleSessions"
+              checked={formState.settings.allowMultipleSessions}
+              onCheckedChange={(checked) => 
+                handleUpdate('settings.allowMultipleSessions', checked)
+              }
+            />
+            <div className="grid gap-1.5 leading-none">
+              <Label htmlFor="allowMultipleSessions">
+                Allow Multiple Sessions
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Enable multiple concurrent onboarding sessions for this agent
+              </p>
+            </div>
+          </div>
+
+          <div className="my-4 border-t" />
+
           <div className="space-y-2">
             <Label htmlFor="headingText">Heading Text</Label>
             <Input

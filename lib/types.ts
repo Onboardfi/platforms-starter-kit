@@ -22,8 +22,9 @@ export interface AgentSettings {
   apiKeys?: {
     [model: string]: string;
   };
+  onboardingType: 'internal' | 'external'; // Add this line
+  allowMultipleSessions?: boolean;
 }
-
 export interface Agent {
   id: string;
   name: string | null;
@@ -47,11 +48,12 @@ export interface CreateAgentResponse {
   error?: string;
 }
 
+
 export interface UpdateAgentMetadataResponse {
   success: boolean;
   error?: string;
+  data?: any; // Add this line to support the data property
 }
-
 
 /** 
  * **Agent Interface**
