@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getAgentData } from "@/lib/fetchers";
-import AgentConsole from "@/components/agent-console";
+import AgentConsole from "@/components/agent-console/index";
+
 import { AgentSettings } from "@/lib/types";
 
 interface Site {

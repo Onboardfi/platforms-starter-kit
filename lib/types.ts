@@ -1,16 +1,87 @@
 // lib/types.ts
 
-/** 
- * **Step Interface**
- * Represents a single step in an agent's onboarding process.
+/**
+ * Core Types for Session Steps and Base Types
  */
-export interface Step {
+
+// Base step interface that includes all required fields
+export interface BaseStep {
+  id: string;
   title: string;
   description: string;
-  completionTool: "email" | "memory" | "notesTaken" | "notion" | null;
   completed: boolean;
+  completedAt?: string;
+  completionTool: 'email' | 'memory' | 'notesTaken' | 'notion' | null;
 }
 
+// Session-specific step interface
+export interface SessionStep extends BaseStep {}
+
+// Progress tracking interface
+export interface StepProgress {
+  steps: Array<BaseStep>;
+}
+
+// Agent configuration step interface
+
+export interface Step {
+  id: string;
+  title: string;
+  description: string;
+  completed: boolean;
+  completedAt?: string | null;
+  completionTool: 'email' | 'memory' | 'notesTaken' | 'notion' | null;
+}
+
+
+export interface Session {
+  id: string;
+  name: string;
+  status: 'active' | 'completed' | 'abandoned';
+  type: string;
+  createdAt: string;
+  lastInteractionAt?: string;
+  stepProgress: {
+    steps: Step[];
+  };
+  metadata?: {
+    isAnonymous?: boolean;
+    isAuthenticated?: boolean;
+  };
+}
+/**
+ * Authentication Types
+ */
+export interface AuthenticationSettings {
+  enabled: boolean;
+  password?: string;
+  message?: string;
+}
+
+/**
+ * Redis Cache Types
+ */
+export interface AgentState {
+  agentId: string;
+  onboardingType: 'internal' | 'external';
+  lastActive: number;
+  context: Record<string, any>;
+}
+
+export interface SessionState {
+  sessionId: string;
+  agentId: string;
+  clientIdentifier?: string;
+  currentStep: number;
+  steps: SessionStep[];
+  context: Record<string, any>;
+  lastActive: number;
+  metadata?: Record<string, any>;
+}
+
+/**
+ * Core Agent Types
+ */
 export interface AgentSettings {
   headingText?: string;
   tools?: string[];
@@ -22,9 +93,11 @@ export interface AgentSettings {
   apiKeys?: {
     [model: string]: string;
   };
-  onboardingType: 'internal' | 'external'; // Add this line
+  onboardingType: 'internal' | 'external';
   allowMultipleSessions?: boolean;
+  authentication: AuthenticationSettings;
 }
+
 export interface Agent {
   id: string;
   name: string | null;
@@ -38,34 +111,94 @@ export interface Agent {
   settings: AgentSettings;
 }
 
-/** 
- * **CreateAgentResponse Interface**
- * Represents the response structure when creating a new agent.
- * Either returns the created agent's ID on success or an error message on failure.
+/**
+ * Session Management Types
+ */
+export interface OnboardingSession {
+  id: string;
+  agentId: string;
+  userId: string;
+  name: string;
+  clientIdentifier?: string;
+  type: 'internal' | 'external';
+  status: 'active' | 'completed' | 'abandoned';
+  stepProgress: StepProgress;
+  metadata: Record<string, any>;
+  lastInteractionAt: Date;
+  startedAt: Date;
+  completedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Response Types
  */
 export interface CreateAgentResponse {
   id?: string;
   error?: string;
 }
 
-
 export interface UpdateAgentMetadataResponse {
   success: boolean;
   error?: string;
-  data?: any; // Add this line to support the data property
+  data?: any;
 }
 
-/** 
- * **Agent Interface**
- * Represents the structure of an agent within the system.
+export interface OnboardingSessionResponse {
+  success: boolean;
+  error?: string;
+  session?: OnboardingSession;
+}
+
+export interface AuthenticationResponse {
+  success: boolean;
+  error?: string;
+  token?: string;
+}
+
+/**
+ * WebSocket Event Types
  */
+export interface SessionUpdateEvent {
+  type: 'session-update';
+  sessionId: string;
+  data: {
+    currentStep: number;
+    steps: SessionStep[];
+    status: OnboardingSession['status'];
+  };
+}
 
+export interface AgentStateEvent {
+  type: 'agent-state';
+  agentId: string;
+  data: AgentState;
+}
 
-/** 
- * **Domain Related Interfaces**
- * Represent responses from Vercel's Domain APIs.
+export type WebSocketEvent = SessionUpdateEvent | AgentStateEvent;
+
+/**
+ * API Error Types
  */
+export interface ApiError {
+  code: string;
+  message: string;
+  details?: Record<string, any>;
+}
 
+/**
+ * Cache Control Types
+ */
+export interface CacheControl {
+  maxAge: number;
+  staleWhileRevalidate?: number;
+  tags?: string[];
+}
+
+/**
+ * Domain Management Types
+ */
 export type DomainVerificationStatusProps =
   | "Valid Configuration"
   | "Invalid Configuration"
@@ -73,10 +206,13 @@ export type DomainVerificationStatusProps =
   | "Domain Not Found"
   | "Unknown Error";
 
-/** 
- * Represents the response structure from Vercel's Get a Project Domain API.
- * Reference: https://vercel.com/docs/rest-api/endpoints#get-a-project-domain
- */
+export interface DomainVerification {
+  type: string;
+  domain: string;
+  value: string;
+  reason: string;
+}
+
 export interface DomainResponse {
   name: string;
   apexName: string;
@@ -87,42 +223,80 @@ export interface DomainResponse {
   updatedAt?: number;
   createdAt?: number;
   verified: boolean;
-  verification: {
-    type: string;
-    domain: string;
-    value: string;
-    reason: string;
-  }[];
+  verification: DomainVerification[];
 }
 
-/** 
- * Represents the response structure from Vercel's Get a Domain's Configuration API.
- * Reference: https://vercel.com/docs/rest-api/endpoints#get-a-domain-s-configuration
- */
 export interface DomainConfigResponse {
   configuredBy?: ("CNAME" | "A" | "http") | null;
   acceptedChallenges?: ("dns-01" | "http-01")[];
   misconfigured: boolean;
 }
 
-/** 
- * Represents the response structure from Vercel's Verify Project Domain API.
- * Reference: https://vercel.com/docs/rest-api/endpoints#verify-project-domain
+export interface DomainVerificationResponse extends Omit<DomainResponse, 'verification'> {
+  verification?: DomainVerification[];
+}
+
+/**
+ * Authentication Token Types
  */
-export interface DomainVerificationResponse {
-  name: string;
-  apexName: string;
-  projectId: string;
-  redirect?: string | null;
-  redirectStatusCode?: (307 | 301 | 302 | 308) | null;
-  gitBranch?: string | null;
-  updatedAt?: number;
-  createdAt?: number;
-  verified: boolean;
-  verification?: {
-    type: string;
-    domain: string;
-    value: string;
-    reason: string;
-  }[];
+export interface AuthToken {
+  agentId: string;
+  exp: number;
+  iat: number;
+}
+
+/**
+ * Auth State Management
+ */
+export interface AuthState {
+  authenticated: boolean;
+  loading: boolean;
+  error?: string;
+}
+
+/**
+ * Type Guards
+ */
+export function isBaseStep(step: any): step is BaseStep {
+  return (
+    typeof step === 'object' &&
+    step !== null &&
+    typeof step.id === 'string' &&
+    typeof step.title === 'string' &&
+    typeof step.description === 'string' &&
+    typeof step.completed === 'boolean' &&
+    (step.completionTool === null ||
+      ['email', 'memory', 'notesTaken', 'notion'].includes(step.completionTool))
+  );
+}
+
+export function isSessionStep(step: any): step is SessionStep {
+  return isBaseStep(step);
+}
+
+export function isStepProgress(progress: any): progress is StepProgress {
+  return (
+    typeof progress === 'object' &&
+    progress !== null &&
+    Array.isArray(progress.steps) &&
+    progress.steps.every(isBaseStep)
+  );
+}
+
+/**
+ * Type Conversion Utilities
+ */
+export function convertToBaseStep(step: Partial<BaseStep>): BaseStep {
+  return {
+    id: step.id || crypto.randomUUID(),
+    title: step.title || '',
+    description: step.description || '',
+    completed: step.completed || false,
+    completionTool: step.completionTool || null,
+    completedAt: step.completedAt,
+  };
+}
+
+export function convertToSessionStep(step: BaseStep): SessionStep {
+  return { ...step };
 }

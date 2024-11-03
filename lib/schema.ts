@@ -1,5 +1,4 @@
 // lib/schema.ts
-
 import { createId } from '@paralleldrive/cuid2';
 import { relations, sql } from 'drizzle-orm';
 import {
@@ -107,6 +106,7 @@ export const accounts = pgTable(
 //
 // **Sites Table**
 //
+// Update the sites table with additional indexes
 export const sites = pgTable(
   'sites',
   {
@@ -129,17 +129,85 @@ export const sites = pgTable(
   },
   (table) => ({
     userIdIdx: index('sites_userId_idx').on(table.userId),
+    // Add index for subdomain lookups
+    subdomainIdx: index('sites_subdomain_idx').on(table.subdomain),
+    // Add compound index for subdomain and userId
+    subdomainUserIdx: index('sites_subdomain_user_idx').on(table.subdomain, table.userId),
   })
 );
 
+
+export const systemLogs = pgTable(
+  'system_logs',
+  {
+    id: text('id').primaryKey().default(createId()),
+    type: text('type').notNull(), // e.g., 'info', 'warning', 'error'
+    message: text('message').notNull(),
+    metadata: jsonb('metadata').$type<Record<string, any>>().default({}),
+    source: text('source'), // e.g., 'agent', 'session', 'system'
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => ({
+    typeIdx: index('system_logs_type_idx').on(table.type),
+    createdAtIdx: index('system_logs_created_at_idx').on(table.createdAt),
+  })
+);
+
+
+// Add the onboarding sessions table definition
+// lib/schema.ts
+// lib/schema.ts
+
+export const onboardingSessions = pgTable(
+  'onboarding_sessions',
+  {
+    id: text('id').primaryKey(),
+    agentId: text('agentId').references(() => agents.id, {
+      onDelete: 'cascade'
+    }),
+    userId: text('userId').references(() => users.id, {
+      onDelete: 'set null'
+    }),
+    name: text('name'),
+    clientIdentifier: text('clientIdentifier'),
+    type: text('type').notNull(), // 'internal' | 'external'
+    status: text('status').notNull(), // 'active' | 'completed' | 'abandoned'
+    stepProgress: jsonb('stepProgress').$type<StepProgress>(),
+    metadata: jsonb('metadata').$type<Record<string, any>>(),
+    lastInteractionAt: timestamp('lastInteractionAt', { mode: 'date' }),
+    startedAt: timestamp('startedAt', { mode: 'date' }).defaultNow(),
+    completedAt: timestamp('completedAt', { mode: 'date' }),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow(),
+  },
+  (table) => ({
+    agentIdIdx: index('onboarding_sessions_agentId_idx').on(table.agentId),
+    userIdIdx: index('onboarding_sessions_userId_idx').on(table.userId),
+    clientIdentifierIdx: index('onboarding_sessions_clientIdentifier_idx').on(table.clientIdentifier),
+    statusIdx: index('onboarding_sessions_status_idx').on(table.status),
+    agentUserStatusIdx: index('onboarding_sessions_agent_user_status_idx').on(
+      table.agentId,
+      table.userId,
+      table.status
+    ),
+  })
+);
 //
 // **Define the Step Type**
 //
+
 export type Step = {
   title: string;
   description: string;
   completionTool: 'email' | 'memory' | 'notesTaken' | 'notion' | null;
   completed: boolean;
+};
+// Update the StepProgress type
+export type StepProgress = {
+  steps: Array<Step & {
+    id: string;
+    completedAt?: string;
+  }>;
 };
 
 //
@@ -153,20 +221,25 @@ export interface AgentSettings {
   steps?: Step[];
   primaryColor?: string;
   secondaryColor?: string;
-  aiModel?: string; // Add AI model selection
+  aiModel?: string;
   apiKeys?: {
-    [model: string]: string; // Store API keys per model
+    [model: string]: string;
   };
-
-    // Add new fields
-    onboardingType: 'internal' | 'external';
-    allowMultipleSessions?: boolean;
-
-    
+  onboardingType: 'internal' | 'external';
+  allowMultipleSessions?: boolean;
+  // Add authentication settings
+  authentication: {
+    enabled: boolean;
+    password?: string; // Hashed password will be stored here
+    message?: string; // Custom message for login screen
+  };
 }
 //
 // **Agents Table**
 //
+
+// Update the agents table with additional indexes
+// Update the agents table with the correct GIN index syntax
 export const agents = pgTable(
   'agents',
   {
@@ -188,17 +261,19 @@ export const agents = pgTable(
       onUpdate: 'cascade',
     }),
     settings: jsonb('settings')
-      .$type<AgentSettings>()
-      .default(sql`'{}'::jsonb`)
-      .notNull(),
-  },
-  (table) => ({
-    siteIdIdx: index('agents_siteId_idx').on(table.siteId),
-    userIdIdx: index('agents_userId_idx').on(table.userId),
-    slugSiteIdKey: uniqueIndex('agents_slug_siteId_key').on(table.slug, table.siteId),
-  })
+    .$type<AgentSettings>()
+    .default(sql`'{}'::jsonb`)
+    .notNull(),
+},
+(table) => ({
+  siteIdIdx: index('agents_siteId_idx').on(table.siteId),
+  userIdIdx: index('agents_userId_idx').on(table.userId),
+  slugSiteIdKey: uniqueIndex('agents_slug_siteId_key').on(table.slug, table.siteId),
+  sitePublishedIdx: index('agents_site_published_idx').on(table.siteId, table.published),
+  // Updated GIN index syntax using raw SQL
+  settingsIdx: sql`CREATE INDEX IF NOT EXISTS agents_settings_idx ON agents USING gin (settings)`,
+})
 );
-
 //
 // **Agents Relations**
 //
@@ -281,6 +356,13 @@ export const usersRelations = relations(users, ({ many }) => ({
   agents: many(agents),
 }));
 
+
+export const onboardingSessionsRelations = relations(onboardingSessions, ({ one }) => ({
+  agent: one(agents, { references: [agents.id], fields: [onboardingSessions.agentId] }),
+  user: one(users, { references: [users.id], fields: [onboardingSessions.userId] }),
+}));
+
+
 //
 // **Exported Types**
 //
@@ -297,3 +379,6 @@ export type SelectAgent = typeof agents.$inferSelect & {
 export type SelectSite = typeof sites.$inferSelect;
 export type SelectPost = typeof posts.$inferSelect;
 export type SelectExample = typeof examples.$inferSelect;
+export type SelectOnboardingSession = typeof onboardingSessions.$inferSelect;
+export type SelectSystemLog = typeof systemLogs.$inferSelect;
+

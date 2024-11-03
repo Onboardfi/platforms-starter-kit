@@ -1,7 +1,8 @@
 
-
+//lib/actions.ts
 "use server";
-import { redis, setAgentState, AgentState } from './upstash';
+
+
 
 import { getSession } from "@/lib/auth";
 import {
@@ -11,15 +12,16 @@ import {
 } from "@/lib/domains";
 import { getBlurDataURL } from "@/lib/utils";
 import { put } from "@vercel/blob";
-import { eq, InferModel } from "drizzle-orm";
+import { eq, InferModel, desc } from "drizzle-orm"; 
 import { customAlphabet } from "nanoid";
 import { revalidateTag } from "next/cache";
 import { withPostAuth, withSiteAuth, withAgentAuth } from "./auth";
 import db from "./db";
 import { redirect } from "next/navigation";
 import { createId } from "@paralleldrive/cuid2";
-import { Step, AgentSettings, UpdateAgentMetadataResponse, Agent } from '@/lib/types';
-import {
+
+import { redis, setAgentState, createSession, getSessionState, updateSessionState } from './upstash';
+import { 
   agents,
   SelectAgent,
   SelectPost,
@@ -27,8 +29,13 @@ import {
   posts,
   sites,
   users,
-  Step as SchemaStep,
-} from "./schema";
+  onboardingSessions,
+  SelectOnboardingSession,
+} from './schema';
+
+import { AgentState, SessionState, UpdateAgentMetadataResponse, Step, AgentSettings } from './types';
+
+
 
 interface CreateSiteResponse {
   error?: string;
@@ -90,6 +97,7 @@ export const createSite = async (formData: FormData): Promise<CreateSiteResponse
   }
 };
 
+
 export const createAgent = withSiteAuth(
   async (_: FormData, site: SelectSite): Promise<CreateAgentResponse> => {
     const session = await getSession();
@@ -113,15 +121,17 @@ export const createAgent = withSiteAuth(
             headingText: "AI Onboarding Platform",
             tools: [],
             initialMessage: "",
-          },
+            authentication: {
+              enabled: false,
+              message: "Please enter the password to access this internal onboarding"
+            }
+          } satisfies AgentSettings,
         })
         .returning();
 
       const agent = result[0];
 
-
-       // Initialize Redis state
-       await setAgentState(agent.id, {
+      await setAgentState(agent.id, {
         agentId: agent.id,
         onboardingType: "external",
         lastActive: Date.now(),
@@ -139,6 +149,8 @@ export const createAgent = withSiteAuth(
     }
   }
 );
+
+
 
 export const updateStepCompletionStatus = async (
   agentId: string,
@@ -181,6 +193,7 @@ export const updateStepCompletionStatus = async (
   }
 };
 
+// Update updateAgentStepsWithoutAuth function
 export const updateAgentStepsWithoutAuth = async (
   agentId: string,
   steps: Step[]
@@ -195,7 +208,13 @@ export const updateAgentStepsWithoutAuth = async (
       return { success: false, error: "Agent not found." };
     }
 
-    const newSettings = { ...agent.settings, steps };
+    const newSettings: AgentSettings = {
+      ...agent.settings,
+      steps,
+      authentication: {
+        ...agent.settings.authentication,
+      }
+    };
 
     await db
       .update(agents)
@@ -219,7 +238,7 @@ export const updateAgentStepsWithoutAuth = async (
     return { success: false, error: error.message || "Failed to update agent steps." };
   }
 };
-
+// Update the updateAgentMetadata function to handle authentication
 export const updateAgentMetadata = withAgentAuth(
   async (
     formData: FormData,
@@ -229,39 +248,28 @@ export const updateAgentMetadata = withAgentAuth(
     key: string
   ): Promise<UpdateAgentMetadataResponse> => {
     try {
-      // Initialize updated data object
       let updatedData: Record<string, any> = {};
 
-      // Handle different types of updates
-      if (key === "image") {
-        // Image upload handling
-        if (!process.env.BLOB_READ_WRITE_TOKEN) {
-          return { 
-            success: false,
-            error: "Missing BLOB_READ_WRITE_TOKEN token" 
-          };
-        }
-
-        const file = formData.get("image") as File;
-        const filename = `${nanoid()}.${file.type.split("/")[1]}`;
-
-        const { url } = await put(filename, file, {
-          access: "public",
-        });
-
-        const blurhash = await getBlurDataURL(url);
-        updatedData = {
-          image: url,
-          imageBlurhash: blurhash,
-        };
-      } else if (key === "settings") {
-        // Settings update handling
+      if (key === "settings") {
         try {
           const newSettings = JSON.parse(formData.get(key) as string);
+          
+          // If authentication settings are being updated
+          if (newSettings.authentication) {
+            // Ensure we preserve the existing password if it's not being updated
+            if (!newSettings.authentication.password && agent.settings.authentication?.password) {
+              newSettings.authentication.password = agent.settings.authentication.password;
+            }
+          }
+
           updatedData = {
             settings: {
               ...agent.settings,
-              ...newSettings
+              ...newSettings,
+              authentication: {
+                ...agent.settings.authentication,
+                ...newSettings.authentication
+              }
             }
           };
 
@@ -273,17 +281,17 @@ export const updateAgentMetadata = withAgentAuth(
               onboardingType: newSettings.onboardingType,
               lastActive: Date.now(),
               context: {},
-              settings: newSettings
-            }, { ex: 24 * 60 * 60 }); // 24 hour expiration
+              settings: updatedData.settings
+            }, { ex: 24 * 60 * 60 });
           }
         } catch (e) {
+          console.error('Settings update error:', e);
           return {
             success: false,
             error: "Invalid settings data"
           };
         }
       } else {
-        // Handle regular field updates
         const value = formData.get(key) as string;
         updatedData = { [key]: value };
       }
@@ -299,14 +307,14 @@ export const updateAgentMetadata = withAgentAuth(
         .returning()
         .then(res => res[0]);
 
-      // Cache the updated agent in Redis for quick access
+      // Cache the updated agent
       await redis.set(
         `agent:${agent.id}:metadata`,
         updatedAgent,
-        { ex: 3600 } // 1 hour expiration
+        { ex: 3600 }
       );
 
-      // Revalidate tags for updated content
+      // Revalidate tags
       const tags = [
         `${agent.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-agents`,
         `${agent.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-${agent.slug}`
@@ -319,10 +327,9 @@ export const updateAgentMetadata = withAgentAuth(
         );
       }
 
-      // Revalidate all tags in parallel
       await Promise.all(tags.map(tag => revalidateTag(tag)));
 
-      // Publish update event to Redis for real-time updates
+      // Publish update event
       await redis.publish('agent-updates', {
         agentId: agent.id,
         type: 'metadata-update',
@@ -336,7 +343,6 @@ export const updateAgentMetadata = withAgentAuth(
       };
 
     } catch (error: any) {
-      // Error handling with specific error types
       const errorResponse = {
         success: false,
         error: error.message || "An error occurred"
@@ -346,7 +352,6 @@ export const updateAgentMetadata = withAgentAuth(
         errorResponse.error = `This ${key} is already in use`;
       }
 
-      // Log error for monitoring
       console.error('Agent metadata update failed:', {
         agentId: agent.id,
         key,
@@ -358,6 +363,10 @@ export const updateAgentMetadata = withAgentAuth(
     }
   }
 );
+
+
+
+
 
 
 export const updateAgentAPI = async (
@@ -800,6 +809,176 @@ export const updatePostMetadata = withPostAuth(
     }
   }
 );
+
+
+
+// lib/actions.ts
+
+export const createOnboardingSession = async (
+  agentId: string,
+  data: {
+    name: string;
+    clientIdentifier?: string;
+    type: 'internal' | 'external';
+    userId?: string;
+    authState?: {
+      isAuthenticated: boolean;
+      isAnonymous: boolean;
+    };
+  }
+): Promise<string> => {
+  // Get the agent to verify it exists and check settings
+  const agent = await getAgentById(agentId);
+  if (!agent) {
+    throw new Error('Agent not found');
+  }
+
+  // Initialize steps from agent settings with default completion status
+  const initialSteps = (agent.settings.steps || []).map(step => ({
+    id: createId(),
+    title: step.title,
+    description: step.description,
+    completionTool: step.completionTool,
+    completed: false, // All steps start as incomplete
+    completedAt: undefined // Use undefined instead of null for completedAt
+  }));
+
+  // Use provided auth state or fallback to session check
+  const isAuthenticated = data.authState?.isAuthenticated || false;
+  const isAnonymous = data.authState?.isAnonymous || true;
+
+  try {
+    // If we have a userId, verify it exists in the users table
+    let effectiveUserId = undefined;
+    if (data.userId) {
+      const userExists = await db.query.users.findFirst({
+        where: eq(users.id, data.userId)
+      });
+      if (userExists) {
+        effectiveUserId = data.userId;
+      }
+    }
+
+    // Create session in PostgreSQL
+    const sessionId = createId();
+    const [dbSession] = await db
+      .insert(onboardingSessions)
+      .values({
+        id: sessionId,
+        agentId,
+        userId: effectiveUserId,
+        name: data.name,
+        clientIdentifier: data.clientIdentifier || `${effectiveUserId || 'anon'}-${sessionId}`,
+        type: data.type,
+        status: 'active',
+        stepProgress: {
+          steps: initialSteps.map(step => ({
+            id: step.id,
+            title: step.title,
+            description: step.description,
+            completionTool: step.completionTool,
+            completed: step.completed,
+            completedAt: step.completedAt
+          }))
+        },
+        metadata: {
+          isAnonymous: isAnonymous || !effectiveUserId,
+          isAuthenticated: isAuthenticated && !!effectiveUserId,
+          createdAt: new Date().toISOString()
+        },
+        startedAt: new Date(),
+        lastInteractionAt: new Date(),
+      })
+      .returning();
+
+    // Initialize Redis state
+    await createSession(agentId, {
+      clientIdentifier: data.clientIdentifier || `${effectiveUserId || 'anon'}-${sessionId}`,
+      steps: initialSteps.map(step => ({
+        ...step,
+        completedAt: undefined // Ensure completedAt is undefined for Redis
+      })),
+      metadata: {
+        sessionId: dbSession.id,
+        userId: effectiveUserId,
+        type: data.type,
+        isAnonymous: isAnonymous || !effectiveUserId,
+        isAuthenticated: isAuthenticated && !!effectiveUserId
+      },
+      currentStep: 0
+    });
+
+    // Publish session creation event
+    await redis.publish('session-events', {
+      type: 'session-created',
+      sessionId: dbSession.id,
+      agentId,
+      userId: effectiveUserId,
+      isAnonymous: isAnonymous || !effectiveUserId,
+      isAuthenticated: isAuthenticated && !!effectiveUserId,
+      steps: initialSteps,
+      timestamp: Date.now()
+    });
+
+    console.log('Created new session with steps:', {
+      sessionId: dbSession.id,
+      agentId,
+      steps: initialSteps,
+      type: data.type,
+      effectiveUserId
+    });
+
+    return dbSession.id;
+
+  } catch (error) {
+    console.error('Failed to create session:', {
+      error,
+      agentId,
+      userId: data.userId,
+      type: data.type
+    });
+    throw error;
+  }
+};
+
+
+
+
+export const completeStep = async (
+  sessionId: string,
+  stepId: string
+): Promise<void> => {
+  // Update Redis state first (for real-time updates)
+  const state = await getSessionState(sessionId);
+  if (!state) throw new Error('Session not found');
+
+  const updatedSteps = state.steps.map(step => 
+    step.id === stepId 
+      ? { ...step, completed: true, completedAt: new Date().toISOString() }
+      : step
+  );
+
+  await updateSessionState(sessionId, { steps: updatedSteps });
+
+  // Then update PostgreSQL
+  await db
+    .update(onboardingSessions)
+    .set({
+      stepProgress: { steps: updatedSteps },
+      updatedAt: new Date()
+    })
+    .where(eq(onboardingSessions.id, sessionId));
+};
+
+export const getSessions = async (agentId: string): Promise<SelectOnboardingSession[]> => {
+  return db.query.onboardingSessions.findMany({
+    where: eq(onboardingSessions.agentId, agentId),
+    orderBy: [desc(onboardingSessions.updatedAt)],
+  });
+};
+
+
+
 
 export const deletePost = withPostAuth(
   async (_: FormData, post: SelectPost): Promise<void> => {

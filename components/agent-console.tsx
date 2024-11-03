@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 
+import { Plus, Eye, Trash2, Spinner, InboxIcon } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { 
@@ -154,6 +155,7 @@ function AgentConsole({ agent }: { agent: Agent }) {
   const tabs = [
     { name: 'Workspace', id: 'workspace' },
     { name: 'Conversation', id: 'conversation' },
+    { name: 'Sessions', id: 'sessions' },
     { name: 'Integrations', id: 'integrations' }
   ];
 
@@ -277,7 +279,57 @@ function AgentConsole({ agent }: { agent: Agent }) {
       );
     }
   }, [agent.settings?.initialMessage]);
+// At the top with other state declarations
+const [sessions, setSessions] = useState<SelectOnboardingSession[]>([]);
+const [isLoadingSessions, setIsLoadingSessions] = useState(false);
 
+
+const fetchSessions = useCallback(async () => {
+  try {
+    setIsLoadingSessions(true);
+    const response = await fetch(`/api/getSessions?agentId=${agent.id}`);
+    const data = await response.json();
+    setSessions(data.sessions);
+  } catch (error) {
+    console.error('Failed to fetch sessions:', error);
+    toast.error('Failed to load sessions');
+  } finally {
+    setIsLoadingSessions(false);
+  }
+}, [agent.id]);
+
+// Add to useEffect
+useEffect(() => {
+  if (activeTab === 'sessions') {
+    fetchSessions();
+  }
+}, [activeTab, fetchSessions]);
+const createNewSession = async () => {
+  try {
+    const response = await fetch('/api/createSession', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        agentId: agent.id,
+        name: `Session ${new Date().toLocaleString()}`,
+        type: 'internal'
+      }),
+    });
+    
+    const data = await response.json();
+    if (data.error) {
+      throw new Error(data.error);
+    }
+    
+    toast.success('New session created');
+    fetchSessions(); // Refresh the sessions list
+  } catch (error) {
+    console.error('Failed to create session:', error);
+    toast.error('Failed to create session');
+  }
+};
   const disconnectConversation = useCallback(async () => {
     setIsConnected(false);
     setRealtimeEvents([]);
@@ -1145,7 +1197,7 @@ useEffect(() => {
         {/* API Key Button */}
        
       </div>
-    </TooltipProvider>
+    </>
   );
 }
 

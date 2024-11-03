@@ -11,6 +11,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SelectAgent } from "@/lib/schema";
 import { debounce } from "lodash";
+import { toast } from "sonner";
+import bcrypt from "bcryptjs";
 
 interface AgentFormProps {
   agent: SelectAgent;
@@ -36,9 +38,18 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
         openai: initialAgent?.settings?.apiKeys?.openai ?? ""
       },
       onboardingType: initialAgent?.settings?.onboardingType ?? "external",
-      allowMultipleSessions: initialAgent?.settings?.allowMultipleSessions ?? false
+      allowMultipleSessions: initialAgent?.settings?.allowMultipleSessions ?? false,
+      authentication: initialAgent?.settings?.authentication ?? {
+        enabled: false,
+        message: "Please enter the password to access this internal onboarding"
+      }
     }
   });
+
+  // Password management state
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   // Debounced update function
   const debouncedUpdate = useCallback(
@@ -69,6 +80,11 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
               [field.split('.')[1]]: value
             }
           }
+        : field === 'settings'
+        ? {
+            ...prev,
+            settings: value
+          }
         : {
             ...prev,
             [field]: value
@@ -78,6 +94,34 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
       return newState;
     });
   }, [debouncedUpdate]);
+
+  // Handle password update
+  const handlePasswordUpdate = async () => {
+    if (password !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    try {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const newSettings = {
+        ...formState.settings,
+        authentication: {
+          ...formState.settings.authentication,
+          enabled: true,
+          password: hashedPassword
+        }
+      };
+
+      handleUpdate('settings', newSettings);
+      setPassword("");
+      setConfirmPassword("");
+      setIsChangingPassword(false);
+      toast.success("Password updated successfully");
+    } catch (error) {
+      toast.error("Failed to update password");
+    }
+  };
 
   // Initialize form with agent data
   useEffect(() => {
@@ -97,7 +141,11 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
             openai: initialAgent.settings?.apiKeys?.openai ?? ""
           },
           onboardingType: initialAgent.settings?.onboardingType ?? "external",
-          allowMultipleSessions: initialAgent.settings?.allowMultipleSessions ?? false
+          allowMultipleSessions: initialAgent.settings?.allowMultipleSessions ?? false,
+          authentication: initialAgent.settings?.authentication ?? {
+            enabled: false,
+            message: "Please enter the password to access this internal onboarding"
+          }
         }
       });
     }
@@ -337,6 +385,124 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
           </div>
         </CardContent>
       </Card>
+
+      {formState.settings.onboardingType === 'internal' && (
+        <Card className="h-fit">
+          <CardHeader>
+            <CardTitle>Authentication Settings</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="authEnabled"
+                  checked={formState.settings.authentication.enabled}
+                  onCheckedChange={(checked) => 
+                    handleUpdate('settings.authentication', {
+                      ...formState.settings.authentication,
+                      enabled: checked
+                    })
+                  }
+                />
+                <div className="grid gap-1.5 leading-none">
+                  <Label htmlFor="authEnabled">
+                    Enable Password Protection
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    Require a password to access this internal onboarding
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {formState.settings.authentication.enabled && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="authMessage">Login Message</Label>
+                  <Textarea
+                    id="authMessage"
+                    value={formState.settings.authentication.message}
+                    onChange={(e) => 
+                      handleUpdate('settings.authentication', {
+                        ...formState.settings.authentication,
+                        message: e.target.value
+                      })
+                    }
+                    placeholder="Enter a message to display on the login screen..."
+                    className="bg-secondary"
+                    rows={2}
+                  />
+                </div>
+
+                {!isChangingPassword ? (
+                  <Button
+                    onClick={() => setIsChangingPassword(true)}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    {formState.settings.authentication.password 
+                      ? "Change Password" 
+                      : "Set Password"
+                    }
+                    </Button>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="password">Password</Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Enter password"
+                        className="bg-secondary"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="confirmPassword">Confirm Password</Label>
+                      <Input
+                        id="confirmPassword"
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Confirm password"
+                        className="bg-secondary"
+                      />
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={handlePasswordUpdate}
+                        className="flex-1"
+                      >
+                        Save Password
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setIsChangingPassword(false);
+                          setPassword("");
+                          setConfirmPassword("");
+                        }}
+                        variant="outline"
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-4 p-4 bg-secondary/50 rounded-md">
+                  <p className="text-sm text-muted-foreground">
+                    Password protection adds an extra layer of security for internal onboarding processes. 
+                    Share this password only with authorized team members who need access to this onboarding flow.
+                  </p>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
