@@ -22,6 +22,98 @@ export interface StepProgress {
   steps: Array<BaseStep>;
 }
 
+
+export type MessageType = 'text' | 'audio' | 'transcript';
+export type MessageRole = 'user' | 'assistant' | 'system';
+export type ConversationStatus = 'active' | 'completed' | 'archived';
+
+export interface MessageContent {
+  text?: string;
+  audioUrl?: string;
+  transcript?: string;
+}
+
+export interface ToolCall {
+  tool: string;
+  input: Record<string, any>;
+  result?: Record<string, any>;
+  error?: string;
+  timestamp: string;
+  duration?: number;
+}
+
+export interface MessageMetadata {
+  clientId?: string;
+  deviceInfo?: Record<string, any>;
+  processingTime?: number;
+  completionTokens?: number;
+  promptTokens?: number;
+  totalTokens?: number;
+  toolCalls?: ToolCall[];
+  stepId?: string;
+  stepTitle?: string;
+  isFinal?: boolean;
+}
+
+export interface ConversationMetadata {
+  agentVersion?: string;
+  clientType?: string;
+  clientVersion?: string;
+  sessionType?: 'internal' | 'external';
+  completedSteps?: string[];
+  toolsUsed?: string[];
+  duration?: number;
+  messageCount?: number;
+  lastToolUse?: {
+    tool: string;
+    timestamp: string;
+    success: boolean;
+  };
+}
+
+
+
+
+export interface ToolCall {
+  tool: string;
+  input: Record<string, any>;
+  result?: Record<string, any>;
+  error?: string;
+  timestamp: string; // Add this line
+  duration?: number;
+}
+
+
+export interface SelectMessage {
+  id: string;
+  conversationId: string;
+  type: MessageType;
+  role: MessageRole;
+  content: MessageContent;
+  metadata: MessageMetadata;
+  toolCalls: ToolCall[];
+  stepId?: string;
+  orderIndex: string;
+  parentMessageId?: string;
+  createdAt: Date;
+}
+
+export interface SelectConversation {
+  id: string;
+  sessionId: string;
+  status: ConversationStatus;
+  metadata: ConversationMetadata;
+  startedAt: Date;
+  endedAt?: Date;
+  lastMessageAt?: Date;
+  messageCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+  messages?: SelectMessage[];
+}
+
+
+
 // Agent configuration step interface
 
 export interface Step {

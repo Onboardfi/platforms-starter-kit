@@ -1,40 +1,21 @@
-
-//lib/actions.ts
+// actions.ts
 "use server";
 
-
-
 import { getSession } from "@/lib/auth";
-import {
-  addDomainToVercel,
-  removeDomainFromVercelProject,
-  validDomainRegex,
-} from "@/lib/domains";
+import { addDomainToVercel, removeDomainFromVercelProject, validDomainRegex } from "@/lib/domains";
 import { getBlurDataURL } from "@/lib/utils";
 import { put } from "@vercel/blob";
-import { eq, InferModel, desc } from "drizzle-orm"; 
+import { eq, InferModel, desc, asc, and, lt } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 import { revalidateTag } from "next/cache";
 import { withPostAuth, withSiteAuth, withAgentAuth } from "./auth";
 import db from "./db";
 import { redirect } from "next/navigation";
 import { createId } from "@paralleldrive/cuid2";
-
+import { conversations, messages, agents, SelectAgent, SelectPost, SelectSite, posts, sites, users, onboardingSessions, SelectOnboardingSession } from './schema';
+import { AgentState, SessionState, UpdateAgentMetadataResponse, Step, AgentSettings, MessageType, MessageRole, MessageContent, MessageMetadata, ConversationMetadata, ConversationStatus, ToolCall, SelectMessage, SelectConversation } from './types';
 import { redis, setAgentState, createSession, getSessionState, updateSessionState } from './upstash';
-import { 
-  agents,
-  SelectAgent,
-  SelectPost,
-  SelectSite,
-  posts,
-  sites,
-  users,
-  onboardingSessions,
-  SelectOnboardingSession,
-} from './schema';
-
-import { AgentState, SessionState, UpdateAgentMetadataResponse, Step, AgentSettings } from './types';
-
+import { addMessage, getConversationMessages, createConversation, getSessionConversations } from './upstash';
 
 
 interface CreateSiteResponse {
@@ -973,12 +954,20 @@ export const completeStep = async (
 export const getSessions = async (agentId: string): Promise<SelectOnboardingSession[]> => {
   return db.query.onboardingSessions.findMany({
     where: eq(onboardingSessions.agentId, agentId),
+    with: {
+      conversations: {
+        // Include messages within each conversation
+        with: {
+          messages: {
+            orderBy: [asc(messages.orderIndex)], // Updated line
+          },
+        },
+        orderBy: [desc(conversations.startedAt)], // Order conversations by start time
+      },
+    },
     orderBy: [desc(onboardingSessions.updatedAt)],
   });
 };
-
-
-
 
 export const deletePost = withPostAuth(
   async (_: FormData, post: SelectPost): Promise<void> => {
@@ -1104,3 +1093,6 @@ export const updateAgent = async (
     return;
   }
 };
+
+// actions.ts
+export { addMessage, getConversationMessages, createConversation, getSessionConversations };

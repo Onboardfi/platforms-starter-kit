@@ -285,19 +285,113 @@ function AgentConsole({ agent }: AgentConsoleProps) {
         }
       });
 
-      client.on('conversation.updated', async ({ item, delta }: any) => {
-        if (delta?.audio) {
-          wavStreamPlayerRef.current.add16BitPCM(delta.audio, item.id);
+     // Update the conversation.updated event handler in AgentConsole.tsx
+     client.on('conversation.updated', async ({ item, delta }: any) => {
+      if (delta?.audio) {
+        wavStreamPlayerRef.current.add16BitPCM(delta.audio, item.id);
+      }
+      
+      if (item.status === 'completed' && item.role) {
+        try {
+          // Get metadata from stored state
+          const clientMetadata = client.metadata || {};
+          let effectiveConversationId = clientMetadata.conversationId;
+          
+          if (!effectiveConversationId) {
+            console.warn('No conversation ID found in client metadata');
+            
+            if (item.metadata?.conversationId) {
+              console.log('Found conversation ID in item metadata:', item.metadata.conversationId);
+              effectiveConversationId = item.metadata.conversationId;
+            } else {
+              console.error('No conversation ID available in either source');
+              return;
+            }
+          }
+    
+          // Log state for debugging
+          console.log('Saving message with metadata:', {
+            conversationId: effectiveConversationId,
+            sessionId: clientMetadata.sessionId,
+            agentId: clientMetadata.agentId,
+            messageId: item.id,
+            role: item.role
+          });
+    
+          // Prepare message data
+          const messageData = {
+            conversationId: effectiveConversationId,
+            message: {
+              role: item.role,
+              content: {
+                text: item.formatted?.text || '',
+                transcript: item.formatted?.transcript || '',
+                audioUrl: item.formatted?.audio ? `/audio/${item.id}.wav` : undefined
+              },
+              metadata: {
+                ...item.metadata,
+                sessionId: clientMetadata.sessionId,
+                stepTitle: item.metadata?.stepTitle,
+                isFinal: true,
+                clientId: clientMetadata.clientId || item.metadata?.clientId,
+                toolCalls: item.metadata?.toolCalls || []
+              }
+            }
+          };
+    
+          // Save message with proper headers
+          await axios.post('/api/saveMessage', messageData, {
+            headers: {
+              'Content-Type': 'application/json',
+              'x-agent-id': clientMetadata.agentId || agent.id
+            }
+          });
+          
+          console.log('Successfully saved message:', {
+            messageId: item.id,
+            conversationId: effectiveConversationId,
+            agentId: clientMetadata.agentId || agent.id,
+            role: item.role
+          });
+    
+        } catch (error) {
+          console.error('Failed to save message:', error, {
+            itemId: item.id,
+            metadata: item.metadata,
+            clientMetadata: client.metadata,
+            agentId: agent.id
+          });
+    
+          // Enhanced error logging
+          if (axios.isAxiosError(error)) {
+            console.error('Axios error details:', {
+              status: error.response?.status,
+              statusText: error.response?.statusText,
+              data: error.response?.data,
+              headers: error.config?.headers
+            });
+          }
+    
+          if (error instanceof Error) {
+            toast.error(`Failed to save message: ${error.message}`);
+          } else {
+            toast.error('Failed to save message');
+          }
         }
-        
-        if (item.status === 'completed' && item.formatted.audio?.length) {
-          const wavFile = await WavRecorder.decode(item.formatted.audio, 24000, 24000);
-          item.formatted.file = wavFile;
+      }
+      
+      // Update local state
+      setItems(prevItems => {
+        const newItems = [...prevItems];
+        const index = newItems.findIndex(i => i.id === item.id);
+        if (index >= 0) {
+          newItems[index] = item;
+        } else {
+          newItems.push(item);
         }
-        
-        setItems(client.conversation.getItems());
+        return newItems;
       });
-
+    });
       // Add tool setup
       if (agent.settings?.tools) {
         // Email tool
@@ -391,61 +485,106 @@ function AgentConsole({ agent }: AgentConsoleProps) {
     return () => {
       client.reset();
     };
-  }, [agent.settings?.tools, instructions]);
+  }, [agent.id, agent.settings?.tools, instructions]); // Added agent.id to deps
 
 // Connect/Disconnect Handlers
+
 const connectConversation = useCallback(async (sessionId?: string) => {
-    const effectiveSessionId = sessionId || currentSessionId;
-    if (!effectiveSessionId) {
-      toast.error('No active session');
-      return;
-    }
+  const effectiveSessionId = sessionId || currentSessionId;
+  if (!effectiveSessionId) {
+    toast.error('No active session');
+    return;
+  }
 
-    if (!apiKey) {
-      toast.error('API key not set');
-      return;
-    }
+  if (!apiKey) {
+    toast.error('API key not set');
+    return;
+  }
 
-    try {
-      startTimeRef.current = new Date().toISOString();
-      setIsConnected(true);
-      setRealtimeEvents([]);
-
-      const client = clientRef.current;
-      
-      // Update client connection metadata
-      client.updateSession({
-        metadata: {
-          sessionId: effectiveSessionId,
-          agentId: agent.id
-        }
-      });
-
-      // Initialize audio components
-      await wavRecorderRef.current.begin();
-      await wavStreamPlayerRef.current.connect();
-      
-      // Connect client and send initial message
-      await client.connect();
-
-      const initialMessage = agent.settings?.initialMessage || 'Hello!';
-      client.sendUserMessageContent([
-        { type: 'input_text', text: initialMessage }
-      ]);
-
-      if (client.getTurnDetectionType() === 'server_vad') {
-        await wavRecorderRef.current.record((data) => 
-          client.appendInputAudio(data.mono)
-        );
+  try {
+    // Create or get conversation
+    const conversationResponse = await axios.post('/api/getOrCreateConversation', {
+      sessionId: effectiveSessionId,
+      agentId: agent.id
+    }, {
+      headers: {
+        'x-agent-id': agent.id
       }
+    });
+    
+    const { conversationId, isNew } = conversationResponse.data;
 
-      toast.success('Connected to conversation!');
-    } catch (error) {
-      console.error('Failed to connect conversation:', error);
-      toast.error('Failed to connect to conversation');
-      setIsConnected(false);
+    // Set up client metadata
+    const client = clientRef.current;
+    
+    // Store metadata in client instance
+    client.metadata = {
+      sessionId: effectiveSessionId,
+      conversationId,
+      agentId: agent.id,
+      clientId: `${agent.id}-${effectiveSessionId}`,
+      timestamp: new Date().toISOString()
+    };
+
+    // Update session with metadata and instructions
+    await client.updateSession({ 
+      metadata: client.metadata,
+      instructions,
+      input_audio_transcription: { model: 'whisper-1' }
+    });
+    
+    // If existing conversation, load previous messages
+    if (!isNew) {
+      try {
+        const messagesResponse = await axios.get(
+          `/api/getConversationMessages?conversationId=${conversationId}&sessionId=${effectiveSessionId}`,
+          {
+            headers: {
+              'x-agent-id': agent.id
+            }
+          }
+        );
+        setItems(messagesResponse.data.messages || []);
+      } catch (error) {
+        console.error('Failed to load conversation messages:', error);
+        toast.error('Failed to load previous messages');
+      }
     }
-  }, [currentSessionId, agent.id, agent.settings?.initialMessage, apiKey]);
+
+    // Initialize audio components
+    await wavRecorderRef.current.begin();
+    await wavStreamPlayerRef.current.connect();
+    
+    // Connect client
+    startTimeRef.current = new Date().toISOString();
+    setIsConnected(true);
+    setRealtimeEvents([]);
+    await client.connect();
+
+    // Send initial message if new conversation
+    if (isNew && agent.settings?.initialMessage) {
+      client.sendUserMessageContent([
+        { type: 'input_text', text: agent.settings.initialMessage }
+      ]);
+    }
+
+    if (client.getTurnDetectionType() === 'server_vad') {
+      await wavRecorderRef.current.record((data) => 
+        client.appendInputAudio(data.mono)
+      );
+    }
+
+    console.log('Connected to conversation with metadata:', client.metadata);
+    toast.success('Connected to conversation!');
+    
+  } catch (error) {
+    console.error('Failed to connect conversation:', error);
+    toast.error('Failed to connect to conversation');
+    setIsConnected(false);
+  }
+}, [currentSessionId, agent.id, agent.settings?.initialMessage, apiKey, instructions]);
+
+
 
   const disconnectConversation = useCallback(async () => {
     try {

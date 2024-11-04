@@ -1,4 +1,5 @@
-// lib/schema.ts
+
+//Users/bobbygilbert/Documents/Github/platforms-starter-kit/lib/schema.ts
 import { createId } from '@paralleldrive/cuid2';
 import { relations, sql } from 'drizzle-orm';
 import {
@@ -14,9 +15,62 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
-//
-// **Users Table**
-//
+// Message and conversation types
+export type MessageType = 'text' | 'audio' | 'transcript';
+export type MessageRole = 'user' | 'assistant' | 'system';
+export type ConversationStatus = 'active' | 'completed' | 'archived';
+
+
+/**
+ * Steps Table Definition
+ */
+export const steps = pgTable(
+  'steps',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId()),
+    agentId: text('agentId')
+      .notNull()
+      .references(() => agents.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    description: text('description'),
+    orderIndex: text('orderIndex').notNull(),
+    completionTool: text('completionTool').$type<'email' | 'memory' | 'notesTaken' | 'notion' | null>(),
+    completed: boolean('completed').default(false).notNull(),
+    completedAt: timestamp('completedAt', { mode: 'date' }),
+    metadata: jsonb('metadata').$type<Record<string, any>>().default({}),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => ({
+    agentIdIdx: index('steps_agentId_idx').on(table.agentId),
+    orderIdx: index('steps_order_idx').on(table.orderIndex),
+    completedIdx: index('steps_completed_idx').on(table.completed),
+  })
+);
+
+
+
+
+/**
+ * Steps Relations
+ */
+export const stepsRelations = relations(steps, ({ one, many }) => ({
+  agent: one(agents, {
+    fields: [steps.agentId],
+    references: [agents.id],
+  }),
+  messages: many(messages),
+}));
+
+export type SelectStep = typeof steps.$inferSelect;
+
+
+
+
+
+
+
+
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
   name: text('name'),
@@ -29,9 +83,6 @@ export const users = pgTable('users', {
   updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
 });
 
-//
-// **Sessions Table**
-//
 export const sessions = pgTable(
   'sessions',
   {
@@ -46,9 +97,6 @@ export const sessions = pgTable(
   })
 );
 
-//
-// **Verification Tokens Table**
-//
 export const verificationTokens = pgTable(
   'verificationTokens',
   {
@@ -61,9 +109,6 @@ export const verificationTokens = pgTable(
   })
 );
 
-//
-// **Examples Table**
-//
 export const examples = pgTable('examples', {
   id: serial('id').primaryKey(),
   name: text('name'),
@@ -74,9 +119,6 @@ export const examples = pgTable('examples', {
   imageBlurhash: text('imageBlurhash'),
 });
 
-//
-// **Accounts Table**
-//
 export const accounts = pgTable(
   'accounts',
   {
@@ -103,10 +145,6 @@ export const accounts = pgTable(
   })
 );
 
-//
-// **Sites Table**
-//
-// Update the sites table with additional indexes
 export const sites = pgTable(
   'sites',
   {
@@ -129,22 +167,19 @@ export const sites = pgTable(
   },
   (table) => ({
     userIdIdx: index('sites_userId_idx').on(table.userId),
-    // Add index for subdomain lookups
     subdomainIdx: index('sites_subdomain_idx').on(table.subdomain),
-    // Add compound index for subdomain and userId
     subdomainUserIdx: index('sites_subdomain_user_idx').on(table.subdomain, table.userId),
   })
 );
-
 
 export const systemLogs = pgTable(
   'system_logs',
   {
     id: text('id').primaryKey().default(createId()),
-    type: text('type').notNull(), // e.g., 'info', 'warning', 'error'
+    type: text('type').notNull(),
     message: text('message').notNull(),
     metadata: jsonb('metadata').$type<Record<string, any>>().default({}),
-    source: text('source'), // e.g., 'agent', 'session', 'system'
+    source: text('source'),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
   },
   (table) => ({
@@ -153,66 +188,19 @@ export const systemLogs = pgTable(
   })
 );
 
-
-// Add the onboarding sessions table definition
-// lib/schema.ts
-// lib/schema.ts
-
-export const onboardingSessions = pgTable(
-  'onboarding_sessions',
-  {
-    id: text('id').primaryKey(),
-    agentId: text('agentId').references(() => agents.id, {
-      onDelete: 'cascade'
-    }),
-    userId: text('userId').references(() => users.id, {
-      onDelete: 'set null'
-    }),
-    name: text('name'),
-    clientIdentifier: text('clientIdentifier'),
-    type: text('type').notNull(), // 'internal' | 'external'
-    status: text('status').notNull(), // 'active' | 'completed' | 'abandoned'
-    stepProgress: jsonb('stepProgress').$type<StepProgress>(),
-    metadata: jsonb('metadata').$type<Record<string, any>>(),
-    lastInteractionAt: timestamp('lastInteractionAt', { mode: 'date' }),
-    startedAt: timestamp('startedAt', { mode: 'date' }).defaultNow(),
-    completedAt: timestamp('completedAt', { mode: 'date' }),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow(),
-  },
-  (table) => ({
-    agentIdIdx: index('onboarding_sessions_agentId_idx').on(table.agentId),
-    userIdIdx: index('onboarding_sessions_userId_idx').on(table.userId),
-    clientIdentifierIdx: index('onboarding_sessions_clientIdentifier_idx').on(table.clientIdentifier),
-    statusIdx: index('onboarding_sessions_status_idx').on(table.status),
-    agentUserStatusIdx: index('onboarding_sessions_agent_user_status_idx').on(
-      table.agentId,
-      table.userId,
-      table.status
-    ),
-  })
-);
-//
-// **Define the Step Type**
-//
-
 export type Step = {
   title: string;
   description: string;
   completionTool: 'email' | 'memory' | 'notesTaken' | 'notion' | null;
   completed: boolean;
 };
-// Update the StepProgress type
+
 export type StepProgress = {
   steps: Array<Step & {
     id: string;
     completedAt?: string;
   }>;
 };
-
-//
-// **Agent Settings Interface**
-//
 
 export interface AgentSettings {
   headingText?: string;
@@ -227,19 +215,13 @@ export interface AgentSettings {
   };
   onboardingType: 'internal' | 'external';
   allowMultipleSessions?: boolean;
-  // Add authentication settings
   authentication: {
     enabled: boolean;
-    password?: string; // Hashed password will be stored here
-    message?: string; // Custom message for login screen
+    password?: string;
+    message?: string;
   };
 }
-//
-// **Agents Table**
-//
 
-// Update the agents table with additional indexes
-// Update the agents table with the correct GIN index syntax
 export const agents = pgTable(
   'agents',
   {
@@ -260,31 +242,17 @@ export const agents = pgTable(
       onDelete: 'cascade',
       onUpdate: 'cascade',
     }),
-    settings: jsonb('settings')
-    .$type<AgentSettings>()
-    .default(sql`'{}'::jsonb`)
-    .notNull(),
-},
-(table) => ({
-  siteIdIdx: index('agents_siteId_idx').on(table.siteId),
-  userIdIdx: index('agents_userId_idx').on(table.userId),
-  slugSiteIdKey: uniqueIndex('agents_slug_siteId_key').on(table.slug, table.siteId),
-  sitePublishedIdx: index('agents_site_published_idx').on(table.siteId, table.published),
-  // Updated GIN index syntax using raw SQL
-  settingsIdx: sql`CREATE INDEX IF NOT EXISTS agents_settings_idx ON agents USING gin (settings)`,
-})
+    settings: jsonb('settings').$type<AgentSettings>().default(sql`'{}'::jsonb`).notNull(),
+  },
+  (table) => ({
+    siteIdIdx: index('agents_siteId_idx').on(table.siteId),
+    userIdIdx: index('agents_userId_idx').on(table.userId),
+    slugSiteIdKey: uniqueIndex('agents_slug_siteId_key').on(table.slug, table.siteId),
+    sitePublishedIdx: index('agents_site_published_idx').on(table.siteId, table.published),
+    settingsIdx: sql`CREATE INDEX IF NOT EXISTS agents_settings_idx ON agents USING gin (settings)`,
+  })
 );
-//
-// **Agents Relations**
-//
-export const agentsRelations = relations(agents, ({ one }) => ({
-  site: one(sites, { references: [sites.id], fields: [agents.siteId] }),
-  user: one(users, { references: [users.id], fields: [agents.userId] }),
-}));
 
-//
-// **Posts Table**
-//
 export const posts = pgTable(
   'posts',
   {
@@ -314,40 +282,130 @@ export const posts = pgTable(
   })
 );
 
-//
-// **Posts Relations**
-//
+export const onboardingSessions = pgTable(
+  'onboarding_sessions',
+  {
+    id: text('id').primaryKey(),
+    agentId: text('agentId').references(() => agents.id, {
+      onDelete: 'cascade'
+    }),
+    userId: text('userId').references(() => users.id, {
+      onDelete: 'set null'
+    }),
+    name: text('name'),
+    clientIdentifier: text('clientIdentifier'),
+    type: text('type').notNull(),
+    status: text('status').notNull(),
+    stepProgress: jsonb('stepProgress').$type<StepProgress>(),
+    metadata: jsonb('metadata').$type<Record<string, any>>(),
+    lastInteractionAt: timestamp('lastInteractionAt', { mode: 'date' }),
+    startedAt: timestamp('startedAt', { mode: 'date' }).defaultNow(),
+    completedAt: timestamp('completedAt', { mode: 'date' }),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => ({
+    agentIdIdx: index('onboarding_sessions_agentId_idx').on(table.agentId),
+    userIdIdx: index('onboarding_sessions_userId_idx').on(table.userId),
+    clientIdentifierIdx: index('onboarding_sessions_clientIdentifier_idx').on(table.clientIdentifier),
+    statusIdx: index('onboarding_sessions_status_idx').on(table.status),
+    agentUserStatusIdx: index('onboarding_sessions_agent_user_status_idx').on(
+      table.agentId,
+      table.userId,
+      table.status
+    ),
+  })
+);
+
+export const conversations = pgTable(
+  'conversations',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId()),
+    sessionId: text('sessionId').references(() => onboardingSessions.id, {
+      onDelete: 'cascade',
+    }),
+    status: text('status').$type<ConversationStatus>().notNull().default('active'),
+    metadata: jsonb('metadata').$type<Record<string, any>>().default({}),
+    startedAt: timestamp('startedAt', { mode: 'date' }).defaultNow().notNull(),
+    endedAt: timestamp('endedAt', { mode: 'date' }),
+    lastMessageAt: timestamp('lastMessageAt', { mode: 'date' }),
+    messageCount: integer('messageCount').default(0),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => ({
+    sessionIdx: index('conversations_session_idx').on(table.sessionId),
+    statusIdx: index('conversations_status_idx').on(table.status),
+    timeframeIdx: index('conversations_timeframe_idx').on(table.startedAt, table.endedAt),
+  })
+);
+
+
+/**
+ * Messages Table with Step Reference
+ */
+export const messages = pgTable(
+  'messages',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId()),
+    conversationId: text('conversationId')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    type: text('type').$type<MessageType>().notNull(),
+    role: text('role').$type<MessageRole>().notNull(),
+    content: jsonb('content').$type<{
+      text?: string;
+      audioUrl?: string;
+      transcript?: string;
+    }>().notNull(),
+    metadata: jsonb('metadata').$type<Record<string, any>>().default({}),
+    toolCalls: jsonb('toolCalls').$type<Array<{
+      tool: string;
+      input: Record<string, any>;
+      result?: Record<string, any>;
+      error?: string;
+    }>>().default([]),
+    stepId: text('stepId').references(() => steps.id, { 
+      onDelete: 'set null' 
+    }),
+    orderIndex: text('orderIndex').notNull(),
+    parentMessageId: text('parentMessageId').references((): any => messages.id),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => ({
+    conversationIdx: index('messages_conversation_idx').on(table.conversationId),
+    typeRoleIdx: index('messages_type_role_idx').on(table.type, table.role),
+    orderIdx: index('messages_order_idx').on(table.orderIndex),
+    stepIdx: index('messages_step_idx').on(table.stepId),
+    parentIdx: index('messages_parent_idx').on(table.parentMessageId),
+    createdAtIdx: index('messages_created_at_idx').on(table.createdAt),
+  })
+);
+
+export const agentsRelations = relations(agents, ({ one }) => ({
+  site: one(sites, { references: [sites.id], fields: [agents.siteId] }),
+  user: one(users, { references: [users.id], fields: [agents.userId] }),
+}));
+
 export const postsRelations = relations(posts, ({ one }) => ({
   site: one(sites, { references: [sites.id], fields: [posts.siteId] }),
   user: one(users, { references: [users.id], fields: [posts.userId] }),
 }));
 
-//
-// **Sites Relations**
-//
 export const sitesRelations = relations(sites, ({ one, many }) => ({
   posts: many(posts),
   agents: many(agents),
   user: one(users, { references: [users.id], fields: [sites.userId] }),
 }));
 
-//
-// **Sessions Relations**
-//
 export const sessionsRelations = relations(sessions, ({ one }) => ({
   user: one(users, { references: [users.id], fields: [sessions.userId] }),
 }));
 
-//
-// **Accounts Relations**
-//
 export const accountsRelations = relations(accounts, ({ one }) => ({
   user: one(users, { references: [users.id], fields: [accounts.userId] }),
 }));
 
-//
-// **Users Relations**
-//
 export const usersRelations = relations(users, ({ many }) => ({
   accounts: many(accounts),
   sessions: many(sessions),
@@ -356,29 +414,129 @@ export const usersRelations = relations(users, ({ many }) => ({
   agents: many(agents),
 }));
 
-
-export const onboardingSessionsRelations = relations(onboardingSessions, ({ one }) => ({
-  agent: one(agents, { references: [agents.id], fields: [onboardingSessions.agentId] }),
-  user: one(users, { references: [users.id], fields: [onboardingSessions.userId] }),
+export const conversationsRelations = relations(conversations, ({ one, many }) => ({
+  session: one(onboardingSessions, {
+    fields: [conversations.sessionId],
+    references: [onboardingSessions.id],
+  }),
+  messages: many(messages),
 }));
 
+/**
+ * Message Relations with Step Reference
+ */
+export const messagesRelations = relations(messages, ({ one }) => ({
+  conversation: one(conversations, {
+    fields: [messages.conversationId],
+    references: [conversations.id],
+  }),
+  parentMessage: one(messages, {
+    fields: [messages.parentMessageId],
+    references: [messages.id],
+  }),
+  step: one(steps, {
+    fields: [messages.stepId],
+    references: [steps.id],
+  }),
+}));
 
-//
-// **Exported Types**
-//
+export const onboardingSessionsRelations = relations(onboardingSessions, ({ one, many }) => ({
+  agent: one(agents, { references: [agents.id], fields: [onboardingSessions.agentId] }),
+  user: one(users, { references: [users.id], fields: [onboardingSessions.userId] }),
+  conversations: many(conversations),
+}));
 
-// Infer the select type from the agents table using Drizzle ORM's type inference.
-// This ensures that `SelectAgent` includes all fields from the `agents` table with the correct types.
+// Update SelectMessage type to include step reference
+export type SelectMessage = typeof messages.$inferSelect & {
+  parentMessage?: SelectMessage;
+  conversation?: SelectConversation;
+  step?: SelectStep;
+};
+
+export type SelectConversation = typeof conversations.$inferSelect & {
+  messages?: SelectMessage[];
+  session?: SelectOnboardingSession;
+};
+
 export type SelectAgent = typeof agents.$inferSelect & {
-  site: typeof sites.$inferSelect | null; // Make site nullable
+  site: typeof sites.$inferSelect | null;
   siteName?: string | null;
   userName?: string | null;
   settings: AgentSettings;
 };
-// Similarly, you can define other select types as needed.
+
 export type SelectSite = typeof sites.$inferSelect;
+
 export type SelectPost = typeof posts.$inferSelect;
+
 export type SelectExample = typeof examples.$inferSelect;
-export type SelectOnboardingSession = typeof onboardingSessions.$inferSelect;
+
+export type SelectOnboardingSession = typeof onboardingSessions.$inferSelect & {
+  conversations?: SelectConversation[];
+  agent?: SelectAgent;
+  user?: typeof users.$inferSelect;
+};
+
 export type SelectSystemLog = typeof systemLogs.$inferSelect;
 
+// Constants for Redis key patterns
+export const CONVERSATION_KEY_PREFIX = 'conversation:';
+export const MESSAGE_KEY_PREFIX = 'message:';
+export const ACTIVE_CONVERSATIONS_SET = 'active_conversations';
+export const MESSAGE_ORDER_PREFIX = 'message_order:';
+
+// Utility types for message content
+export type MessageContent = {
+  text?: string;
+  audioUrl?: string;
+  transcript?: string;
+  metadata?: Record<string, any>;
+};
+
+export type ToolCall = {
+  tool: string;
+  input: Record<string, any>;
+  result?: Record<string, any>;
+  error?: string;
+  timestamp: string;
+  duration?: number;
+};
+
+export type MessageMetadata = {
+  clientId?: string;
+  deviceInfo?: Record<string, any>;
+  processingTime?: number;
+  completionTokens?: number;
+  promptTokens?: number;
+  totalTokens?: number;
+  toolCalls?: ToolCall[];
+  stepId?: string;
+  stepTitle?: string;
+  isFinal?: boolean;
+};
+
+export type ConversationMetadata = {
+  agentVersion?: string;
+  clientType?: string;
+  clientVersion?: string;
+  sessionType?: 'internal' | 'external';
+  completedSteps?: string[];
+  toolsUsed?: string[];
+  duration?: number;
+  messageCount?: number;
+  lastToolUse?: {
+    tool: string;
+    timestamp: string;
+    success: boolean;
+  };
+};
+
+// Export Redis key generation utilities
+export const getConversationKey = (conversationId: string) => 
+  `${CONVERSATION_KEY_PREFIX}${conversationId}`;
+
+export const getMessageKey = (messageId: string) => 
+  `${MESSAGE_KEY_PREFIX}${messageId}`;
+
+export const getMessageOrderKey = (conversationId: string) => 
+  `${MESSAGE_ORDER_PREFIX}${conversationId}`;

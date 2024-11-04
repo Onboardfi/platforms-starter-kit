@@ -78,6 +78,13 @@
       "when": 1730400143597,
       "tag": "0010_add_agents_table20",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1730744713517,
+      "tag": "0011_add_agents_table20",
+      "breakpoints": true
     }
   ]
 }
