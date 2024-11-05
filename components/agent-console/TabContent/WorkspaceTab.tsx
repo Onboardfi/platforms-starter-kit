@@ -56,7 +56,7 @@ export function WorkspaceTab({
     <Card className="bg-black border border-gray-800">
       <CardContent className="p-6">
         <div className="mb-4">
-          <Badge variant="outline" className="text-xs">
+          <Badge variant="outline" className="text-xs text-white ">
             Session: {currentSessionId}
           </Badge>
         </div>

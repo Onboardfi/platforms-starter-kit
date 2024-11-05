@@ -766,11 +766,7 @@ const connectConversation = useCallback(async (sessionId?: string) => {
           {/* Sidebar */}
           <div className="fixed left-0 top-0 bottom-0 w-96 border-r border-gray-800 bg-black overflow-y-auto">
             <div className="flex-1 flex flex-col">
-              <div className="px-4 py-2 border-b border-gray-800">
-                <Badge variant="outline" className="w-full justify-center text-xs">
-                  Session: {currentSessionId || 'No Active Session'}
-                </Badge>
-              </div>
+             
               <OnboardingProgressSidebar
                 emailSent={emailSent}
                 notesTaken={notesTaken}
@@ -799,34 +795,35 @@ const connectConversation = useCallback(async (sessionId?: string) => {
               onApiKeyUpdate={handleApiKeyUpdate}
             />
 
-            <TabContent
-              activeTab={activeTab}
-              agentId={agent.id}
-              items={items}
-              draftNote={draftNote}
-              draftEmail={draftEmail}
-              isEditingDraft={isEditingDraft}
-              isEditingEmail={isEditingEmail}
-              handleEditDraft={() => setIsEditingDraft(true)}
-              handleEditEmail={() => setIsEditingEmail(true)}
-              handleSaveDraft={(draft: string) => {
-                setDraftNote(draft);
-                setIsEditingDraft(false);
-              }}
-              handleSaveEmail={(email: DraftEmail) => {
-                setDraftEmail(email);
-                setIsEditingEmail(false);
-              }}
-              handleSendNote={handleSendNote}
-              handleSendEmail={handleSendEmail}
-              setDraftNote={setDraftNote}
-              setDraftEmail={setDraftEmail}
-              sessions={sessions}
-              isLoadingSessions={isLoadingSessions}
-              createNewSession={createNewSession}
-              currentSessionId={currentSessionId}
-              onSessionSelect={handleSessionSelect}
-            />
+<TabContent
+  activeTab={activeTab}
+  agentId={agent.id}
+  items={items}
+  draftNote={draftNote}
+  draftEmail={draftEmail}
+  isEditingDraft={isEditingDraft}
+  isEditingEmail={isEditingEmail}
+  handleEditDraft={() => setIsEditingDraft(true)}
+  handleEditEmail={() => setIsEditingEmail(true)}
+  handleSaveDraft={(draft: string) => {
+    setDraftNote(draft);
+    setIsEditingDraft(false);
+  }}
+  handleSaveEmail={(email: DraftEmail) => {
+    setDraftEmail(email);
+    setIsEditingEmail(false);
+  }}
+  handleSendNote={handleSendNote}
+  handleSendEmail={handleSendEmail}
+  setDraftNote={setDraftNote}
+  setDraftEmail={setDraftEmail}
+  sessions={sessions}
+  isLoadingSessions={isLoadingSessions}
+  createNewSession={createNewSession}
+  currentSessionId={currentSessionId}
+  onSessionSelect={handleSessionSelect}
+  secondaryColor={data.settings?.secondaryColor || "#10b981"}  // Add this line
+/>
 
             <Footer
               isConnected={isConnected}

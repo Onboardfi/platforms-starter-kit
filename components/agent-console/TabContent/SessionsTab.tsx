@@ -4,17 +4,15 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Progress } from "@/components/ui/progress";
 import { Plus, Eye, Settings, Trash2, Inbox, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { LoadingState } from "../shared/LoadingState";
-import { SESSION_STATUS_STYLES } from "../utils/constants";
 import { cn } from "@/lib/utils";
 import apiClient from '@/lib/api-client';
 import { Session, Step } from '@/lib/types';
 import { Badge } from "@/components/ui/badge";
 
-// Session Details Component
+// Session Details Component remains unchanged
 const SessionDetails = ({ 
   session, 
   onBack,
@@ -86,6 +84,7 @@ interface SessionsTabProps {
   onSessionSelect?: (sessionId: string) => Promise<void>;
   agentId: string;
   currentSessionId: string | null;
+  secondaryColor: string; // Remove the optional marker and don't set a default
 }
 
 export function SessionsTab({ 
@@ -94,7 +93,8 @@ export function SessionsTab({
   onSessionCreated,
   onSessionSelect,
   agentId,
-  currentSessionId
+  currentSessionId,
+  secondaryColor
 }: SessionsTabProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [activeSession, setActiveSession] = useState<Session | null>(null);
@@ -176,33 +176,35 @@ export function SessionsTab({
 
   return (
     <Card className="bg-black border border-gray-800">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <div className="flex items-center space-x-4">
-          <CardTitle className="text-sm font-medium text-white">
-            Onboarding Sessions
-          </CardTitle>
-          {currentSessionId && (
-            <Badge variant="outline" className="text-xs">
-              Current: {sessions.find(s => s.id === currentSessionId)?.name || currentSessionId}
-            </Badge>
-          )}
-        </div>
-        <Button
-          onClick={handleCreateSession}
-          size="sm"
-          className="h-8 text-xs flex items-center"
-          disabled={isCreating}
-        >
-          {isCreating ? (
-            <LoadingState />
-          ) : (
-            <>
-              <Plus className="h-4 w-4 mr-2" />
-              New Session
-            </>
-          )}
-        </Button>
-      </CardHeader>
+  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+  <div className="flex items-center space-x-4">
+    <CardTitle className="text-sm font-medium text-white">
+      Onboarding Sessions
+    </CardTitle>
+    {currentSessionId && (
+      <Badge variant="outline" className="text-xs text-white">
+        Current: {sessions.find(s => s.id === currentSessionId)?.name || currentSessionId}
+      </Badge>
+    )}
+  </div>
+  <Button
+    onClick={handleCreateSession}
+    size="sm"
+    className="h-8 text-xs flex items-center"
+    disabled={isCreating}
+    variant={isCreating ? "outline" : "default"}
+    style={!isCreating ? { backgroundColor: secondaryColor } : undefined}
+  >
+    {isCreating ? (
+      <LoadingState />
+    ) : (
+      <>
+        <Plus className="h-4 w-4 mr-2" />
+        New Session
+      </>
+    )}
+  </Button>
+</CardHeader>
       <CardContent>
         {isLoadingSessions ? (
           <LoadingState />
@@ -222,8 +224,6 @@ export function SessionsTab({
                   <tr>
                     <th scope="col" className="px-6 py-4 text-gray-400">Name</th>
                     <th scope="col" className="px-6 py-4 text-gray-400">Progress</th>
-                    <th scope="col" className="px-6 py-4 text-gray-400">Status</th>
-                    <th scope="col" className="px-6 py-4 text-gray-400">Type</th>
                     <th scope="col" className="px-6 py-4 text-gray-400">Created</th>
                     <th scope="col" className="px-6 py-4 text-gray-400">Last Active</th>
                     <th scope="col" className="px-6 py-4 text-right text-gray-400">Actions</th>
@@ -251,17 +251,22 @@ export function SessionsTab({
                           <div className="flex items-center space-x-2">
                             <span className="text-sm text-white font-mono">{session.name}</span>
                             {session.id === currentSessionId && (
-                              <Badge variant="outline" className="text-[10px]">Current</Badge>
+                              <Badge variant="outline" className="text-[10px] text-white">Current</Badge>
                             )}
                           </div>
                         </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center space-x-2">
-                          <Progress 
-                            value={getCompletionPercentage(session)} 
-                            className="w-32"
-                          />
+                          <div className="w-32 bg-gray-800 rounded-full overflow-hidden">
+                            <div
+                              className="h-1 transition-all duration-500"
+                              style={{ 
+                                width: `${getCompletionPercentage(session)}%`,
+                                backgroundColor: secondaryColor
+                              }}
+                            />
+                          </div>
                           <span className="text-sm text-gray-400">
                             {getCompletionPercentage(session)}%
                           </span>
@@ -269,19 +274,6 @@ export function SessionsTab({
                             ({session.stepProgress.steps.filter(s => s.completed).length}/{session.stepProgress.steps.length} steps)
                           </span>
                         </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={cn(
-                            'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
-                            SESSION_STATUS_STYLES[session.status]
-                          )}
-                        >
-                          {session.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="text-sm text-gray-400">{session.type}</span>
                       </td>
                       <td className="px-6 py-4">
                         <span className="text-sm text-gray-400">

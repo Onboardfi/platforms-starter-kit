@@ -181,25 +181,8 @@ export default function OnboardingProgressSidebar({
       variants={containerVariants}
       className="flex-shrink-0 w-full bg-black sm:w-96 h-full overflow-scroll border-r border-gray-800"
     >
-      {/* Session Badge */}
-      <div className="sticky top-0 z-30 bg-black border-b border-gray-800 px-4 py-2">
-        <div className="flex flex-col space-y-2">
-          <Badge 
-            variant="outline" 
-            className="w-full justify-center text-xs"
-          >
-            Session ID: {currentSessionId || 'No Active Session'}
-          </Badge>
-          {!currentSessionId && (
-            <p className="text-xs text-gray-500 text-center">
-              Create or select a session to begin
-            </p>
-          )}
-        </div>
-      </div>
-
       {/* Header Section */}
-      <div className="sticky top-12 bg-black z-20">
+      <div className="sticky top-0 bg-black z-20">
         {/* Banner and Avatar */}
         <div className="relative">
           <div 

@@ -41,7 +41,7 @@ export function ConversationTab({ items, currentSessionId }: ConversationTabProp
     <Card className="bg-black border border-gray-800">
       <CardContent className="p-6">
         <div className="mb-4 flex items-center justify-between">
-          <Badge variant="outline" className="text-xs">
+          <Badge variant="outline" className="text-xs text-white ">
             Session: {currentSessionId || 'No Active Session'}
           </Badge>
         </div>

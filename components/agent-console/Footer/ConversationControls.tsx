@@ -1,10 +1,11 @@
-//Users/bobbygilbert/Documents/Github/platforms-starter-kit/components/agent-console/Footer/ConversationControls.tsx
-
-
 import { Button } from '@/components/ui/button';
 import { FooterProps } from '../utils/types';
 import { X, Zap, Mic } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
+
+interface ConversationControlsProps extends FooterProps {
+  secondaryColor?: string;
+}
 
 export function ConversationControls({
   isConnected,
@@ -14,8 +15,9 @@ export function ConversationControls({
   disconnectConversation,
   startRecording,
   stopRecording,
-  changeTurnEndType
-}: FooterProps) {
+  changeTurnEndType,
+  secondaryColor = '#6366f1'
+}: ConversationControlsProps) {
   return (
     <div className="flex flex-col lg:flex-row items-center justify-between space-y-4 lg:space-y-0 lg:space-x-6">
       <Button
@@ -23,6 +25,7 @@ export function ConversationControls({
         size="sm"
         onClick={isConnected ? disconnectConversation : connectConversation}
         className="h-8 text-xs flex items-center"
+        style={!isConnected ? { backgroundColor: secondaryColor } : undefined}
       >
         {isConnected ? <X className="h-4 w-4 mr-2" /> : <Zap className="h-4 w-4 mr-2" />}
         {isConnected ? "Disconnect" : "Connect"}

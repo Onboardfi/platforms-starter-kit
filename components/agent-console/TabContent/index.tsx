@@ -33,6 +33,7 @@ export interface TabContentProps {
   createNewSession: () => Promise<string | null>;
   currentSessionId: string | null;
   onSessionSelect: (sessionId: string) => Promise<void>;
+  secondaryColor: string; // Add this line
 }
 
 export function TabContent({
@@ -55,7 +56,8 @@ export function TabContent({
   isLoadingSessions,
   createNewSession,
   currentSessionId,
-  onSessionSelect
+  onSessionSelect,
+  secondaryColor // Add this line
 }: TabContentProps) {
   
   // Handle session creation
@@ -113,17 +115,18 @@ export function TabContent({
           />
         );
 
-      case 'sessions':
-        return (
-          <SessionsTab 
-            sessions={sessions}
-            isLoadingSessions={isLoadingSessions}
-            onSessionCreated={handleSessionCreated}
-            onSessionSelect={handleSessionSelect}
-            agentId={agentId}
-            currentSessionId={currentSessionId}
-          />
-        );
+        case 'sessions':
+          return (
+            <SessionsTab 
+              sessions={sessions}
+              isLoadingSessions={isLoadingSessions}
+              onSessionCreated={handleSessionCreated}
+              onSessionSelect={handleSessionSelect}
+              agentId={agentId}
+              currentSessionId={currentSessionId}
+              secondaryColor={secondaryColor}
+            />
+          );
 
       case 'integrations':
         return <IntegrationsTab />;
