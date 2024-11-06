@@ -191,6 +191,7 @@ export interface AgentSettings {
 }
 
 export interface Agent {
+  site: any;
   id: string;
   name: string | null;
   description: string | null;
