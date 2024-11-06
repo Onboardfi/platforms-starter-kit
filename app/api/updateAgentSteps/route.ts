@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { updateAgentStepsWithoutAuth } from '@/lib/actions';
 import { Step } from '@/lib/types';
+import { createId } from '@paralleldrive/cuid2';
 
 export async function POST(request: Request) {
   try {
@@ -17,10 +18,12 @@ export async function POST(request: Request) {
     }
 
     const formattedSteps: Step[] = steps.map((step) => ({
+      id: step.id || createId(), // Use existing ID or create new one
       title: step.title,
       description: step.description,
       completionTool: step.completionTool,
       completed: step.completed ?? false,
+      completedAt: step.completedAt || undefined // Add completedAt if it exists
     }));
 
     const result = await updateAgentStepsWithoutAuth(agentId, formattedSteps);
@@ -33,6 +36,7 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+    
   } catch (error: any) {
     console.error('Error in updateAgentSteps API:', error);
     return NextResponse.json(
