@@ -1,6 +1,6 @@
 // components/agent-console/TabContent/SessionsTab.tsx
 
-import { useState, useEffect } from 'react';
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -11,7 +11,8 @@ import { cn } from "@/lib/utils";
 import apiClient from '@/lib/api-client';
 import { Session, Step } from '@/lib/types';
 import { Badge } from "@/components/ui/badge";
-
+import { EditSessionModal } from './EditSessionModal';
+import { useState, useEffect, useMemo } from 'react'; // Add useMemo to imports
 // Session Details Component remains unchanged
 const SessionDetails = ({ 
   session, 
@@ -32,7 +33,7 @@ const SessionDetails = ({
             variant="ghost" 
             size="sm" 
             onClick={onBack}
-            className="flex items-center"
+            className="flex items-center text-white"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Sessions
@@ -41,7 +42,7 @@ const SessionDetails = ({
             {session.name}
           </CardTitle>
           {isCurrentSession && (
-            <Badge variant="outline" className="ml-2">Current Session</Badge>
+            <Badge variant="outline" className="ml-2 text-white">Current Session</Badge>
           )}
         </div>
       </CardHeader>
@@ -84,9 +85,9 @@ interface SessionsTabProps {
   onSessionSelect?: (sessionId: string) => Promise<void>;
   agentId: string;
   currentSessionId: string | null;
-  secondaryColor: string; // Remove the optional marker and don't set a default
+  secondaryColor: string;
+  allowMultipleSessions?: boolean; // Add this prop
 }
-
 export function SessionsTab({ 
   sessions: initialSessions, 
   isLoadingSessions, 
@@ -94,11 +95,15 @@ export function SessionsTab({
   onSessionSelect,
   agentId,
   currentSessionId,
-  secondaryColor
+  secondaryColor,
+  allowMultipleSessions = true // Default to true for backward compatibility
 }: SessionsTabProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [activeSession, setActiveSession] = useState<Session | null>(null);
   const [sessions, setSessions] = useState<Session[]>(initialSessions);
+  const [isDeletingSession, setIsDeletingSession] = useState<string | null>(null);
+  const [editingSession, setEditingSession] = useState<Session | null>(null);
+  const [isEditingSession, setIsEditingSession] = useState(false);
 
   useEffect(() => {
     setSessions(initialSessions);
@@ -116,7 +121,40 @@ export function SessionsTab({
     if (percentage === 0) return 'not-started';
     return 'in-progress';
   };
+  const handleEditSession = async (name: string) => {
+    if (!editingSession) return;
 
+    try {
+      setIsEditingSession(true);
+      const response = await apiClient.patch('/api/updateSession', {
+        sessionId: editingSession.id,
+        name,
+      }, {
+        headers: {
+          'x-agent-id': agentId
+        }
+      });
+
+      if (response.data.success) {
+        setSessions(prevSessions =>
+          prevSessions.map(session =>
+            session.id === editingSession.id
+              ? { ...session, name }
+              : session
+          )
+        );
+        toast.success('Session name updated successfully');
+        setEditingSession(null);
+      } else {
+        throw new Error(response.data.error || 'Failed to update session name');
+      }
+    } catch (error: any) {
+      console.error('Failed to update session name:', error);
+      toast.error(error.response?.data?.error || error.message || 'Failed to update session name');
+    } finally {
+      setIsEditingSession(false);
+    }
+  };
   const getTimeAgo = (date: string) => {
     const seconds = Math.floor((new Date().getTime() - new Date(date).getTime()) / 1000);
     
@@ -138,8 +176,27 @@ export function SessionsTab({
     return Math.floor(seconds) + ' seconds ago';
   };
 
+  // Get active sessions count
+  const activeSessionsCount = useMemo(() => 
+    sessions.filter(s => s.status === 'active').length, 
+    [sessions]
+  );
+
+  const canCreateNewSession = useMemo(() => 
+    allowMultipleSessions || activeSessionsCount === 0,
+    [allowMultipleSessions, activeSessionsCount]
+  );
+
+  // Update the create session handler to check the limit
   const handleCreateSession = async () => {
     if (isCreating) return;
+    
+    if (!canCreateNewSession) {
+      toast.error(
+        'Multiple sessions are not allowed. Please delete the existing session first.'
+      );
+      return;
+    }
     
     setIsCreating(true);
     try {
@@ -154,6 +211,45 @@ export function SessionsTab({
     }
   };
 
+  // Update the delete handler to ensure we're checking session status
+  const handleDeleteSession = async (session: Session) => {
+    if (session.id === currentSessionId) {
+      toast.error("Cannot delete the current session");
+      return;
+    }
+
+    if (!confirm('Are you sure you want to delete this session? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      setIsDeletingSession(session.id);
+      const response = await apiClient.delete('/api/deleteSession', {
+        params: { 
+          sessionId: session.id,
+          agentId: agentId
+        },
+        headers: {
+          'x-agent-id': agentId
+        }
+      });
+
+      if (response.data.success) {
+        setSessions(prevSessions => 
+          prevSessions.filter(s => s.id !== session.id)
+        );
+        toast.success('Session deleted successfully');
+      } else {
+        throw new Error(response.data.error || 'Failed to delete session');
+      }
+    } catch (error: any) {
+      console.error('Failed to delete session:', error);
+      toast.error(error.response?.data?.error || error.message || 'Failed to delete session');
+    } finally {
+      setIsDeletingSession(null);
+    }
+  };
+  
   const handleViewSession = async (session: Session) => {
     try {
       setActiveSession(session);
@@ -175,36 +271,43 @@ export function SessionsTab({
   }
 
   return (
+    <>
     <Card className="bg-black border border-gray-800">
-  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-  <div className="flex items-center space-x-4">
-    <CardTitle className="text-sm font-medium text-white">
-      Onboarding Sessions
-    </CardTitle>
-    {currentSessionId && (
-      <Badge variant="outline" className="text-xs text-white">
-        Current: {sessions.find(s => s.id === currentSessionId)?.name || currentSessionId}
-      </Badge>
-    )}
-  </div>
-  <Button
-    onClick={handleCreateSession}
-    size="sm"
-    className="h-8 text-xs flex items-center"
-    disabled={isCreating}
-    variant={isCreating ? "outline" : "default"}
-    style={!isCreating ? { backgroundColor: secondaryColor } : undefined}
-  >
-    {isCreating ? (
-      <LoadingState />
-    ) : (
-      <>
-        <Plus className="h-4 w-4 mr-2" />
-        New Session
-      </>
-    )}
-  </Button>
-</CardHeader>
+    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <div className="flex items-center space-x-4">
+            <CardTitle className="text-sm font-medium text-white">
+              Onboarding Sessions
+            </CardTitle>
+            {!allowMultipleSessions && (
+              <Badge variant="secondary" className="text-xs">
+                Single Session Mode
+              </Badge>
+            )}
+            {currentSessionId && (
+              <Badge variant="outline" className="text-xs text-white">
+                Current: {sessions.find(s => s.id === currentSessionId)?.name || currentSessionId}
+              </Badge>
+            )}
+          </div>
+          <Button
+            onClick={handleCreateSession}
+            size="sm"
+            className="h-8 text-xs flex items-center"
+            disabled={isCreating || !canCreateNewSession}
+            variant={isCreating ? "outline" : "default"}
+            style={!isCreating && canCreateNewSession ? { backgroundColor: secondaryColor } : undefined}
+            title={!canCreateNewSession ? 'Delete existing session to create a new one' : undefined}
+          >
+            {isCreating ? (
+              <LoadingState />
+            ) : (
+              <>
+                <Plus className="h-4 w-4 mr-2" />
+                New Session
+              </>
+            )}
+          </Button>
+        </CardHeader>
       <CardContent>
         {isLoadingSessions ? (
           <LoadingState />
@@ -299,22 +402,35 @@ export function SessionsTab({
                             )}
                             onClick={() => handleViewSession(session)}
                           >
-                            <Eye className="h-4 w-4" />
+                                 <Eye className="h-4 w-4 text-gray-400" />
+
                           </Button>
+                          <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 w-8 p-0"
+          onClick={() => setEditingSession(session)}
+        >
+          <Settings className="h-4 w-4 text-gray-400" />
+        </Button>
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-8 w-8 p-0"
+                            className={cn(
+                              "h-8 w-8 p-0 hover:text-red-500",
+                              isDeletingSession === session.id && "opacity-50 cursor-not-allowed"
+                            )}
+                            disabled={session.id === currentSessionId || isDeletingSession === session.id}
+                            onClick={() => handleDeleteSession(session)}
                           >
-                            <Settings className="h-4 w-4 text-gray-400" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0 hover:text-red-500"
-                            disabled={session.id === currentSessionId}
-                          >
-                            <Trash2 className="h-4 w-4" />
+                            {isDeletingSession === session.id ? (
+                              <LoadingState  />
+                            ) : (
+                              <Trash2 className={cn(
+                                "h-4 w-4",
+                                session.id === currentSessionId ? "text-gray-600" : "text-gray-400"
+                              )}/>
+                            )}
                           </Button>
                         </div>
                       </td>
@@ -327,5 +443,14 @@ export function SessionsTab({
         )}
       </CardContent>
     </Card>
-  );
+    <EditSessionModal
+        session={editingSession}
+        isOpen={!!editingSession}
+        onClose={() => setEditingSession(null)}
+        onSave={handleEditSession}
+        isSaving={isEditingSession}
+      />
+    </>
+
+);
 }

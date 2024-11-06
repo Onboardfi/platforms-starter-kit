@@ -446,6 +446,41 @@ export const deleteAgent = async (
     return;
   }
 };
+
+
+// Add this new function to handle session deletion
+export const deleteSession = async (sessionId: string): Promise<void> => {
+  try {
+    // First validate the session exists
+    const session = await db.query.onboardingSessions.findFirst({
+      where: eq(onboardingSessions.id, sessionId),
+    });
+
+    if (!session) {
+      throw new Error('Session not found');
+    }
+
+    // Delete all related conversations and messages first
+    await db.delete(conversations)
+      .where(eq(conversations.sessionId, sessionId));
+
+    // Delete the session from PostgreSQL
+    await db.delete(onboardingSessions)
+      .where(eq(onboardingSessions.id, sessionId));
+
+    // Clean up Redis state
+    const redisKey = `session:${sessionId}:state`;
+    await redis.del(redisKey);
+
+    console.log(`Successfully deleted session: ${sessionId}`);
+  } catch (error) {
+    console.error('Failed to delete session:', error);
+    throw error;
+  }
+};
+
+
+
 export const getAgentById = async (agentId: string): Promise<SelectAgent | null> => {
   const agent = await db.query.agents.findFirst({
     where: eq(agents.id, agentId),
@@ -813,23 +848,36 @@ export const createOnboardingSession = async (
   if (!agent) {
     throw new Error('Agent not found');
   }
+// Check if multiple sessions are allowed
+if (!agent.settings.allowMultipleSessions) {
+  // Count existing active sessions
+  const activeSessions = await db.query.onboardingSessions.findMany({
+    where: and(
+      eq(onboardingSessions.agentId, agentId),
+      eq(onboardingSessions.status, 'active')
+    )
+  });
 
-  // Initialize steps from agent settings with default completion status
-  const initialSteps = (agent.settings.steps || []).map(step => ({
-    id: createId(),
-    title: step.title,
-    description: step.description,
-    completionTool: step.completionTool,
-    completed: false, // All steps start as incomplete
-    completedAt: undefined // Use undefined instead of null for completedAt
-  }));
+  if (activeSessions.length > 0) {
+    throw new Error('Multiple sessions are not allowed. Please complete or delete the existing session first.');
+  }
+}
+
+ // Initialize steps from agent settings with default completion status
+ const initialSteps = (agent.settings.steps || []).map(step => ({
+  id: createId(),
+  title: step.title,
+  description: step.description,
+  completionTool: step.completionTool,
+  completed: false,
+  completedAt: undefined
+}));
 
   // Use provided auth state or fallback to session check
   const isAuthenticated = data.authState?.isAuthenticated || false;
   const isAnonymous = data.authState?.isAnonymous || true;
 
   try {
-    // If we have a userId, verify it exists in the users table
     let effectiveUserId = undefined;
     if (data.userId) {
       const userExists = await db.query.users.findFirst({
@@ -841,6 +889,7 @@ export const createOnboardingSession = async (
     }
 
     // Create session in PostgreSQL
+  
     const sessionId = createId();
     const [dbSession] = await db
       .insert(onboardingSessions)
@@ -872,22 +921,23 @@ export const createOnboardingSession = async (
       })
       .returning();
 
-    // Initialize Redis state
-    await createSession(agentId, {
-      clientIdentifier: data.clientIdentifier || `${effectiveUserId || 'anon'}-${sessionId}`,
-      steps: initialSteps.map(step => ({
-        ...step,
-        completedAt: undefined // Ensure completedAt is undefined for Redis
-      })),
-      metadata: {
-        sessionId: dbSession.id,
-        userId: effectiveUserId,
-        type: data.type,
-        isAnonymous: isAnonymous || !effectiveUserId,
-        isAuthenticated: isAuthenticated && !!effectiveUserId
-      },
-      currentStep: 0
-    });
+   // Initialize Redis state
+   await createSession(agentId, {
+    clientIdentifier: data.clientIdentifier || `${effectiveUserId || 'anon'}-${sessionId}`,
+    steps: initialSteps.map(step => ({
+      ...step,
+      completedAt: undefined
+    })),
+    metadata: {
+      sessionId: dbSession.id,
+      userId: effectiveUserId,
+      type: data.type,
+      isAnonymous: isAnonymous || !effectiveUserId,
+      isAuthenticated: isAuthenticated && !!effectiveUserId
+    },
+    currentStep: 0
+  });
+
 
     // Publish session creation event
     await redis.publish('session-events', {

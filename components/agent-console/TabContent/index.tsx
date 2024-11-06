@@ -1,5 +1,4 @@
 // components/agent-console/TabContent/index.tsx
-
 import { motion, AnimatePresence } from 'framer-motion';
 import { fadeAnimation } from '../utils/constants';
 import { WorkspaceTab } from './WorkspaceTab';
@@ -11,6 +10,7 @@ import { Session } from '@/lib/types';
 import { useCallback } from 'react';
 import { toast } from 'sonner';
 import apiClient from '@/lib/api-client';
+import { Button } from "@/components/ui/button";
 
 export interface TabContentProps {
   activeTab: string;
@@ -33,7 +33,8 @@ export interface TabContentProps {
   createNewSession: () => Promise<string | null>;
   currentSessionId: string | null;
   onSessionSelect: (sessionId: string) => Promise<void>;
-  secondaryColor: string; // Add this line
+  secondaryColor: string;
+  allowMultipleSessions?: boolean; // Add this line
 }
 
 export function TabContent({
@@ -57,9 +58,9 @@ export function TabContent({
   createNewSession,
   currentSessionId,
   onSessionSelect,
-  secondaryColor // Add this line
+  secondaryColor,
+  allowMultipleSessions // Add this prop
 }: TabContentProps) {
-  
   // Handle session creation
   const handleSessionCreated = useCallback(async () => {
     try {
@@ -74,7 +75,6 @@ export function TabContent({
     }
   }, [createNewSession]);
 
-  // Handle session selection
   const handleSessionSelect = useCallback(async (sessionId: string) => {
     try {
       await apiClient.setCurrentSession(sessionId);
@@ -85,35 +85,54 @@ export function TabContent({
     }
   }, [onSessionSelect]);
 
-  // Render appropriate tab content
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case 'workspace':
-        return (
-          <WorkspaceTab 
-            draftNote={draftNote}
-            draftEmail={draftEmail}
-            isEditingDraft={isEditingDraft}
-            isEditingEmail={isEditingEmail}
-            handleEditDraft={handleEditDraft}
-            handleEditEmail={handleEditEmail}
-            handleSaveDraft={handleSaveDraft}
-            handleSaveEmail={handleSaveEmail}
-            handleSendNote={handleSendNote}
-            handleSendEmail={handleSendEmail}
-            setDraftNote={setDraftNote}
-            setDraftEmail={setDraftEmail}
-            currentSessionId={currentSessionId}
-          />
-        );
+   // Component to show when active session is required
+   const NoActiveSessionPrompt = () => (
+    <div className="flex flex-col items-center justify-center py-8 space-y-4">
+      <h3 className="text-lg font-medium text-gray-400">
+        No Active Session
+      </h3>
+      <p className="text-sm text-gray-500">
+        Create or select a session to access this feature
+      </p>
+      <Button
+        onClick={handleSessionCreated}
+        className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+      >
+        Create New Session
+      </Button>
+    </div>
+  );
+
+
+ // Render appropriate tab content based on requirements
+ const renderTabContent = () => {
+  switch (activeTab) {
+    case 'workspace':
+      return currentSessionId ? (
+        <WorkspaceTab 
+          draftNote={draftNote}
+          draftEmail={draftEmail}
+          isEditingDraft={isEditingDraft}
+          isEditingEmail={isEditingEmail}
+          handleEditDraft={handleEditDraft}
+          handleEditEmail={handleEditEmail}
+          handleSaveDraft={handleSaveDraft}
+          handleSaveEmail={handleSaveEmail}
+          handleSendNote={handleSendNote}
+          handleSendEmail={handleSendEmail}
+          setDraftNote={setDraftNote}
+          setDraftEmail={setDraftEmail}
+          currentSessionId={currentSessionId}
+        />
+      ) : <NoActiveSessionPrompt />;
 
       case 'conversation':
-        return (
+        return currentSessionId ? (
           <ConversationTab 
             items={items}
             currentSessionId={currentSessionId}
           />
-        );
+        ) : <NoActiveSessionPrompt />;
 
         case 'sessions':
           return (
@@ -125,6 +144,7 @@ export function TabContent({
               agentId={agentId}
               currentSessionId={currentSessionId}
               secondaryColor={secondaryColor}
+              allowMultipleSessions={allowMultipleSessions}
             />
           );
 
@@ -146,28 +166,9 @@ export function TabContent({
         variants={fadeAnimation}
         className="h-full"
       >
-        {currentSessionId ? (
-          renderTabContent()
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full">
-            <div className="text-center space-y-4">
-              <h3 className="text-lg font-medium text-gray-400">
-                No Active Session
-              </h3>
-              <p className="text-sm text-gray-500">
-                Create or select a session to begin
-              </p>
-              <button
-                onClick={handleSessionCreated}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                Create New Session
-              </button>
-            </div>
-          </div>
-        )}
+        {renderTabContent()}
 
-        {/* Session ID Badge */}
+        {/* Show session badge only when there's an active session */}
         {currentSessionId && activeTab !== 'sessions' && (
           <div className="fixed bottom-4 right-4 z-50">
             <div className="bg-black/80 text-white text-xs px-3 py-1.5 rounded-full border border-gray-700">
@@ -179,6 +180,7 @@ export function TabContent({
     </AnimatePresence>
   );
 }
+
 
 // Update WorkspaceTab and ConversationTab interfaces
 interface WorkspaceTabProps {
