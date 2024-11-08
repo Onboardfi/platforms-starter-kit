@@ -1,16 +1,31 @@
+// app/(dashboard)/layout.tsx
+
 import { ReactNode, Suspense } from "react";
-import Profile from "@/components/profile";
-import Nav from "@/components/nav";
+import { SidebarProvider, Sidebar, SidebarContent } from "@/components/sidebar/index";
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
-    <div>
-      <Nav>
-        <Suspense fallback={<div>Loading...</div>}>
-          <Profile />
-        </Suspense>
-      </Nav>
-      <div className="min-h-screen sm:pl-60 dark:bg-black">{children}</div>
-    </div>
+    <SidebarProvider defaultOpen={true}>
+      <div className="relative min-h-screen">
+        <Sidebar>
+          <SidebarContent />
+        </Sidebar>
+        <main className={`
+          min-h-screen 
+          transition-all 
+          duration-300 
+          md:pl-[280px]  // Width when sidebar is expanded
+          dark:bg-black
+          px-4 
+          md:px-8
+          py-4 
+          md:py-6
+        `}>
+          <div className="max-w-screen-2xl mx-auto">
+            {children}
+          </div>
+        </main>
+      </div>
+    </SidebarProvider>
   );
 }

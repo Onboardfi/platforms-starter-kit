@@ -4,6 +4,7 @@ import { Analytics } from "@vercel/analytics/react";
 import { Providers } from "./providers";
 import { Metadata } from "next";
 import { cn } from "@/lib/utils";
+import { ThemeProvider } from "@/components/theme-provider";
 
 const title = "OnboardFi – AI powered onboarding.";
 const description =
@@ -12,20 +13,24 @@ const description =
 export const metadata: Metadata = {
   title,
   description,
-  icons: ["/favicon.ico"], // Updated to use local favicon
+  icons: ["/favicon.ico"],
   openGraph: {
     title,
     description,
-    images: ["/onboardfi-logo-q4.png"], // Optional: You can use your logo for social sharing
+    images: ["/onboardfi-logo-q4.png"],
   },
   twitter: {
     card: "summary_large_image",
     title,
     description,
-    images: ["/onboardfi-logo-q4.png"], // Optional: You can use your logo for social sharing
-    creator: "@onboardfi", // Update this to your Twitter handle if you have one
+    images: ["/onboardfi-logo-q4.png"],
+    creator: "@onboardfi",
   },
-  metadataBase: new URL("https://onboardfi.com"), // Update this to your actual domain
+  metadataBase: new URL("https://onboardfi.com"),
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "white" },
+    { media: "(prefers-color-scheme: dark)", color: "#111111" }
+  ],
 };
 
 export default function RootLayout({
@@ -34,12 +39,29 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={cn(cal.variable, inter.variable)}>
-        <Providers>
-          {children}
-          <Analytics />
-        </Providers>
+    <html lang="en" suppressHydrationWarning className="dark">
+      <body 
+        className={cn(
+          cal.variable, 
+          inter.variable,
+          "min-h-screen bg-background font-default antialiased",
+          "selection:bg-dream-blue/10 selection:text-dream-blue",
+          "dark:selection:bg-dream-blue/20 dark:selection:text-dream-blue"
+        )}
+      >
+        <ThemeProvider
+          defaultTheme="dark"
+          enableSystem={false}
+          storageKey="onboard-ui-theme"
+          disableTransitionOnChange={false}
+        >
+          <Providers>
+            <main className="flex min-h-screen flex-col">
+              {children}
+            </main>
+            <Analytics />
+          </Providers>
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -1,15 +1,26 @@
-"use client";
+'use client';
 
+import { ReactNode } from "react";
 import { SessionProvider } from "next-auth/react";
 import { Toaster } from "sonner";
-import { ModalProvider } from "@/components/modal/provider";
 
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({ children }: { children: ReactNode }) {
   return (
     <SessionProvider>
-      <Toaster className="dark:hidden" />
-      <Toaster theme="dark" className="hidden dark:block" />
-      <ModalProvider>{children}</ModalProvider>
+      {children}
+      <Toaster 
+        position="top-right" 
+        toastOptions={{
+          // Style toasts for dark mode by default
+          className: 'dark:bg-dark-accent-2 dark:text-white',
+          // Add DreamUI animation
+          classNames: {
+            toast: 'animate-dream-fade-up',
+            title: 'font-cal',
+            description: 'text-muted-foreground'
+          }
+        }}
+      />
     </SessionProvider>
   );
 }
