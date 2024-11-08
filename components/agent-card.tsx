@@ -6,9 +6,6 @@ import BlurImage from "@/components/blur-image";
 import { placeholderBlurhash, toDateString, cn } from "@/lib/utils";
 import { Agent, Site } from "@/types/agent";
 import { Progress } from "@/components/ui/progress";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Step } from "@/lib/schema";
 
 interface AgentCardProps {
@@ -28,13 +25,13 @@ export default function AgentCard({ data }: AgentCardProps) {
         <img 
           src={data.site.logo} 
           alt={`${data.site.name || 'Site'} logo`}
-          className="h-full w-full object-cover rounded-full" 
+          className="h-full w-full object-cover" 
         />
       );
     }
 
     return (
-      <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-purple-600 to-purple-800 rounded-full">
+      <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-dream-purple to-dream-cyan">
         <span className="text-2xl font-bold text-white">
           {data.name?.charAt(0) || "A"}
         </span>
@@ -43,101 +40,111 @@ export default function AgentCard({ data }: AgentCardProps) {
   };
 
   return (
-    <Card className="group overflow-hidden relative">
-      {/* Banner and Avatar Section */}
+    <div className="group relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine">
+      {/* Gradient Border Effect */}
+      <div className="absolute inset-[0] rounded-[inherit] [border:1px_solid_transparent] ![mask-clip:padding-box,border-box] ![mask-composite:intersect] [mask:linear-gradient(transparent,transparent),linear-gradient(white,white)] after:absolute after:aspect-square after:w-[320px] after:animate-border-beam after:[animation-delay:0s] after:[background:linear-gradient(to_left,#aaa,transparent,transparent)] after:[offset-anchor:90%_50%] after:[offset-path:rect(0_auto_auto_0_round_200px)]" />
+
       <div className="relative">
-        {/* Banner */}
-        <div className="relative h-24">
+        <div className="relative h-32">
           {data.image ? (
             <BlurImage
               alt={data.name ?? "Agent Banner"}
               blurDataURL={data.imageBlurhash ?? placeholderBlurhash}
-              className="object-cover w-full h-full"
+              className="object-cover w-full h-full rounded-t-3xl"
               fill
               placeholder="blur"
               src={data.image}
             />
           ) : (
-            <div className="w-full h-full bg-gradient-to-r from-gray-800 to-gray-900" />
+            <div className="w-full h-full bg-gradient-to-r from-dream-purple/30 to-dream-cyan/30 rounded-t-3xl" />
           )}
-          
-          <Badge 
-  variant={data.published ? "default" : "secondary"}
-  className="absolute top-3 right-3"
->
-  {data.published ? "Published" : "Draft"}
-</Badge>
+
+          <div className="absolute top-4 right-4">
+            <span className={cn(
+              "px-3 py-1 rounded-xl backdrop-blur-md text-xs text-white border border-white/10 shine",
+              data.published 
+                ? "bg-dream-cyan/20 border-dream-cyan/20" 
+                : "bg-neutral-900/50"
+            )}>
+              {data.published ? "Published" : "Draft"}
+            </span>
+          </div>
         </div>
 
-        {/* Logo Circle - Overlapping Banner */}
         <div className="absolute -bottom-12 left-6">
-          <div className="h-24 w-24 rounded-full border-4 border-black bg-black">
-            <div className="h-full w-full overflow-hidden">
-              {renderLogo()}
-            </div>
+          <div className="h-24 w-24 rounded-2xl border-4 border-neutral-800/50 backdrop-blur-md bg-neutral-900/50 shadow-dream overflow-hidden shine">
+            {renderLogo()}
           </div>
         </div>
       </div>
 
-      <CardContent className="pt-16 pb-6">
-        {/* Agent Info */}
-        <div className="space-y-1 mb-6">
-          <h3 className="font-cal text-xl">{data.name}</h3>
-          <p className="text-sm text-muted-foreground line-clamp-2">
+      <div className="relative pt-16 p-6">
+        <div className="space-y-2 mb-6">
+          <h3 className="font-cal text-xl text-white">{data.name}</h3>
+          <p className="text-sm text-neutral-400 line-clamp-2">
             {data.description}
           </p>
         </div>
 
-        {/* Progress Section */}
         {totalSteps > 0 && (
-          <div className="space-y-2">
+          <div className="space-y-2 mb-6 p-3 rounded-xl bg-neutral-900/50 backdrop-blur-md shine">
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">
+              <span className="text-neutral-400">
                 {completedSteps} of {totalSteps} steps complete
               </span>
-              <span className="text-muted-foreground">
+              <span className="text-dream-cyan">
                 {clampedValue.toFixed(0)}%
               </span>
             </div>
-            <Progress value={clampedValue} className="h-1" />
+            <div className="relative h-1 bg-neutral-800 rounded-full overflow-hidden">
+              <div 
+                className="absolute top-0 left-0 h-full bg-gradient-to-r from-dream-purple to-dream-cyan rounded-full transition-all duration-500"
+                style={{ width: `${clampedValue}%` }}
+              />
+            </div>
           </div>
         )}
 
-        {/* Metadata */}
-        <div className="grid grid-cols-2 gap-4 mt-6 pt-4 border-t border-gray-800">
+        <div className="grid grid-cols-2 gap-4 mt-6 pt-4 border-t border-white/[0.08]">
           <div>
-            <p className="text-gray-400 text-xs">Created</p>
-            <p className="text-sm mt-1 font-mono">
+            <p className="text-neutral-500 text-xs">Created</p>
+            <p className="text-sm mt-1 font-mono text-neutral-300">
               {toDateString(data.createdAt)}
             </p>
           </div>
           <div>
-            <p className="text-gray-400 text-xs">Status</p>
-            <p className="text-sm mt-1 font-mono">
+            <p className="text-neutral-500 text-xs">Status</p>
+            <p className="text-sm mt-1 font-mono text-neutral-300">
               {data.published ? "Live" : "Draft"}
             </p>
           </div>
         </div>
-      </CardContent>
 
-      <CardFooter className="flex justify-between gap-2 px-6 pb-6">
-        <Button asChild className="w-full">
-          <Link href={`/agent/${data.id}`}>Edit Onboard</Link>
-        </Button>
-        {data.site?.subdomain ? (
-          <Button asChild variant="secondary" className="w-full">
+        <div className="flex gap-3 mt-6">
+          <Link 
+            href={`/agent/${data.id}`}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-dream-purple/50 to-dream-cyan/50 text-white text-sm hover:brightness-110 transition-all duration-300 shine shadow-dream flex-1 justify-center group"
+          >
+            Edit Onboard
+          </Link>
+          
+          {data.site?.subdomain ? (
             <Link
               href={`http://${data.site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}/${data.slug}`}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-900/50 text-neutral-300 text-sm hover:bg-neutral-800/50 transition-all duration-300 shine shadow-dream flex-1 justify-center group"
             >
               View Live
             </Link>
-          </Button>
-        ) : (
-          <Button variant="secondary" className="w-full" disabled>
-            Site Unavailable
-          </Button>
-        )}
-      </CardFooter>
-    </Card>
+          ) : (
+            <button 
+              disabled
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-900/20 text-neutral-600 text-sm flex-1 justify-center cursor-not-allowed"
+            >
+              Site Unavailable
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

@@ -1,14 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useAgent } from "@/app/contexts/AgentContext";
 import { Step } from "@/lib/schema";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Trash2 } from "lucide-react";
+import { Trash2, Plus, GripVertical } from "lucide-react";
 
 interface AgentStepsFormProps {
   existingSteps?: Step[];
@@ -16,6 +11,203 @@ interface AgentStepsFormProps {
   tools?: string[];
 }
 
+// Dream UI Card Header Component
+const DreamCardHeader = ({ 
+  title, 
+  action 
+}: { 
+  title: string; 
+  action?: React.ReactNode;
+}) => (
+  <div className="flex items-center justify-between p-6 border-b border-white/[0.08]">
+    <h3 className="text-xl font-medium text-white">{title}</h3>
+    {action}
+  </div>
+);
+
+// Dream UI Button Component
+const DreamButton = ({
+  children,
+  onClick,
+  variant = 'default',
+  size = 'md',
+  className = ''
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  variant?: 'default' | 'gradient' | 'outline' | 'destructive';
+  size?: 'sm' | 'md' | 'lg';
+  className?: string;
+}) => {
+  const baseStyles = `
+    inline-flex items-center justify-center
+    rounded-xl font-light
+    transition-all duration-300
+    disabled:opacity-50 disabled:cursor-not-allowed
+    shine shadow-dream
+  `;
+
+  const variants = {
+    default: 'bg-neutral-900/50 text-white hover:bg-neutral-800/50',
+    gradient: 'bg-gradient-to-r from-dream-purple/50 to-dream-cyan/50 text-white hover:brightness-110',
+    outline: 'border border-white/[0.08] text-white hover:bg-white/[0.08]',
+    destructive: 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border-red-500/20'
+  };
+
+  const sizes = {
+    sm: 'px-3 py-1.5 text-sm',
+    md: 'px-4 py-2.5 text-sm',
+    lg: 'px-6 py-3 text-base'
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      className={`
+        ${baseStyles}
+        ${variants[variant]}
+        ${sizes[size]}
+        ${className}
+      `}
+    >
+      {children}
+    </button>
+  );
+};
+
+// Dream UI Input Component
+const DreamInput = ({
+  value,
+  onChange,
+  onBlur,
+  placeholder,
+  id,
+  required
+}: {
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onBlur?: () => void;
+  placeholder?: string;
+  id?: string;
+  required?: boolean;
+}) => (
+  <input
+    id={id}
+    value={value}
+    onChange={onChange}
+    onBlur={onBlur}
+    placeholder={placeholder}
+    required={required}
+    className={`
+      w-full px-4 py-2.5 
+      bg-neutral-900/50 
+      text-white 
+      border border-white/[0.08] 
+      rounded-xl 
+      focus:border-dream-purple/50 
+      focus:ring-dream-purple/20 
+      transition-all duration-300 
+      placeholder:text-neutral-500
+      backdrop-blur-md
+      hover:border-white/20
+    `}
+  />
+);
+
+// Dream UI Textarea Component
+const DreamTextarea = ({
+  value,
+  onChange,
+  onBlur,
+  placeholder,
+  id,
+  rows = 3
+}: {
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  onBlur?: () => void;
+  placeholder?: string;
+  id?: string;
+  rows?: number;
+}) => (
+  <textarea
+    id={id}
+    value={value}
+    onChange={onChange}
+    onBlur={onBlur}
+    placeholder={placeholder}
+    rows={rows}
+    className={`
+      w-full px-4 py-2.5 
+      bg-neutral-900/50 
+      text-white 
+      border border-white/[0.08] 
+      rounded-xl 
+      focus:border-dream-purple/50 
+      focus:ring-dream-purple/20 
+      transition-all duration-300 
+      placeholder:text-neutral-500
+      backdrop-blur-md
+      hover:border-white/20
+      resize-none
+    `}
+  />
+);
+
+// Dream UI Select Component
+const DreamSelect = ({
+  value,
+  onChange,
+  options,
+  id
+}: {
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  options: { value: string; label: string }[];
+  id?: string;
+}) => (
+  <div className="relative">
+    <select
+      id={id}
+      value={value}
+      onChange={onChange}
+      className={`
+        w-full px-4 py-2.5 
+        bg-neutral-900/50 
+        text-white 
+        border border-white/[0.08] 
+        rounded-xl 
+        focus:border-dream-purple/50 
+        focus:ring-dream-purple/20 
+        transition-all duration-300 
+        placeholder:text-neutral-500
+        backdrop-blur-md
+        hover:border-white/20
+        appearance-none
+        cursor-pointer
+      `}
+    >
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+    <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+        <path 
+          d="M2.5 4.5L6 8L9.5 4.5" 
+          stroke="currentColor" 
+          strokeWidth="1.5" 
+          strokeLinecap="round" 
+          strokeLinejoin="round"
+        />
+      </svg>
+    </div>
+  </div>
+);
+
+// Main Component
 export default function AgentStepsForm({ 
   existingSteps,
   onStepsUpdated,
@@ -25,7 +217,6 @@ export default function AgentStepsForm({
   const [steps, setSteps] = useState<Step[]>(existingSteps ?? agent?.settings?.steps ?? []);
   const tools = providedTools ?? agent?.settings?.tools ?? [];
 
-  // Initialize steps when agent changes
   useEffect(() => {
     if (agent) {
       setSteps(agent.settings?.steps ?? []);
@@ -70,7 +261,6 @@ export default function AgentStepsForm({
     newSteps[index][field] = value;
     setSteps(newSteps);
     
-    // For input fields, save when focus is lost instead of on every change
     if (field === 'completionTool') {
       saveSteps(newSteps);
     }
@@ -80,86 +270,112 @@ export default function AgentStepsForm({
     saveSteps(steps);
   };
 
-  const renderToolSelect = (index: number, step: Step) => (
-    <select
-      value={step.completionTool ?? "none"}
-      onChange={(e) => handleStepChange(
-        index,
-        "completionTool",
-        e.target.value === "none" ? null : e.target.value as Step["completionTool"]
-      )}
-      className="w-full p-2 bg-secondary border rounded-md"
-    >
-      <option value="none">No Tool</option>
-      {tools.map((tool) => (
-        <option key={tool} value={tool}>
-          {tool.charAt(0).toUpperCase() + tool.slice(1)}
-        </option>
-      ))}
-    </select>
-  );
-
   return (
-    <div className="space-y-6 max-w-2xl">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Agent Steps</CardTitle>
-          <Button onClick={addStep} variant="outline">Add Step +</Button>
-        </CardHeader>
-        <CardContent className="space-y-6">
+    <div className="max-w-4xl mx-auto">
+      <div className="relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine">
+        {/* Gradient Border Effect */}
+        <div className="
+          absolute inset-[0] 
+          rounded-[inherit] 
+          [border:1px_solid_transparent] 
+          ![mask-clip:padding-box,border-box] 
+          ![mask-composite:intersect] 
+          [mask:linear-gradient(transparent,transparent),linear-gradient(white,white)] 
+          after:absolute 
+          after:aspect-square 
+          after:w-[320px] 
+          after:animate-border-beam 
+          after:[animation-delay:0s] 
+          after:[background:linear-gradient(to_left,#aaa,transparent,transparent)] 
+          after:[offset-anchor:90%_50%] 
+          after:[offset-path:rect(0_auto_auto_0_round_200px)]
+        " />
+
+        <DreamCardHeader
+          title="Agent Steps"
+          action={
+            <DreamButton onClick={addStep} variant="gradient">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Step
+            </DreamButton>
+          }
+        />
+
+        <div className="p-6 space-y-6">
           {steps.map((step, index) => (
-            <Card key={index} className="border border-muted">
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-base">Step {index + 1}</CardTitle>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => removeStep(index)}
-                  className="text-destructive hover:text-destructive/90"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor={`step-title-${index}`}>Title</Label>
-                  <Input
-                    id={`step-title-${index}`}
-                    value={step.title}
-                    onChange={(e) =>
-                      handleStepChange(index, "title", e.target.value)
-                    }
-                    onBlur={handleBlur}
-                    className="bg-secondary"
-                    placeholder="Enter step title..."
-                    required
-                  />
+            <div 
+              key={index}
+              className="relative overflow-hidden rounded-2xl bg-neutral-900/50 backdrop-blur-md shine"
+            >
+              <div className="p-6 space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <GripVertical className="h-5 w-5 text-neutral-500" />
+                    <h4 className="text-lg font-medium text-white">
+                      Step {index + 1}
+                    </h4>
+                  </div>
+                  <DreamButton
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => removeStep(index)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </DreamButton>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor={`step-description-${index}`}>Description</Label>
-                  <Textarea
-                    id={`step-description-${index}`}
-                    value={step.description}
-                    onChange={(e) =>
-                      handleStepChange(index, "description", e.target.value)
-                    }
-                    onBlur={handleBlur}
-                    className="bg-secondary"
-                    placeholder="Enter step description..."
-                    rows={3}
-                  />
-                </div>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm text-neutral-300">Title</label>
+                    <DreamInput
+                      id={`step-title-${index}`}
+                      value={step.title}
+                      onChange={(e) => handleStepChange(index, "title", e.target.value)}
+                      onBlur={handleBlur}
+                      placeholder="Enter step title..."
+                      required
+                    />
+                  </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor={`step-tool-${index}`}>Completion Tool</Label>
-                  {renderToolSelect(index, step)}
+                  <div className="space-y-2">
+                    <label className="text-sm text-neutral-300">Description</label>
+                    <DreamTextarea
+                      id={`step-description-${index}`}
+                      value={step.description}
+                      onChange={(e) => handleStepChange(index, "description", e.target.value)}
+                      onBlur={handleBlur}
+                      placeholder="Enter step description..."
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm text-neutral-300">
+                      Completion Tool
+                    </label>
+                    <DreamSelect
+                      id={`step-tool-${index}`}
+                      value={step.completionTool ?? "none"}
+                      onChange={(e) => handleStepChange(
+                        index,
+                        "completionTool",
+                        e.target.value === "none" ? null : e.target.value as Step["completionTool"]
+                      )}
+                      options={[
+                        { value: "none", label: "No Tool" },
+                        ...tools.map(tool => ({
+                          value: tool,
+                          label: tool.charAt(0).toUpperCase() + tool.slice(1)
+                        }))
+                      ]}
+                    />
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           ))}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

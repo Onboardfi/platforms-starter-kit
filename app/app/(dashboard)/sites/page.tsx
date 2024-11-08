@@ -13,12 +13,17 @@ export const metadata: Metadata = {
 
 export default function AllSites({ params }: { params: { id: string } }) {
   return (
-    <div className="container mx-auto p-6 space-y-8">
-      <div className="h-[67.63px] bg-muted/50 rounded-lg border flex items-center justify-between p-6">
-        <h1 className="font-cal text-3xl">Sites</h1>
-        <CreateSiteButton>
-          <CreateSiteModal />
-        </CreateSiteButton>
+    <div className="container mx-auto p-8 space-y-8">
+      <div className="relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine">
+        {/* Gradient Border Effect */}
+        <div className="absolute inset-[0] rounded-[inherit] [border:1px_solid_transparent] ![mask-clip:padding-box,border-box] ![mask-composite:intersect] [mask:linear-gradient(transparent,transparent),linear-gradient(white,white)] after:absolute after:aspect-square after:w-[320px] after:animate-border-beam after:[animation-delay:0s] after:[background:linear-gradient(to_left,#aaa,transparent,transparent)] after:[offset-anchor:90%_50%] after:[offset-path:rect(0_auto_auto_0_round_200px)]" />
+        
+        <div className="relative flex items-center justify-between p-6">
+          <h1 className="font-cal text-3xl text-white text-glow">Sites</h1>
+          <CreateSiteButton>
+            <CreateSiteModal />
+          </CreateSiteButton>
+        </div>
       </div>
 
       <Suspense
