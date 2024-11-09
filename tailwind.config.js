@@ -21,11 +21,12 @@ module.exports = {
     extend: {
       colors: {
         // DreamUI Colors
-        'dream-blue': '#0070F3',
-        'dream-purple': '#7928CA',
-        'dream-cyan': '#50E3C2',
-        'dream-pink': '#FF0080',
+        'dream-blue': '#85B8FE',
+        'dream-cyan': '#80FFD2',
+        'dream-pink': '#FFCAE2',
         'dream-orange': '#F5A623',
+        'dream-purple': '#7928CA',
+
         
         // Dark Theme Accents
         'dark-accent-1': '#111111',

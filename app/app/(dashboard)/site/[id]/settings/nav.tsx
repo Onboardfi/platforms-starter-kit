@@ -1,8 +1,11 @@
+
+// Settings Nav (app/(dashboard)/site/[id]/settings/nav.tsx)
 "use client";
 
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useParams, useSelectedLayoutSegment } from "next/navigation";
+import { Settings, Globe, Palette } from "lucide-react";
 
 export default function SiteSettingsNav() {
   const { id } = useParams() as { id?: string };
@@ -13,36 +16,44 @@ export default function SiteSettingsNav() {
       name: "General",
       href: `/site/${id}/settings`,
       segment: null,
+      icon: Settings,
     },
     {
       name: "Domains",
       href: `/site/${id}/settings/domains`,
       segment: "domains",
+      icon: Globe,
     },
     {
       name: "Appearance",
       href: `/site/${id}/settings/appearance`,
       segment: "appearance",
+      icon: Palette,
     },
   ];
 
   return (
-    <div className="flex space-x-4 border-b border-stone-200 pb-4 pt-2 dark:border-stone-700">
-      {navItems.map((item) => (
-        <Link
-          key={item.name}
-          href={item.href}
-          // Change style depending on whether the link is active
-          className={cn(
-            "rounded-md px-2 py-1 text-sm font-medium transition-colors active:bg-stone-200 dark:active:bg-stone-600",
-            segment === item.segment
-              ? "bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-400"
-              : "text-stone-600 hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-stone-800",
-          )}
-        >
-          {item.name}
-        </Link>
-      ))}
-    </div>
+    <nav className="flex gap-2">
+      {navItems.map((item) => {
+        const Icon = item.icon;
+        const isActive = segment === item.segment;
+        
+        return (
+          <Link
+            key={item.name}
+            href={item.href}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-light transition-all duration-300",
+              isActive 
+                ? "bg-gradient-to-r from-dream-purple/50 to-dream-cyan/50 text-white shadow-dream shine" 
+                : "text-neutral-400 hover:text-white hover:bg-neutral-700/50"
+            )}
+          >
+            <Icon className="h-4 w-4" />
+            {item.name}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }

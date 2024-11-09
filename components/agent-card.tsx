@@ -31,7 +31,7 @@ export default function AgentCard({ data }: AgentCardProps) {
     }
 
     return (
-      <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-dream-purple to-dream-cyan">
+      <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-dream-pink to-dream-cyan">
         <span className="text-2xl font-bold text-white">
           {data.name?.charAt(0) || "A"}
         </span>
@@ -56,7 +56,7 @@ export default function AgentCard({ data }: AgentCardProps) {
               src={data.image}
             />
           ) : (
-            <div className="w-full h-full bg-gradient-to-r from-dream-purple/30 to-dream-cyan/30 rounded-t-3xl" />
+            <div className="w-full h-full bg-gradient-to-r from-dream-pink/30 to-dream-blue/30 to-dream-cyan/30 rounded-t-3xl" />
           )}
 
           <div className="absolute top-4 right-4">
@@ -98,7 +98,7 @@ export default function AgentCard({ data }: AgentCardProps) {
             </div>
             <div className="relative h-1 bg-neutral-800 rounded-full overflow-hidden">
               <div 
-                className="absolute top-0 left-0 h-full bg-gradient-to-r from-dream-purple to-dream-cyan rounded-full transition-all duration-500"
+                className="absolute top-0 left-0 h-full bg-gradient-to-r from-dream-pink to-dream-cyan rounded-full transition-all duration-500"
                 style={{ width: `${clampedValue}%` }}
               />
             </div>
@@ -123,7 +123,7 @@ export default function AgentCard({ data }: AgentCardProps) {
         <div className="flex gap-3 mt-6">
           <Link 
             href={`/agent/${data.id}`}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-dream-purple/50 to-dream-cyan/50 text-white text-sm hover:brightness-110 transition-all duration-300 shine shadow-dream flex-1 justify-center group"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-dream-pink/50 to-dream-cyan/50 text-white text-sm hover:brightness-110 transition-all duration-300 shine shadow-dream flex-1 justify-center group"
           >
             Edit Onboard
           </Link>

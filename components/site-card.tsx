@@ -21,7 +21,7 @@ export default function SiteCard({ data }: { data: SelectSite }) {
       );
     }
     return (
-      <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-dream-purple to-dream-cyan">
+      <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-dream-pink to-dream-cyan">
         <span className="text-2xl font-bold text-white">
           {data.name?.charAt(0) || "S"}
         </span>
@@ -46,7 +46,7 @@ export default function SiteCard({ data }: { data: SelectSite }) {
               src={data.image}
             />
           ) : (
-            <div className="w-full h-full bg-gradient-to-r from-dream-purple/30 to-dream-cyan/30 rounded-t-3xl" />
+            <div className="w-full h-full bg-gradient-to-r from-dream-pink/30 to-dream-cyan/30 rounded-t-3xl" />
           )}
 
           <div className="absolute top-4 right-4">
@@ -85,7 +85,7 @@ export default function SiteCard({ data }: { data: SelectSite }) {
         <div className="flex gap-3 mt-6">
           <Link 
             href={`/site/${data.id}`}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-dream-purple/50 to-dream-cyan/50 text-white text-sm hover:brightness-110 transition-all duration-300 shine shadow-dream flex-1 justify-center group"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-dream-pink/50 to-dream-cyan/50 text-white text-sm hover:brightness-110 transition-all duration-300 shine shadow-dream flex-1 justify-center group"
           >
             <Users className="h-4 w-4 transition-transform group-hover:scale-110" />
             Onboards

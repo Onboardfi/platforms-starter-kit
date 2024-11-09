@@ -1,6 +1,8 @@
+// app/(dashboard)/site/[id]/analytics/page.tsx
 import { getSession } from "@/lib/auth";
 import { notFound, redirect } from "next/navigation";
 import AnalyticsMockup from "@/components/analytics";
+import { ExternalLink } from "lucide-react";
 import db from "@/lib/db";
 
 export default async function SiteAnalytics({
@@ -23,23 +25,38 @@ export default async function SiteAnalytics({
   const url = `${data.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}`;
 
   return (
-    <>
-      <div className="flex items-center justify-center sm:justify-start">
-        <div className="flex flex-col items-center space-x-0 space-y-2 sm:flex-row sm:space-x-4 sm:space-y-0">
-          <h1 className="font-cal text-xl font-bold sm:text-3xl dark:text-white">
-            Analytics for {data.name}
-          </h1>
-          <a
-            href={`https://${url}`}
-            target="_blank"
-            rel="noreferrer"
-            className="truncate rounded-md bg-stone-100 px-2 py-1 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-200 dark:bg-stone-800 dark:text-stone-400 dark:hover:bg-stone-700"
-          >
-            {url} ↗
-          </a>
+    <div className="space-y-8">
+      {/* Header Card */}
+      <div className="relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine">
+        <div className="absolute inset-[0] rounded-[inherit] [border:1px_solid_transparent] ![mask-clip:padding-box,border-box] ![mask-composite:intersect] [mask:linear-gradient(transparent,transparent),linear-gradient(white,white)] after:absolute after:aspect-square after:w-[320px] after:animate-border-beam after:[animation-delay:0s] after:[background:linear-gradient(to_left,#aaa,transparent,transparent)] after:[offset-anchor:90%_50%] after:[offset-path:rect(0_auto_auto_0_round_200px)]" />
+        
+        <div className="relative p-8">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <h1 className="text-3xl font-light text-white">
+              Analytics for {data.name}
+            </h1>
+            
+            <a
+              href={`https://${url}`}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-neutral-900/50 text-neutral-300 hover:text-white transition-colors duration-300 group"
+            >
+              <span className="text-sm">{url}</span>
+              <ExternalLink className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+            </a>
+          </div>
         </div>
       </div>
-      <AnalyticsMockup />
-    </>
+
+      {/* Analytics Content */}
+      <div className="relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine">
+        <div className="absolute inset-[0] rounded-[inherit] [border:1px_solid_transparent] ![mask-clip:padding-box,border-box] ![mask-composite:intersect] [mask:linear-gradient(transparent,transparent),linear-gradient(white,white)] after:absolute after:aspect-square after:w-[320px] after:animate-border-beam after:[animation-delay:0s] after:[background:linear-gradient(to_left,#aaa,transparent,transparent)] after:[offset-anchor:90%_50%] after:[offset-path:rect(0_auto_auto_0_round_200px)]" />
+        
+        <div className="relative p-8">
+          <AnalyticsMockup />
+        </div>
+      </div>
+    </div>
   );
 }

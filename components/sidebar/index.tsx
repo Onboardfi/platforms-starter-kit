@@ -224,8 +224,8 @@ export function SidebarContent() {
           description: "Dashboard overview"
         },
         {
-          id: "agents",
-          name: "Agents",
+          id: "Onboards",
+          name: "Onboards",
           href: "/agents",
           isActive: pathname === "/agents",
           icon: <Users className="h-4 w-4" />,
@@ -342,6 +342,8 @@ export function SidebarContent() {
             <div className="absolute -top-3 right-4 rounded-full bg-indigo-500 px-2 py-0.5 text-xs font-medium text-white">
               Pro
             </div>
+
+            
             <Sparkles className="mb-3 h-6 w-6 text-indigo-400" />
             <h4 className="mb-1 text-sm font-medium text-white">Upgrade to Pro</h4>
             <p className="mb-3 text-xs text-neutral-400">
