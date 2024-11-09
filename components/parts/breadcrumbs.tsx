@@ -48,7 +48,7 @@ export const Breadcrumbs = ({ pageName, isLoading }: { pageName?: string, isLoad
       </BreadcrumbList>
       
       <Image
-        className="relative z-10 transition-all duration-500 hover:scale-110 hover:brightness-125 dark:invert"
+        className="relative z-10 transition-all duration-500 hover:scale-110 hover:brightness-125 "
         src={Icon}
         width={24}
         height={24}
