@@ -72,7 +72,7 @@ export type SelectStep = typeof steps.$inferSelect;
 
 
 export const users = pgTable('users', {
-  id: text('id').primaryKey(),
+  id: text('id').primaryKey().$defaultFn(() => createId()),
   name: text('name'),
   username: text('username'),
   gh_username: text('gh_username'),
@@ -82,7 +82,6 @@ export const users = pgTable('users', {
   createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
   updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
 });
-
 export const sessions = pgTable(
   'sessions',
   {

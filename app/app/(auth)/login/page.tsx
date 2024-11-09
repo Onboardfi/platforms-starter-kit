@@ -1,6 +1,5 @@
-// app/login/page.tsx
 import Image from "next/image";
-import LoginButton from "@/app/app/(auth)/login/login-button";
+import LoginButton from "./login-button";
 import { Suspense } from "react";
 import { getToken } from "next-auth/jwt";
 import { redirect } from "next/navigation";
@@ -15,7 +14,6 @@ interface LoginPageProps {
 
 async function getAuthSession() {
   const cookieStore = cookies();
-
   const token = await getToken({
     req: {
       headers: {
@@ -24,7 +22,6 @@ async function getAuthSession() {
     } as any,
     secret: process.env.NEXTAUTH_SECRET,
   });
-
   return token;
 }
 
@@ -32,10 +29,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const session = await getAuthSession();
   const isDevelopment = process.env.NODE_ENV === 'development';
 
-  // If the user is already logged in, redirect to the return URL or default page
   if (session) {
     if (searchParams?.returnTo) {
-      // Validate returnTo URL
       try {
         const returnToUrl = new URL(searchParams.returnTo);
         if (isDevelopment && returnToUrl.hostname.endsWith('localhost')) {
@@ -60,49 +55,68 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const error = searchParams?.error ? errorMessages[searchParams.error] || errorMessages.default : null;
 
   return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-black">
-      <div className="mx-5 w-full max-w-md overflow-hidden border border-stone-200 sm:rounded-2xl sm:shadow-xl dark:border-stone-700">
-        <div className="flex flex-col items-center justify-center space-y-3 border-b border-stone-200 bg-white px-4 py-6 pt-8 text-center dark:border-stone-700 dark:bg-black sm:px-16">
-          <a href="/">
+    <div className="fixed inset-0 flex items-center justify-center z-50">
+      <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm" />
+      
+      <div className="flex flex-col md:flex-row w-[450px] md:w-[800px] md:h-[540px] bg-neutral-800/80 backdrop-blur-md rounded-3xl shadow-2xl relative animate-dream-fade-up overflow-hidden">
+        <div className="hidden md:block md:w-1/2 h-full relative">
+          <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 to-blue-500/20" />
+          <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-30" />
+          
+          <div className="absolute bottom-4 left-0 w-full z-10">
+            <h1 className="text-[160px] h-[170px] relative text-left pl-8">
+              <span className="absolute inset-0 bg-clip-text text-transparent bg-gradient-to-b from-white/20 to-white/0">
+                OnboardFi
+              </span>
+            </h1>
+          </div>
+
+          <div className="absolute top-8 left-8 text-white/80 max-w-[280px]">
+            <h2 className="text-xl font-light mb-2">Welcome Back</h2>
+            <p className="text-sm font-light text-white/50">
+              Sign in to continue your journey with our AI-powered platform
+            </p>
+          </div>
+        </div>
+
+        <div className="md:w-1/2 p-8 flex flex-col justify-center">
+          <div className="text-center mb-8">
             <Image
               src="/logo.png"
               alt="Logo"
-              className="h-10 w-10 rounded-full dark:scale-110 dark:border dark:border-stone-400"
-              width={20}
-              height={20}
+              width={48}
+              height={48}
+              className="mx-auto mb-4 rounded-xl border border-white/10 p-2 bg-white/5"
               priority
             />
-          </a>
-          <h3 className="text-xl font-semibold">Sign In</h3>
-          <p className="text-sm text-stone-500 dark:text-stone-400">
-            Use your GitHub account to continue
-          </p>
-        </div>
+            <h3 className="text-xl font-light text-white mb-2">Sign In</h3>
+            <p className="text-sm text-white/50">
+              Use your GitHub account to continue
+            </p>
+          </div>
 
-        <div className="bg-white px-4 py-8 dark:bg-black sm:px-16">
           {error && (
-            <div className="mb-4 rounded-md bg-red-100 p-4 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-400">
+            <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-200 text-sm">
               {error}
             </div>
           )}
 
           <Suspense
             fallback={
-              <div className="my-2 h-10 w-full animate-pulse rounded-md border border-stone-200 bg-stone-100 dark:border-stone-700 dark:bg-stone-800" />
+              <div className="h-10 rounded-xl bg-white/5 animate-pulse" />
             }
           >
             <LoginButton returnTo={searchParams?.returnTo} />
           </Suspense>
+
+          <p className="mt-6 text-center text-xs text-white/30">
+            By signing in, you agree to our Terms of Service and Privacy Policy
+          </p>
         </div>
       </div>
-
-      <div className="fixed inset-0 -z-10 h-full w-full bg-[url('/grid.svg')] opacity-10" />
     </div>
   );
 }
 
-// Enable static generation but revalidate every 60 seconds
 export const revalidate = 60;
-
-// Mark this page as dynamically rendered due to cookie usage
 export const dynamic = "force-dynamic";

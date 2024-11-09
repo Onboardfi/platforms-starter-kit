@@ -1,4 +1,3 @@
-// components/auth/PasswordAuthWrapper.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -8,6 +7,7 @@ import { toast } from "sonner";
 import apiClient from "@/lib/api-client";
 import { AxiosError } from "axios";
 
+// TypeScript interfaces
 interface AuthResponse {
   success: boolean;
   error?: string;
@@ -33,6 +33,7 @@ export const PasswordAuthWrapper = ({
   siteName = "Internal Onboarding",
   authMessage = "Please enter the password to access this internal onboarding"
 }: PasswordAuthWrapperProps) => {
+  // State management
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [password, setPassword] = useState("");
@@ -44,6 +45,7 @@ export const PasswordAuthWrapper = ({
     requiresAuth: false
   });
 
+  // Effect to check existing authentication
   useEffect(() => {
     const checkExistingAuth = async () => {
       try {
@@ -78,7 +80,6 @@ export const PasswordAuthWrapper = ({
             setCurrentAgentId(data.agentId);
           }
 
-          // Enable password form if authentication is required
           if (data?.requiresAuth) {
             setAuthState(prev => ({
               ...prev,
@@ -99,6 +100,7 @@ export const PasswordAuthWrapper = ({
     }
   }, [agentId, siteName, authMessage]);
 
+  // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -140,10 +142,14 @@ export const PasswordAuthWrapper = ({
     }
   };
 
+  // Loading state
   if (isInitializing) {
     return (
-      <div className="min-h-screen bg-gray-1100 flex items-center justify-center">
-        <LoadingDots color="#A8A29E" />
+      <div className="fixed inset-0 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm" />
+        <div className="relative">
+          <LoadingDots color="#A8A29E" />
+        </div>
       </div>
     );
   }
@@ -153,48 +159,119 @@ export const PasswordAuthWrapper = ({
     return <>{children}</>;
   }
 
-  // Render password form if authentication is required
-  return (
-    <div className="min-h-screen bg-gray-1100 bg-[url('/grid.svg')] flex items-center justify-center">
-      <div className="mx-5 border border-stone-200 py-10 sm:mx-auto sm:w-full sm:max-w-md sm:rounded-lg sm:shadow-md dark:border-stone-700 bg-black">
-        <div className="relative mx-auto h-12 w-12">
-          <Image
-            alt="Logo"
-            fill
-            className="rounded-full dark:border dark:border-stone-400"
-            src="/logo.png"
-          />
-        </div>
-        <h1 className="mt-6 text-center font-cal text-3xl text-white">
-          {authState.displayName}
-        </h1>
-        <p className="mt-2 text-center text-sm text-stone-600 dark:text-stone-400">
-          {authState.displayMessage}
-        </p>
 
-        <form onSubmit={handleSubmit} className="mt-6 px-6">
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter password"
-            className="w-full px-4 py-2 rounded border border-stone-700 bg-black text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
-            required
-          />
-          <button
-            type="submit"
-            disabled={isLoading}
-            className={`
-              w-full mt-4 py-2 px-4 rounded transition-colors duration-200
-              ${isLoading 
-                ? "bg-stone-800 cursor-not-allowed" 
-                : "bg-blue-600 hover:bg-blue-700"}
-              text-white font-medium
-            `}
-          >
-            {isLoading ? <LoadingDots color="#A8A29E" /> : "Continue"}
-          </button>
-        </form>
+  // Main authentication form render
+  return (
+    <div className="fixed inset-0 flex items-center justify-center z-50">
+      {/* Backdrop overlay */}
+      <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm" />
+      
+      {/* Main container */}
+      <div className="flex flex-col md:flex-row w-[450px] md:w-[800px] md:h-[540px] bg-neutral-800/80 backdrop-blur-md rounded-3xl shadow-2xl relative animate-dream-fade-up overflow-hidden">
+        
+        {/* Left column - Decorative (hidden on mobile) */}
+        <div className="hidden md:block md:w-1/2 h-full relative">
+          {/* Gradient background */}
+          <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 to-blue-500/20" />
+          
+          {/* Animated grid pattern */}
+          <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-30 animate-dream-pulse" />
+          
+          {/* Bottom text "Dream" */}
+          <div className="absolute bottom-4 left-0 w-full z-10">
+            <h1 className="text-[160px] h-[170px] relative text-left pl-8">
+              <span className="absolute inset-0 bg-clip-text text-transparent bg-gradient-to-b from-white/20 to-white/0">
+                Dream
+              </span>
+            </h1>
+          </div>
+
+          {/* Top content */}
+          <div className="absolute top-8 left-8 text-white/80 max-w-[280px]">
+            <h2 className="text-xl font-light mb-2">{authState.displayName}</h2>
+            <p className="text-sm font-light text-white/50">
+              {authState.displayMessage}
+            </p>
+          </div>
+        </div>
+
+        {/* Right column - Auth form */}
+        <div className="md:w-1/2 p-8 flex flex-col justify-center relative">
+          {/* Logo and header section */}
+          <div className="text-center mb-8">
+            <div className="relative w-16 h-16 mx-auto mb-4">
+              <Image
+                src="/logo.png"
+                alt="Logo"
+                fill
+                className="rounded-xl border border-white/10 p-2 bg-white/5"
+                priority
+              />
+            </div>
+            
+            {/* Mobile-only headers */}
+            <div className="md:hidden space-y-2">
+              <h3 className="text-xl font-light text-white">
+                {authState.displayName}
+              </h3>
+              <p className="text-sm text-white/50">
+                {authState.displayMessage}
+              </p>
+            </div>
+          </div>
+
+          {/* Authentication form */}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Password input group */}
+            <div className="relative group">
+              <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-purple-500/10 via-transparent to-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter password"
+                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 
+                         text-white placeholder-white/30 focus:border-white/20 
+                         focus:ring-1 focus:ring-white/20 outline-none 
+                         transition-all duration-300 group-hover:border-white/20"
+                required
+              />
+            </div>
+
+            {/* Submit button */}
+            <button
+              type="submit"
+              disabled={isLoading}
+              className={`
+                w-full px-4 py-3 rounded-xl flex items-center justify-center
+                transition-all duration-300 group relative overflow-hidden
+                ${isLoading 
+                  ? 'bg-neutral-700/50 cursor-not-allowed' 
+                  : 'bg-white/5 hover:bg-white/10 active:bg-white/15 border border-white/10 hover:border-white/20'
+                }
+              `}
+            >
+              {/* Button gradient overlay */}
+              <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 via-transparent to-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+              
+              {/* Button content */}
+              <div className="relative flex items-center justify-center space-x-2">
+                {isLoading ? (
+                  <LoadingDots color="#A8A29E" />
+                ) : (
+                  <span className="text-sm font-light text-white/90">
+                    Continue
+                  </span>
+                )}
+              </div>
+            </button>
+          </form>
+
+          {/* Footer text */}
+          <p className="mt-6 text-center text-xs text-white/30">
+            Protected content • Enter password to continue
+          </p>
+        </div>
       </div>
     </div>
   );
