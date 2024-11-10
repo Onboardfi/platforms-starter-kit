@@ -72,3 +72,43 @@ export function stripUndefined<T>(obj: T): Pick<T, NonNullableProps<T>> {
   for (const key in obj) if (obj[key] !== undefined) result[key] = obj[key];
   return result;
 }
+
+
+export function formatDateRange(startDate: Date, endDate: Date): string {
+  if (!startDate || !endDate) return 'All Time';
+  
+  return `${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`;
+}
+
+export function getDateRangeFromValue(value: string): { startDate: Date; endDate: Date } {
+  const now = new Date();
+  switch (value) {
+    case '30d':
+      return {
+        startDate: new Date(now.setDate(now.getDate() - 30)),
+        endDate: new Date()
+      };
+    case '90d':
+      return {
+        startDate: new Date(now.setDate(now.getDate() - 90)),
+        endDate: new Date()
+      };
+    case '180d':
+      return {
+        startDate: new Date(now.setDate(now.getDate() - 180)),
+        endDate: new Date()
+      };
+    case 'ytd':
+      return {
+        startDate: new Date(now.getFullYear(), 0, 1),
+        endDate: new Date()
+      };
+    case 'all':
+    default:
+      return {
+        startDate: new Date(0),
+        endDate: new Date()
+      };
+  }
+}
+

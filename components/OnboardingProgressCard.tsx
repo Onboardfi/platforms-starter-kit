@@ -1,10 +1,6 @@
-//Users/bobbygilbert/Documents/GitHub/platforms-starter-kit/components/OnboardingProgressCard.tsx
-
-
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { motion } from 'framer-motion';
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Step } from '@/lib/types';
@@ -25,28 +21,6 @@ interface OnboardingProgressSidebarProps {
   secondaryColor: string;
   currentSessionId: string | null;
 }
-
-const containerVariants = {
-  hidden: { opacity: 0, x: -20 },
-  visible: {
-    opacity: 1,
-    x: 0,
-    transition: {
-      duration: 0.5,
-      when: "beforeChildren",
-      staggerChildren: 0.1
-    }
-  }
-};
-
-const stepVariants = {
-  hidden: { opacity: 0, x: -20 },
-  visible: {
-    opacity: 1,
-    x: 0,
-    transition: { duration: 0.3 }
-  }
-};
 
 export default function OnboardingProgressSidebar({
   emailSent,
@@ -72,7 +46,7 @@ export default function OnboardingProgressSidebar({
   const getStepCompletion = useCallback((step: Step): boolean => {
     if (!currentSessionId) return false;
     if (!step.completionTool || !availableTools.includes(step.completionTool)) return false;
-    
+
     switch (step.completionTool) {
       case 'email': return emailSent;
       case 'notion': return notionMessageSent;
@@ -155,20 +129,26 @@ export default function OnboardingProgressSidebar({
   const completedSteps = sessionSteps.filter(step => getStepCompletion(step)).length;
   const progress = (completedSteps / sessionSteps.length) * 100;
   const isComplete = completedSteps === sessionSteps.length;
+
   const renderAvatar = () => {
     if (logo && !imgError) {
       return (
-        <img 
-          src={logo} 
+        <img
+          src={logo}
           alt={`${title} logo`}
-          className="h-full w-full object-cover" 
+          className="h-full w-full object-cover"
           onError={() => setImgError(true)}
         />
       );
     }
 
     return (
-      <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-dream-pink to-dream-cyan">
+      <div
+        className="h-full w-full flex items-center justify-center"
+        style={{
+          background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})`
+        }}
+      >
         <span className="text-2xl font-bold text-white">
           {title?.charAt(0) || "A"}
         </span>
@@ -177,35 +157,32 @@ export default function OnboardingProgressSidebar({
   };
 
   return (
-    <motion.div
-      initial="hidden"
-      animate="visible"
-      variants={containerVariants}
-      className="flex-shrink-0 w-full sm:w-96 h-full overflow-scroll bg-neutral-900/50 backdrop-blur-lg border-r border-white/10"
+    <div
+      className="flex-shrink-0 w-full sm:w-96 h-full overflow-scroll bg-background/60 backdrop-blur-dream border-r border-white/10 shadow-dream-lg"
     >
       {/* Header Section */}
-      <div className="sticky top-0 bg-neutral-900/50 backdrop-blur-lg z-20">
+      <div className="sticky top-0 bg-background/60 backdrop-blur-dream z-20 shine">
         {/* Banner and Avatar */}
         <div className="relative h-32">
-          <div 
+          <div
             className="w-full h-full rounded-t-none"
             style={{
-              background: `linear-gradient(135deg, ${primaryColor || '#7928CA'}, ${secondaryColor || '#FF0080'})`
+              background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})`
             }}
           />
-          
+
           <div className="absolute -bottom-12 left-6">
-            <div className="h-24 w-24 rounded-2xl border-4 border-neutral-800/50 backdrop-blur-md bg-neutral-900/50 shadow-dream overflow-hidden shine">
+            <div className="h-24 w-24 rounded-2xl border-4 border-background/70 backdrop-blur-dream bg-background/70 shadow-dream overflow-hidden shine">
               {renderAvatar()}
             </div>
           </div>
 
           <div className="absolute top-4 right-4">
-            <Badge 
-              variant="outline" 
+            <Badge
+              variant="outline"
               className={cn(
                 "px-3 py-1 rounded-xl backdrop-blur-md text-xs text-white border border-white/10 shine",
-                currentSessionId ? "bg-dream-cyan/20 border-dream-cyan/20" : "bg-neutral-900/50"
+                currentSessionId ? "bg-white/10 border-white/20" : "bg-neutral-900/50"
               )}
             >
               {currentSessionId ? "Active Session" : "No Session"}
@@ -222,21 +199,27 @@ export default function OnboardingProgressSidebar({
           </div>
 
           {/* Progress Section */}
-          <div className="space-y-2 mt-4 mb-6 p-3 rounded-xl bg-neutral-900/50 backdrop-blur-md shine">
+          <div className="space-y-2 mt-4 mb-6 p-3 rounded-xl bg-background/70 backdrop-blur-dream shine">
             <div className="flex justify-between text-sm">
               <span className="text-neutral-400">
-                {!currentSessionId ? "NO SESSION" : 
+                {!currentSessionId ? "NO SESSION" :
                   `${sessionSteps.length - completedSteps} steps remaining`}
               </span>
-              <span className="text-dream-cyan">
+              <span
+                className="font-semibold"
+                style={{ color: secondaryColor }}
+              >
                 {currentSessionId ? `${Math.round(progress)}%` : '0%'}
               </span>
             </div>
 
-            <div className="relative h-1 bg-neutral-800 rounded-full overflow-hidden">
+            <div className="relative h-2 bg-neutral-800 rounded-full overflow-hidden">
               <div
-                className="absolute top-0 left-0 h-full bg-gradient-to-r from-dream-pink to-dream-cyan rounded-full transition-all duration-500"
-                style={{ width: currentSessionId ? `${progress}%` : '0%' }}
+                className="absolute top-0 left-0 h-full rounded-full transition-all duration-500"
+                style={{
+                  width: currentSessionId ? `${progress}%` : '0%',
+                  background: `linear-gradient(90deg, ${primaryColor}, ${secondaryColor})`
+                }}
               />
             </div>
           </div>
@@ -264,29 +247,31 @@ export default function OnboardingProgressSidebar({
         {sessionSteps.map((step, index) => {
           const isCompleted = getStepCompletion(step);
           return (
-            <motion.div
+            <div
               key={index}
-              variants={stepVariants}
-              className="group relative mb-4 last:mb-0"
+              className="relative mb-4 last:mb-0"
             >
-              <div 
+              <div
                 className={cn(
-                  "p-4 rounded-xl transition-all duration-300",
-                  isCompleted 
-                    ? "bg-white/5 backdrop-blur-sm" 
-                    : "bg-neutral-900/30",
+                  "p-4 rounded-xl shine",
+                  "bg-background/70 backdrop-blur-dream",
                   !currentSessionId && "opacity-50 cursor-not-allowed",
-                  "hover:bg-white/10"
                 )}
               >
                 <div className="flex items-start space-x-4">
                   <div className="flex-shrink-0">
-                    <span className={cn(
-                      "flex items-center justify-center h-8 w-8 rounded-xl text-sm border transition-all shine",
-                      isCompleted 
-                        ? "border-dream-cyan bg-dream-cyan/10 text-dream-cyan" 
-                        : "border-white/10 text-white/50"
-                    )}>
+                    <span
+                      className={cn(
+                        "flex items-center justify-center h-8 w-8 rounded-xl text-sm border shine",
+                        isCompleted
+                          ? "text-white"
+                          : "border-white/10 text-white/50"
+                      )}
+                      style={{
+                        background: isCompleted ? secondaryColor : 'transparent',
+                        borderColor: isCompleted ? secondaryColor : undefined,
+                      }}
+                    >
                       {index + 1}
                     </span>
                   </div>
@@ -297,25 +282,30 @@ export default function OnboardingProgressSidebar({
                         {step.title}
                       </h3>
                       {step.completionTool && (
-                        <Badge 
-                          variant="outline" 
-                          className="text-[10px] px-2 py-0.5 rounded-lg bg-white/5 border-white/10 text-white/50"
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] px-2 py-0.5 rounded-lg bg-white/5 border-white/10 text-white/50 shine"
                         >
                           {step.completionTool}
                         </Badge>
                       )}
                     </div>
-                    
+
                     <p className="mt-2 text-sm text-neutral-400 font-light">
                       {step.description}
                     </p>
-                    
+
                     <div className="mt-3 flex items-center space-x-4 text-[10px] text-neutral-500">
                       <span className="flex items-center">
-                        <span className={cn(
-                          "h-1.5 w-1.5 rounded-full mr-1.5",
-                          isCompleted ? "bg-dream-cyan" : "bg-white/20"
-                        )} />
+                        <span
+                          className={cn(
+                            "h-1.5 w-1.5 rounded-full mr-1.5",
+                          )}
+                          style={{
+                            backgroundColor: isCompleted ? secondaryColor : 'white',
+                            opacity: isCompleted ? 1 : 0.2,
+                          }}
+                        />
                         {!currentSessionId ? "No Session" :
                           isCompleted ? "Completed" : "Pending"}
                       </span>
@@ -330,20 +320,13 @@ export default function OnboardingProgressSidebar({
                 </div>
               </div>
 
-              {/* Hover Effect Gradient Border */}
-              <div
-                className={cn(
-                  "absolute inset-0 rounded-xl opacity-0 transition-opacity duration-300",
-                  "bg-gradient-to-r from-dream-pink/20 via-transparent to-dream-cyan/20 -z-10",
-                  "group-hover:opacity-100"
-                )}
-              />
-            </motion.div>
+              {/* Removed Hover Effect Gradient Border */}
+            </div>
           );
         })}
       </nav>
 
       <Confetti active={confettiActive} />
-    </motion.div>
+    </div>
   );
 }

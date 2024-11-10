@@ -11,6 +11,7 @@ import { useCallback } from 'react';
 import { toast } from 'sonner';
 import apiClient from '@/lib/api-client';
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export interface TabContentProps {
   activeTab: string;
@@ -33,8 +34,9 @@ export interface TabContentProps {
   createNewSession: () => Promise<string | null>;
   currentSessionId: string | null;
   onSessionSelect: (sessionId: string) => Promise<void>;
+  primaryColor: string;
   secondaryColor: string;
-  allowMultipleSessions?: boolean; // Add this line
+  allowMultipleSessions?: boolean;
 }
 
 export function TabContent({
@@ -58,8 +60,9 @@ export function TabContent({
   createNewSession,
   currentSessionId,
   onSessionSelect,
+  primaryColor,
   secondaryColor,
-  allowMultipleSessions // Add this prop
+  allowMultipleSessions,
 }: TabContentProps) {
   // Handle session creation
   const handleSessionCreated = useCallback(async () => {
@@ -75,78 +78,94 @@ export function TabContent({
     }
   }, [createNewSession]);
 
-  const handleSessionSelect = useCallback(async (sessionId: string) => {
-    try {
-      await apiClient.setCurrentSession(sessionId);
-      await onSessionSelect(sessionId);
-    } catch (error) {
-      console.error('Error selecting session:', error);
-      toast.error('Failed to switch session');
-    }
-  }, [onSessionSelect]);
+  const handleSessionSelectCallback = useCallback(
+    async (sessionId: string) => {
+      try {
+        await apiClient.setCurrentSession(sessionId);
+        await onSessionSelect(sessionId);
+      } catch (error) {
+        console.error('Error selecting session:', error);
+        toast.error('Failed to switch session');
+      }
+    },
+    [onSessionSelect]
+  );
 
-   // Component to show when active session is required
-   const NoActiveSessionPrompt = () => (
+  // Component to show when active session is required
+  const NoActiveSessionPrompt = () => (
     <div className="flex flex-col items-center justify-center py-8 space-y-4">
-      <h3 className="text-lg font-medium text-gray-400">
-        No Active Session
-      </h3>
-      <p className="text-sm text-gray-500">
+      <h3 className="text-lg font-medium text-neutral-400">No Active Session</h3>
+      <p className="text-sm text-neutral-500">
         Create or select a session to access this feature
       </p>
       <Button
         onClick={handleSessionCreated}
-        className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+        className={cn(
+          'px-4 py-2 text-sm font-medium text-white rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 shine'
+        )}
+        style={{
+          backgroundColor: primaryColor,
+          borderColor: primaryColor,
+          borderWidth: '1px',
+          borderStyle: 'solid',
+        }}
       >
         Create New Session
       </Button>
     </div>
   );
 
-
- // Render appropriate tab content based on requirements
- const renderTabContent = () => {
-  switch (activeTab) {
-    case 'workspace':
-      return currentSessionId ? (
-        <WorkspaceTab 
-          draftNote={draftNote}
-          draftEmail={draftEmail}
-          isEditingDraft={isEditingDraft}
-          isEditingEmail={isEditingEmail}
-          handleEditDraft={handleEditDraft}
-          handleEditEmail={handleEditEmail}
-          handleSaveDraft={handleSaveDraft}
-          handleSaveEmail={handleSaveEmail}
-          handleSendNote={handleSendNote}
-          handleSendEmail={handleSendEmail}
-          setDraftNote={setDraftNote}
-          setDraftEmail={setDraftEmail}
-          currentSessionId={currentSessionId}
-        />
-      ) : <NoActiveSessionPrompt />;
+  // Render appropriate tab content based on requirements
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'workspace':
+        return currentSessionId ? (
+          <WorkspaceTab
+            draftNote={draftNote}
+            draftEmail={draftEmail}
+            isEditingDraft={isEditingDraft}
+            isEditingEmail={isEditingEmail}
+            handleEditDraft={handleEditDraft}
+            handleEditEmail={handleEditEmail}
+            handleSaveDraft={handleSaveDraft}
+            handleSaveEmail={handleSaveEmail}
+            handleSendNote={handleSendNote}
+            handleSendEmail={handleSendEmail}
+            setDraftNote={setDraftNote}
+            setDraftEmail={setDraftEmail}
+            currentSessionId={currentSessionId}
+           
+          />
+        ) : (
+          <NoActiveSessionPrompt />
+        );
 
       case 'conversation':
         return currentSessionId ? (
-          <ConversationTab 
+          <ConversationTab
             items={items}
             currentSessionId={currentSessionId}
+            primaryColor={primaryColor}
+            secondaryColor={secondaryColor}
           />
-        ) : <NoActiveSessionPrompt />;
+        ) : (
+          <NoActiveSessionPrompt />
+        );
 
-        case 'sessions':
-          return (
-            <SessionsTab 
-              sessions={sessions}
-              isLoadingSessions={isLoadingSessions}
-              onSessionCreated={handleSessionCreated}
-              onSessionSelect={handleSessionSelect}
-              agentId={agentId}
-              currentSessionId={currentSessionId}
-              secondaryColor={secondaryColor}
-              allowMultipleSessions={allowMultipleSessions}
-            />
-          );
+      case 'sessions':
+        return (
+          <SessionsTab
+            sessions={sessions}
+            isLoadingSessions={isLoadingSessions}
+            onSessionCreated={handleSessionCreated}
+            onSessionSelect={handleSessionSelectCallback}
+            agentId={agentId}
+            currentSessionId={currentSessionId}
+            primaryColor={primaryColor}
+            secondaryColor={secondaryColor}
+            allowMultipleSessions={allowMultipleSessions}
+          />
+        );
 
       case 'integrations':
         return <IntegrationsTab />;
@@ -181,7 +200,6 @@ export function TabContent({
   );
 }
 
-
 // Update WorkspaceTab and ConversationTab interfaces
 interface WorkspaceTabProps {
   draftNote: string | null;
@@ -197,11 +215,27 @@ interface WorkspaceTabProps {
   setDraftNote: (note: string | null) => void;
   setDraftEmail: (email: DraftEmail | null) => void;
   currentSessionId: string | null;
+  primaryColor: string;
+  secondaryColor: string;
 }
 
 interface ConversationTabProps {
   items: any[];
   currentSessionId: string | null;
+  primaryColor: string;
+  secondaryColor: string;
 }
 
-export type { WorkspaceTabProps, ConversationTabProps };
+interface SessionsTabProps {
+  sessions: Session[];
+  isLoadingSessions: boolean;
+  onSessionCreated: () => Promise<void>;
+  onSessionSelect: (sessionId: string) => Promise<void>;
+  agentId: string;
+  currentSessionId: string | null;
+  primaryColor: string;
+  secondaryColor: string;
+  allowMultipleSessions?: boolean;
+}
+
+export type { WorkspaceTabProps, ConversationTabProps, SessionsTabProps };

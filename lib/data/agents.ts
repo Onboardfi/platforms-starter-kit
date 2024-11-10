@@ -251,58 +251,50 @@ export async function deleteAgent(input: unknown) {
 
   return { success: true };
 }
-
-/**
- * Get agent counts over time for the dashboard chart
- */
-export async function getAgentCounts() {
+export async function getAgentCounts(startDate?: Date, endDate?: Date) {
   "use server";
 
   const userId = await authenticateUser();
 
-  // Define the date range (e.g., past 30 days)
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setDate(endDate.getDate() - 29); // Past 30 days including today
-
-  // Define the type for agent counts
-  type AgentCount = {
-    date: string; // 'YYYY-MM-DD' format
-    count: number;
-  };
-
-  // Fetch agent counts grouped by date
-  const agentCounts: AgentCount[] = await db
-    .select({
-      date: sql<string>`DATE("createdAt")`.as("date"),
-      count: sql<number>`COUNT(*)`.as("count"),
-    })
-    .from(agents)
-    .where(
-      and(
+  // If no dates provided, default to all time
+  const dateFilter = startDate && endDate 
+    ? and(
         eq(agents.userId, userId),
         gte(agents.createdAt, startDate),
         lte(agents.createdAt, endDate)
       )
-    )
-    .groupBy(sql`DATE("createdAt")`)
-    .orderBy(sql`DATE("createdAt")`);
+    : eq(agents.userId, userId);
 
-  // Prepare data for the chart
-  const chartData = [];
+  // Fetch agent counts grouped by date
+  const agentCounts = await db
+    .select({
+      date: sql<string>`DATE(agents."createdAt")`.as("date"),
+      count: sql<number>`COUNT(*)`.as("count"),
+    })
+    .from(agents)
+    .where(dateFilter)
+    .groupBy(sql`DATE(agents."createdAt")`)
+    .orderBy(sql`DATE(agents."createdAt")`);
 
   // Create a date map for quick lookup
   const dateMap = new Map<string, number>();
   agentCounts.forEach((item) => {
-    const dateString = item.date; // Use item.date directly
-    dateMap.set(dateString, item.count);
+    const dateString = item.date;
+    dateMap.set(dateString, Number(item.count));
   });
 
-  // Fill in missing dates with zero counts
-  for (let i = 0; i < 30; i++) {
-    const date = new Date(startDate);
-    date.setDate(startDate.getDate() + i);
-    const dateString = date.toISOString().split("T")[0]; // 'YYYY-MM-DD' format
+  // Generate continuous date range
+  const days = startDate && endDate 
+    ? Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
+    : 30; // Default to 30 days if no range specified
+
+  const chartData = [];
+  for (let i = 0; i <= days; i++) {
+    const date = startDate 
+      ? new Date(startDate.getTime() + i * (1000 * 60 * 60 * 24))
+      : new Date(Date.now() - (days - i) * (1000 * 60 * 60 * 24));
+    
+    const dateString = date.toISOString().split('T')[0];
     chartData.push({
       date: dateString,
       agents: dateMap.get(dateString) || 0,
@@ -311,7 +303,9 @@ export async function getAgentCounts() {
 
   return { data: chartData };
 }
-
+/**
+ * Get agent counts over time for the dashboard chart
+ */
 /**
  * Get usage statistics for the user
  */

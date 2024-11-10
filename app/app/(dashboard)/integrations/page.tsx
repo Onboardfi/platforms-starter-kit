@@ -1,89 +1,109 @@
-
-
-
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { Integration } from "@/components/integration-card";
 import { Grid, Box, ArrowUpRight, Plug } from "lucide-react";
+import Image from "next/image";
+
+interface Integration {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  image: string;
+  status: "connected" | "not_connected";
+  docUrl: string;
+}
 
 interface IntegrationCategory {
   category: string;
   integrations: Integration[];
 }
 
-const SAMPLE_INTEGRATIONS: IntegrationCategory[] = [
+const INTEGRATIONS: IntegrationCategory[] = [
   {
-    category: "CRM",
+    category: "Automation & Development",
     integrations: [
       {
-        id: "salesforce",
-        name: "Salesforce",
-        description: "Connect your Salesforce account to sync contacts, leads, and opportunities.",
-        category: "CRM",
-        image: null,
-        status: "not_connected" as const,
-        docUrl: "/docs/integrations/salesforce",
+        id: "zapier",
+        name: "Zapier",
+        description: "Automate repetitive tasks and save valuable time.",
+        category: "Automation",
+        image: "/zapier.png",
+        status: "not_connected",
+        docUrl: "/docs/integrations/zapier",
       },
       {
-        id: "hubspot",
-        name: "HubSpot",
-        description: "Sync your HubSpot CRM data and automate your marketing workflows.",
-        category: "CRM",
-        image: null,
-        status: "not_connected" as const,
-        docUrl: "/docs/integrations/hubspot",
-      },
-    ],
+        id: "github",
+        name: "Github",
+        description: "Sync code and collaborate with your team seamlessly.",
+        category: "Development",
+        image: "/github.png",
+        status: "not_connected",
+        docUrl: "/docs/integrations/github",
+      }
+    ]
   },
   {
-    category: "Marketing",
+    category: "Communication & Collaboration",
+    integrations: [
+      {
+        id: "slack",
+        name: "Slack",
+        description: "Keep your team connected with real-time updates.",
+        category: "Communication",
+        image: "/slack1.png",
+        status: "not_connected",
+        docUrl: "/docs/integrations/slack",
+      },
+      {
+        id: "notion",
+        name: "Notion",
+        description: "Sync docs and projects for smarter collaboration.",
+        category: "Collaboration",
+        image: "/notion1.png",
+        status: "not_connected",
+        docUrl: "/docs/integrations/notion",
+      }
+    ]
+  },
+  {
+    category: "Marketing & Payments",
     integrations: [
       {
         id: "mailchimp",
         name: "Mailchimp",
-        description: "Connect your email marketing campaigns and automation workflows.",
+        description: "Automate email and manage contacts with ease.",
         category: "Marketing",
-        image: null,
-        status: "not_connected" as const,
+        image: "/mailchimp.png",
+        status: "not_connected",
         docUrl: "/docs/integrations/mailchimp",
       },
       {
-        id: "klaviyo",
-        name: "Klaviyo",
-        description: "Sync your customer data and automate your email marketing.",
-        category: "Marketing",
-        image: null,
-        status: "not_connected" as const,
-        docUrl: "/docs/integrations/klaviyo",
-      },
-    ],
+        id: "stripe",
+        name: "Stripe",
+        description: "Manage payments and track transactions in real time.",
+        category: "Payments",
+        image: "/stripe.png",
+        status: "not_connected",
+        docUrl: "/docs/integrations/stripe",
+      }
+    ]
   },
   {
-    category: "Analytics",
+    category: "Data & Storage",
     integrations: [
       {
-        id: "ga4",
-        name: "Google Analytics 4",
-        description: "Track website traffic and user behavior with Google Analytics 4.",
-        category: "Analytics",
-        image: null,
-        status: "not_connected" as const,
-        docUrl: "/docs/integrations/ga4",
-      },
-      {
-        id: "mixpanel",
-        name: "Mixpanel",
-        description: "Track and analyze user interactions with your product.",
-        category: "Analytics",
-        image: null,
-        status: "not_connected" as const,
-        docUrl: "/docs/integrations/mixpanel",
-      },
-    ],
-  },
+        id: "sheets",
+        name: "Google Sheets",
+        description: "Keep your data in sync for easy tracking and updates.",
+        category: "Data",
+        image: "/sheets.png",
+        status: "not_connected",
+        docUrl: "/docs/integrations/sheets",
+      }
+    ]
+  }
 ];
 
-// Dream UI Category Header
 const CategoryHeader = ({ title }: { title: string }) => (
   <div className="relative overflow-hidden rounded-2xl bg-neutral-900/30 backdrop-blur-md p-4 mb-6">
     {/* Background Elements */}
@@ -100,8 +120,6 @@ const CategoryHeader = ({ title }: { title: string }) => (
   </div>
 );
 
-
-// Dream UI Integration Card
 const DreamIntegrationCard = ({ data }: { data: Integration }) => (
   <div className="group relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine">
     {/* Gradient Border Effect */}
@@ -123,9 +141,14 @@ const DreamIntegrationCard = ({ data }: { data: Integration }) => (
     " />
 
     <div className="relative p-6 h-full flex flex-col">
-      {/* Icon */}
-      <div className="mb-4 p-3 w-fit rounded-xl bg-neutral-900/50 border border-white/[0.08] shine">
-        <Plug className="h-5 w-5 text-dream-cyan" />
+      {/* Logo */}
+      <div className="mb-4 w-12 h-12 rounded-xl bg-neutral-900/50 border border-white/[0.08] shine overflow-hidden relative">
+        <Image
+          src={data.image}
+          alt={`${data.name} logo`}
+          fill
+          className="object-contain p-2"
+        />
       </div>
 
       {/* Content */}
@@ -213,7 +236,7 @@ export default async function IntegrationsPage() {
 
       {/* Categories */}
       <div className="space-y-12">
-        {SAMPLE_INTEGRATIONS.map((category) => (
+        {INTEGRATIONS.map((category) => (
           <div key={category.category} className="space-y-6">
             <CategoryHeader title={category.category} />
             

@@ -787,14 +787,15 @@ const connectConversation = useCallback(async (sessionId?: string) => {
 
           {/* Main Content */}
           <div className="ml-96 min-h-screen flex flex-col">
-            <Navbar
-              LOCAL_RELAY_SERVER_URL={process.env.NEXT_PUBLIC_LOCAL_RELAY_SERVER_URL || ''}
-              apiKey={apiKey}
-              activeTab={activeTab}
-              setActiveTab={setActiveTab}
-              onApiKeyUpdate={handleApiKeyUpdate}
-            />
-
+          <Navbar
+  LOCAL_RELAY_SERVER_URL={process.env.NEXT_PUBLIC_LOCAL_RELAY_SERVER_URL || ''}
+  apiKey={apiKey}
+  activeTab={activeTab}
+  setActiveTab={setActiveTab}
+  onApiKeyUpdate={handleApiKeyUpdate}
+  primaryColor={data.settings?.primaryColor || '#7928CA'}
+  secondaryColor={data.settings?.secondaryColor || '#FF0080'}
+/>
 <TabContent
   activeTab={activeTab}
   agentId={agent.id}
@@ -822,7 +823,8 @@ const connectConversation = useCallback(async (sessionId?: string) => {
   createNewSession={createNewSession}
   currentSessionId={currentSessionId}
   onSessionSelect={handleSessionSelect}
-  secondaryColor={data.settings?.secondaryColor || "#10b981"}  // Add this line
+  primaryColor={data.settings?.primaryColor || '#7928CA'}  // Added this line
+  secondaryColor={data.settings?.secondaryColor || '#FF0080'}
 />
 
             <Footer

@@ -1,101 +1,99 @@
+"use client";
+
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 
-// Interfaces
 interface Integration {
   name: string;
   description: string;
   category: string;
   status: string;
   color: string;
+  image: string;
 }
 
-// Integration Data
 const integrations = {
-  crm: [
+  automation: [
     {
-      name: "Salesforce",
-      description: "Connect with Salesforce to sync customer data, opportunities, and accounts.",
-      category: "crm",
+      name: "Zapier",
+      description: "Automate repetitive tasks and save valuable time.",
+      category: "automation",
       status: "disconnected",
-      color: "blue"
+      color: "orange",
+      image: "/zapier.png"
     },
     {
-      name: "HubSpot",
-      description: "Integrate with HubSpot CRM for seamless contact and deal management.",
-      category: "crm",
+      name: "Github",
+      description: "Sync code and collaborate with your team seamlessly.",
+      category: "automation",
       status: "disconnected",
-      color: "blue"
-    },
-    {
-      name: "Pipedrive",
-      description: "Sync your sales pipeline and contact data with Pipedrive CRM.",
-      category: "crm",
-      status: "disconnected",
-      color: "blue"
+      color: "cyan",
+      image: "/github.png"
     }
   ],
   communication: [
     {
       name: "Slack",
-      description: "Send notifications and updates directly to your Slack channels.",
+      description: "Keep your team connected with real-time updates.",
       category: "communication",
       status: "disconnected",
-      color: "violet"
+      color: "violet",
+      image: "/slack1.png"
     },
-    {
-      name: "Gmail",
-      description: "Integrate your email communications and manage draft emails.",
-      category: "communication",
-      status: "connected",
-      color: "orange"
-    }
-  ],
-  productivity: [
     {
       name: "Notion",
-      description: "Sync notes and documentation directly with your Notion workspace.",
-      category: "productivity",
+      description: "Sync docs and projects for smarter collaboration.",
+      category: "communication",
       status: "connected",
-      color: "cyan"
+      color: "cyan",
+      image: "/notion1.png"
+    }
+  ],
+  marketing: [
+    {
+      name: "Mailchimp",
+      description: "Automate email and manage contacts with ease.",
+      category: "marketing",
+      status: "disconnected",
+      color: "orange",
+      image: "/mailchimp.png"
     },
     {
-      name: "Trello",
-      description: "Manage tasks and projects with Trello integration.",
-      category: "productivity",
-      status: "disconnected",
-      color: "blue"
-    },
+      name: "Stripe",
+      description: "Manage payments and track transactions in real time.",
+      category: "marketing",
+      status: "connected",
+      color: "violet",
+      image: "/stripe.png"
+    }
+  ],
+  data: [
     {
-      name: "Asana",
-      description: "Connect with Asana for project and task management.",
-      category: "productivity",
+      name: "Google Sheets",
+      description: "Keep your data in sync for easy tracking and updates.",
+      category: "data",
       status: "disconnected",
-      color: "pink"
+      color: "blue",
+      image: "/sheets.png"
     }
   ]
 };
 
-// Integration Card Component
 function IntegrationCard({ integration }: { integration: Integration }) {
   return (
     <div className="group relative animate-dream-fade-up">
-      {/* Main Card Container */}
       <div 
         className={cn(
-          // Base styles
           "relative rounded-3xl overflow-hidden",
           "bg-neutral-900/50 backdrop-blur-md",
           "border border-white/10",
           "transition-all duration-300",
-          // Hover effects
           "hover:border-white/20",
           "shadow-dream hover:shadow-dream-lg"
         )}
       >
-        {/* Gradient Background Effect */}
         <div 
           className={cn(
             "absolute inset-0",
@@ -105,7 +103,6 @@ function IntegrationCard({ integration }: { integration: Integration }) {
           )}
         />
         
-        {/* Card Content Container */}
         <div 
           className={cn(
             "relative p-6",
@@ -113,44 +110,36 @@ function IntegrationCard({ integration }: { integration: Integration }) {
             "shine"
           )}
         >
-          {/* Logo and Text Section */}
           <div className="flex items-start space-x-4">
-            {/* Logo Container */}
             <div 
               className={cn(
-                // Base styles
                 "w-16 h-16 rounded-2xl",
                 "bg-neutral-800/50",
                 "border border-white/10",
                 "flex items-center justify-center",
                 "flex-shrink-0 relative overflow-hidden",
-                // Effects
                 "group-hover:border-white/20",
                 "transition-all duration-300",
                 "shine shadow-dream"
               )}
             >
               <Image
-                src={`/${integration.name}.png`}
+                src={integration.image}
                 alt={`${integration.name} logo`}
                 fill
-                className="object-cover p-2"
+                className="object-contain p-2"
               />
             </div>
 
-            {/* Text Content */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                {/* Integration Name */}
                 <h3 className="text-sm font-light text-white/90">
                   {integration.name}
                 </h3>
                 
-                {/* Connected Status Badge */}
                 {integration.status === 'connected' && (
                   <span 
                     className={cn(
-                      // Base styles
                       'px-3 py-1',
                       'text-[10px] font-light',
                       'rounded-full',
@@ -158,7 +147,6 @@ function IntegrationCard({ integration }: { integration: Integration }) {
                       'transition-all duration-300',
                       'animate-dream-fade-up',
                       'shadow-dream-sm shine',
-                      // Color variations
                       {
                         'bg-dream-blue/10 border-dream-blue/20 text-dream-blue': 
                           integration.color === 'blue',
@@ -178,25 +166,20 @@ function IntegrationCard({ integration }: { integration: Integration }) {
                 )}
               </div>
               
-              {/* Description */}
               <p className="mt-2 text-xs font-light text-white/50 leading-relaxed">
                 {integration.description}
               </p>
             </div>
           </div>
 
-          {/* Action Buttons */}
           <div className="mt-6 flex gap-2">
-            {/* Connect/Disconnect Button */}
             <Button
               variant={integration.status === 'connected' ? "destructive" : "outline"}
               className={cn(
-                // Base styles
                 "flex-1 rounded-xl",
                 "text-xs font-light h-9",
                 "transition-all duration-300",
                 "shine shadow-dream",
-                // Status-based styles
                 integration.status === 'connected' 
                   ? "bg-red-500/10 border-red-500/20 text-red-500 hover:bg-red-500/20"
                   : "bg-white/5 border-white/10 text-white/70 hover:bg-white/10 hover:border-white/20"
@@ -205,7 +188,6 @@ function IntegrationCard({ integration }: { integration: Integration }) {
               {integration.status === 'connected' ? 'Disconnect' : 'Connect'}
             </Button>
             
-            {/* Settings Button */}
             <Button
               variant="outline"
               className={cn(
@@ -227,23 +209,19 @@ function IntegrationCard({ integration }: { integration: Integration }) {
   );
 }
 
-// Main Integrations Tab Component
 export function IntegrationsTab() {
   return (
     <div className="space-y-12 p-6">
-      {/* CRM Section */}
       <div className="animate-dream-fade-up">
-        {/* Section Header */}
         <div className="flex items-center space-x-4 mb-6">
           <h2 className="text-lg font-light text-white">
-            CRM Systems
+            Automation & Development
           </h2>
           <div className="h-[1px] flex-1 bg-gradient-to-r from-white/0 via-white/5 to-white/0" />
         </div>
         
-        {/* CRM Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {integrations.crm.map((integration, index) => (
+          {integrations.automation.map((integration, index) => (
             <div
               key={integration.name}
               style={{ animationDelay: `${index * 0.1}s` }}
@@ -254,20 +232,17 @@ export function IntegrationsTab() {
         </div>
       </div>
       
-      {/* Communication Section */}
       <div 
         className="animate-dream-fade-up" 
         style={{ animationDelay: "0.2s" }}
       >
-        {/* Section Header */}
         <div className="flex items-center space-x-4 mb-6">
           <h2 className="text-lg font-light text-white">
-            Communication Tools
+            Communication & Collaboration
           </h2>
           <div className="h-[1px] flex-1 bg-gradient-to-r from-white/0 via-white/5 to-white/0" />
         </div>
         
-        {/* Communication Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {integrations.communication.map((integration, index) => (
             <div
@@ -280,25 +255,45 @@ export function IntegrationsTab() {
         </div>
       </div>
       
-      {/* Productivity Section */}
       <div 
         className="animate-dream-fade-up" 
         style={{ animationDelay: "0.4s" }}
       >
-        {/* Section Header */}
         <div className="flex items-center space-x-4 mb-6">
           <h2 className="text-lg font-light text-white">
-            Productivity Tools
+            Marketing & Payments
           </h2>
           <div className="h-[1px] flex-1 bg-gradient-to-r from-white/0 via-white/5 to-white/0" />
         </div>
         
-        {/* Productivity Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {integrations.productivity.map((integration, index) => (
+          {integrations.marketing.map((integration, index) => (
             <div
               key={integration.name}
               style={{ animationDelay: `${0.5 + index * 0.1}s` }}
+            >
+              <IntegrationCard integration={integration} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div 
+        className="animate-dream-fade-up" 
+        style={{ animationDelay: "0.6s" }}
+      >
+        <div className="flex items-center space-x-4 mb-6">
+          <h2 className="text-lg font-light text-white">
+            Data & Storage
+          </h2>
+          <div className="h-[1px] flex-1 bg-gradient-to-r from-white/0 via-white/5 to-white/0" />
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {integrations.data.map((integration, index) => (
+            <div
+              key={integration.name}
+              style={{ animationDelay: `${0.7 + index * 0.1}s` }}
             >
               <IntegrationCard integration={integration} />
             </div>

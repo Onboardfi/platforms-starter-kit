@@ -1,24 +1,25 @@
-// lib/data/dashboard.ts
+"use server";
 
-import { agents, sites } from "../schema";
+import { agents, sites, onboardingSessions } from "../schema";
 import { sql, and, eq, gte, lte } from "drizzle-orm";
 import db from "../db";
 import { authenticateUser } from "./safe-action";
 
-export async function getAgentAndSiteCounts() {
-  "use server";
-
+export async function getAgentAndSiteCounts(inputStartDate?: Date, inputEndDate?: Date) {
   const userId = await authenticateUser();
 
-  // Define the date range (e.g., past 30 days)
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setDate(endDate.getDate() - 29); // Past 30 days including today
+  // Use provided dates or default to last 30 days
+  const endDate = inputEndDate || new Date();
+  const startDate = inputStartDate || new Date(endDate);
+  if (!inputStartDate) {
+    startDate.setDate(endDate.getDate() - 29);
+  }
 
-  // Fetch agent counts grouped by date
-  const agentCounts = await db
-    .select({
-      date: sql<string>`DATE("createdAt")`.as("date"),
+  // Fetch all counts in parallel
+  const [agentCounts, siteCounts, sessionCounts] = await Promise.all([
+    // Agent counts
+    db.select({
+      date: sql<string>`DATE(agents."createdAt")`.as("date"),
       count: sql<number>`COUNT(*)`.as("count"),
     })
     .from(agents)
@@ -29,13 +30,12 @@ export async function getAgentAndSiteCounts() {
         lte(agents.createdAt, endDate)
       )
     )
-    .groupBy(sql`DATE("createdAt")`)
-    .orderBy(sql`DATE("createdAt")`);
+    .groupBy(sql`DATE(agents."createdAt")`)
+    .orderBy(sql`DATE(agents."createdAt")`),
 
-  // Fetch site counts grouped by date
-  const siteCounts = await db
-    .select({
-      date: sql<string>`DATE("createdAt")`.as("date"),
+    // Site counts
+    db.select({
+      date: sql<string>`DATE(sites."createdAt")`.as("date"),
       count: sql<number>`COUNT(*)`.as("count"),
     })
     .from(sites)
@@ -46,37 +46,70 @@ export async function getAgentAndSiteCounts() {
         lte(sites.createdAt, endDate)
       )
     )
-    .groupBy(sql`DATE("createdAt")`)
-    .orderBy(sql`DATE("createdAt")`);
+    .groupBy(sql`DATE(sites."createdAt")`)
+    .orderBy(sql`DATE(sites."createdAt")`),
 
-  // Prepare data for the chart
-  const chartData = [];
+    // Session counts - Join with agents to get only sessions from user's agents
+    db.select({
+      date: sql<string>`DATE(onboarding_sessions."createdAt")`.as("date"),
+      count: sql<number>`COUNT(*)`.as("count"),
+    })
+    .from(onboardingSessions)
+    .innerJoin(agents, eq(onboardingSessions.agentId, agents.id))
+    .where(
+      and(
+        eq(agents.userId, userId),
+        gte(onboardingSessions.createdAt, startDate),
+        lte(onboardingSessions.createdAt, endDate)
+      )
+    )
+    .groupBy(sql`DATE(onboarding_sessions."createdAt")`)
+    .orderBy(sql`DATE(onboarding_sessions."createdAt")`)
+  ]);
 
-  // Create date maps for quick lookup
-  const agentDateMap = new Map<string, number>();
-  agentCounts.forEach((item) => {
-    const dateString = item.date; // 'YYYY-MM-DD'
-    agentDateMap.set(dateString, Number(item.count));
-  });
+  // Create date map for all dates
+  const dateMap = new Map<string, { agents: number; sites: number; sessions: number }>();
 
-  const siteDateMap = new Map<string, number>();
-  siteCounts.forEach((item) => {
-    const dateString = item.date;
-    siteDateMap.set(dateString, Number(item.count));
-  });
+  // Calculate the number of days in the range
+  const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
 
-  // Fill in missing dates with zero counts
-  for (let i = 0; i < 30; i++) {
+  // Initialize all dates with zero counts
+  for (let i = 0; i <= days; i++) {
     const date = new Date(startDate);
     date.setDate(startDate.getDate() + i);
-    const dateString = date.toISOString().split("T")[0]; // 'YYYY-MM-DD' format
-
-    chartData.push({
-      date: dateString,
-      agents: agentDateMap.get(dateString) || 0,
-      sites: siteDateMap.get(dateString) || 0,
-    });
+    const dateString = date.toISOString().split("T")[0];
+    dateMap.set(dateString, { agents: 0, sites: 0, sessions: 0 });
   }
+
+  // Add counts to map
+  agentCounts.forEach((item) => {
+    const existing = dateMap.get(item.date);
+    if (existing) {
+      existing.agents = Number(item.count);
+    }
+  });
+
+  siteCounts.forEach((item) => {
+    const existing = dateMap.get(item.date);
+    if (existing) {
+      existing.sites = Number(item.count);
+    }
+  });
+
+  sessionCounts.forEach((item) => {
+    const existing = dateMap.get(item.date);
+    if (existing) {
+      existing.sessions = Number(item.count);
+    }
+  });
+
+  // Convert map to array and sort by date
+  const chartData = Array.from(dateMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, counts]) => ({
+      date,
+      ...counts
+    }));
 
   return { data: chartData };
 }

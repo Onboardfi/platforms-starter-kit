@@ -14,13 +14,15 @@ import { EditSessionModal } from "./EditSessionModal";
 import { useState, useEffect, useMemo } from "react";
 import SessionDetails from "./SessionDetails";
 
+
 interface SessionsTabProps {
   sessions: Session[];
   isLoadingSessions: boolean;
-  onSessionCreated?: () => Promise<void>;
-  onSessionSelect?: (sessionId: string) => Promise<void>;
+  onSessionCreated: () => Promise<void>;
+  onSessionSelect: (sessionId: string) => Promise<void>;
   agentId: string;
   currentSessionId: string | null;
+  primaryColor: string;
   secondaryColor: string;
   allowMultipleSessions?: boolean;
 }

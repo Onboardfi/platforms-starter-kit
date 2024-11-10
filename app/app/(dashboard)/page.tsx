@@ -62,13 +62,11 @@ export default async function Page() {
       
       <PageWrapper>
         <div className="space-y-8">
-          {/* Header Section */}
           <Header title={pageData.title}>{pageData.description}</Header>
           
-          {/* Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Chart 
-              chartData={chartData} 
+              chartData={chartData} // Changed from initialData to chartData
               className="col-span-2 rounded-xl border border-white/[0.02] 
                 bg-neutral-900/50 backdrop-blur-md p-6 shine shadow-dream" 
             />
@@ -80,7 +78,6 @@ export default async function Page() {
                 bg-neutral-900/50 backdrop-blur-md p-6 shine shadow-dream"
             />
           </div>
-          
           {/* Quick Links */}
           <div className="py-6">
             <Links />

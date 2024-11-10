@@ -196,48 +196,52 @@ export async function deleteSite(input: unknown) {
 /**
  * Get site counts over time for the dashboard chart
  */
-export async function getSiteCounts() {
+
+
+export async function getSiteCounts(startDate?: Date, endDate?: Date) {
   "use server";
 
   const userId = await authenticateUser();
 
-  // Define the date range (e.g., past 30 days)
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setDate(endDate.getDate() - 29); // Past 30 days including today
-
-  // Fetch site counts grouped by date
-  const siteCounts = await db
-    .select({
-      date: sql<string>`DATE("createdAt")`.as("date"),
-      count: sql<number>`COUNT(*)`.as("count"),
-    })
-    .from(sites)
-    .where(
-      and(
+  // If no dates provided, default to all time
+  const dateFilter = startDate && endDate 
+    ? and(
         eq(sites.userId, userId),
         gte(sites.createdAt, startDate),
         lte(sites.createdAt, endDate)
       )
-    )
-    .groupBy(sql`DATE("createdAt")`)
-    .orderBy(sql`DATE("createdAt")`);
+    : eq(sites.userId, userId);
 
-  // Prepare data for the chart
-  const chartData = [];
+  // Fetch site counts grouped by date
+  const siteCounts = await db
+    .select({
+      date: sql<string>`DATE(sites."createdAt")`.as("date"),
+      count: sql<number>`COUNT(*)`.as("count"),
+    })
+    .from(sites)
+    .where(dateFilter)
+    .groupBy(sql`DATE(sites."createdAt")`)
+    .orderBy(sql`DATE(sites."createdAt")`);
 
   // Create a date map for quick lookup
   const dateMap = new Map<string, number>();
   siteCounts.forEach((item) => {
-    const dateString = item.date; // Use item.date directly
+    const dateString = item.date;
     dateMap.set(dateString, Number(item.count));
   });
 
-  // Fill in missing dates with zero counts
-  for (let i = 0; i < 30; i++) {
-    const date = new Date(startDate);
-    date.setDate(startDate.getDate() + i);
-    const dateString = date.toISOString().split("T")[0]; // 'YYYY-MM-DD' format
+  // Generate continuous date range
+  const days = startDate && endDate 
+    ? Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
+    : 30; // Default to 30 days if no range specified
+
+  const chartData = [];
+  for (let i = 0; i <= days; i++) {
+    const date = startDate 
+      ? new Date(startDate.getTime() + i * (1000 * 60 * 60 * 24))
+      : new Date(Date.now() - (days - i) * (1000 * 60 * 60 * 24));
+    
+    const dateString = date.toISOString().split('T')[0];
     chartData.push({
       date: dateString,
       sites: dateMap.get(dateString) || 0,

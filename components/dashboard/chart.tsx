@@ -10,6 +10,7 @@ import {
   ResponsiveContainer,
   Tooltip
 } from "recharts";
+import { getAgentAndSiteCounts } from "@/lib/data/dashboard";
 
 import {
   Card,
@@ -24,11 +25,13 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import { DateRangeSelector, DateRange } from "@/components/ui/date-range-selector";
 
 interface ChartDataPoint {
   date: string;
   agents: number;
   sites: number;
+  sessions: number;
 }
 
 interface ChartProps {
@@ -45,16 +48,50 @@ const chartConfig = {
     label: "Sites",
     color: "#82ca9d",
   },
+  sessions: {
+    label: "Sessions",
+    color: "#ffc658",
+  },
 } satisfies ChartConfig;
 
-export function Chart({ chartData, className }: ChartProps) {
+export function Chart({ chartData: initialData, className }: ChartProps) {
+  const [chartData, setChartData] = React.useState<ChartDataPoint[]>(initialData);
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [selectedRange, setSelectedRange] = React.useState<DateRange>({
+    value: '30d',
+    label: 'Last 30 Days',
+    startDate: new Date(new Date().setDate(new Date().getDate() - 30)),
+    endDate: new Date()
+  });
+
+  const handleRangeChange = async (range: DateRange) => {
+    try {
+      setIsLoading(true);
+      setSelectedRange(range);
+
+      const result = await getAgentAndSiteCounts(range.startDate, range.endDate);
+      if (result?.data) {
+        setChartData(result.data);
+      }
+    } catch (error) {
+      console.error('Error fetching chart data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const totalAgents = React.useMemo(
-    () => chartData.reduce((acc, curr) => acc + Number(curr.agents), 0),
+    () => chartData.reduce((acc, curr) => acc + curr.agents, 0),
     [chartData]
   );
 
   const totalSites = React.useMemo(
-    () => chartData.reduce((acc, curr) => acc + Number(curr.sites), 0),
+    () => chartData.reduce((acc, curr) => acc + curr.sites, 0),
+    [chartData]
+  );
+
+  const totalSessions = React.useMemo(
+    () => chartData.reduce((acc, curr) => acc + curr.sessions, 0),
     [chartData]
   );
 
@@ -62,15 +99,21 @@ export function Chart({ chartData, className }: ChartProps) {
     <Card className={cn("shadow-none", className)}>
       <CardHeader className="flex flex-col items-stretch space-y-0 border-b p-0 sm:flex-row sm:h-[99px]">
         <div className="flex flex-1 flex-col justify-center gap-1 px-6">
-          <CardTitle>Overview</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>Overview</CardTitle>
+            <DateRangeSelector 
+              onRangeChange={handleRangeChange} 
+              selectedRange={selectedRange.value} 
+            />
+          </div>
           <CardDescription>
-            Showing total counts for the past month
+            {`${selectedRange.startDate.toLocaleDateString()} - ${selectedRange.endDate.toLocaleDateString()}`}
           </CardDescription>
         </div>
-        <div className="flex">
+        <div className="flex flex-wrap">
           <div
             data-active={true}
-            className="flex flex-1 flex-col justify-center gap-1 border-t px-6 py-2 text-left sm:border-l sm:border-t-0 sm:px-8 sm:py-5"
+            className="flex flex-1 flex-col justify-center gap-1 border-t px-4 py-2 text-left sm:border-l sm:border-t-0 sm:px-6 sm:py-5"
           >
             <span className="text-xs text-muted-foreground">
               {chartConfig.agents.label}
@@ -81,7 +124,7 @@ export function Chart({ chartData, className }: ChartProps) {
           </div>
           <div
             data-active={true}
-            className="flex flex-1 flex-col justify-center gap-1 border-l border-t px-6 py-2 text-left sm:border-t-0 sm:px-8 sm:py-5"
+            className="flex flex-1 flex-col justify-center gap-1 border-l border-t px-4 py-2 text-left sm:border-t-0 sm:px-6 sm:py-5"
           >
             <span className="text-xs text-muted-foreground">
               {chartConfig.sites.label}
@@ -90,9 +133,20 @@ export function Chart({ chartData, className }: ChartProps) {
               {totalSites.toLocaleString()}
             </span>
           </div>
+          <div
+            data-active={true}
+            className="flex flex-1 flex-col justify-center gap-1 border-l border-t px-4 py-2 text-left sm:border-t-0 sm:px-6 sm:py-5"
+          >
+            <span className="text-xs text-muted-foreground">
+              {chartConfig.sessions.label}
+            </span>
+            <span className="text-lg font-bold leading-none sm:text-3xl">
+              {totalSessions.toLocaleString()}
+            </span>
+          </div>
         </div>
       </CardHeader>
-      <CardContent className="px-2 sm:p-6">
+      <CardContent className={cn("px-2 sm:p-6", isLoading && "opacity-50")}>
         <ChartContainer
           config={chartConfig}
           className="aspect-auto h-[250px] w-full"
@@ -144,16 +198,26 @@ export function Chart({ chartData, className }: ChartProps) {
                 strokeWidth={2}
                 dot={false}
               />
-            <Line
-  dataKey="sites"
-  name="Sites"
-  type="monotone"
-  stroke={chartConfig.sites.color}
-  strokeWidth={2}
-  dot={false}
-  isAnimationActive={false} // Optional: disable animation for accurate initial render
-  connectNulls={true} // Connect points if there are gaps in data
-/>
+              <Line
+                dataKey="sites"
+                name="Sites"
+                type="monotone"
+                stroke={chartConfig.sites.color}
+                strokeWidth={2}
+                dot={false}
+                isAnimationActive={false}
+                connectNulls={true}
+              />
+              <Line
+                dataKey="sessions"
+                name="Sessions"
+                type="monotone"
+                stroke={chartConfig.sessions.color}
+                strokeWidth={2}
+                dot={false}
+                isAnimationActive={false}
+                connectNulls={true}
+              />
             </LineChart>
           </ResponsiveContainer>
         </ChartContainer>
