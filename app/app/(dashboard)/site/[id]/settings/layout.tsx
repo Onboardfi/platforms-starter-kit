@@ -31,18 +31,27 @@ export default async function SiteSettingsLayout({
     <div className="space-y-8">
       {/* Header Card */}
       <div className="relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine">
+        {/* Background Elements */}
+        <div className="absolute inset-0 -z-10">
+          {/* Grid Background */}
+          <div className="absolute inset-0 bg-[url('/grid.svg')] bg-repeat opacity-30" />
+          {/* Gradient Overlay to Fade Grid */}
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent to-neutral-900/80" />
+        </div>
+
         {/* Gradient Border Effect */}
         <div className="absolute inset-[0] rounded-[inherit] [border:1px_solid_transparent] ![mask-clip:padding-box,border-box] ![mask-composite:intersect] [mask:linear-gradient(transparent,transparent),linear-gradient(white,white)] after:absolute after:aspect-square after:w-[320px] after:animate-border-beam after:[animation-delay:0s] after:[background:linear-gradient(to_left,#aaa,transparent,transparent)] after:[offset-anchor:90%_50%] after:[offset-path:rect(0_auto_auto_0_round_200px)]" />
         
-        <div className="relative p-8">
+        <div className="relative p-8 z-10">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <h1 className="text-3xl font-light text-white">
               Settings for {data.name}
             </h1>
             <a
-              href={process.env.NEXT_PUBLIC_VERCEL_ENV
-                ? `https://${url}`
-                : `http://${data.subdomain}.localhost:3000`
+              href={
+                process.env.NEXT_PUBLIC_VERCEL_ENV
+                  ? `https://${url}`
+                  : `http://${data.subdomain}.localhost:3000`
               }
               target="_blank"
               rel="noreferrer"
@@ -61,6 +70,7 @@ export default async function SiteSettingsLayout({
 
       {/* Content Card */}
       <div className="relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine">
+        {/* Gradient Border Effect */}
         <div className="absolute inset-[0] rounded-[inherit] [border:1px_solid_transparent] ![mask-clip:padding-box,border-box] ![mask-composite:intersect] [mask:linear-gradient(transparent,transparent),linear-gradient(white,white)] after:absolute after:aspect-square after:w-[320px] after:animate-border-beam after:[animation-delay:0s] after:[background:linear-gradient(to_left,#aaa,transparent,transparent)] after:[offset-anchor:90%_50%] after:[offset-path:rect(0_auto_auto_0_round_200px)]" />
         
         <div className="relative p-8">

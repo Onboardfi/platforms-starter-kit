@@ -1,3 +1,5 @@
+// tailwind.config.js
+
 const { fontFamily } = require("tailwindcss/defaultTheme");
 
 /** @type {import('tailwindcss').Config} */
@@ -26,6 +28,11 @@ module.exports = {
         'dream-pink': '#FFCAE2',
         'dream-orange': '#F5A623',
         'dream-purple': '#7928CA',
+
+        'custom-green': {
+          light: '#00FFA6',  // Lighter shade
+          DEFAULT: '#00C078', // Default/darker shade
+        },
 
         
         // Dark Theme Accents
@@ -186,8 +193,20 @@ module.exports = {
           "0%": { transform: "rotate(0deg)" },
           "100%": { transform: "rotate(360deg)" },
         },
+        // Add your "border-beam" keyframes here
+        "border-beam": {
+          "0%": {
+            transform: "translateX(-100%)",
+          },
+          "100%": {
+            transform: "translateX(100%)",
+          },
+        },
       },
+     
       animation: {
+
+       "border-beam": "border-beam var(--duration, 15s) linear infinite",
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         // DreamUI Animations

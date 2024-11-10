@@ -7,6 +7,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
     <SidebarProvider defaultOpen={true}>
       <div className="relative min-h-screen">
+
+           {/* Background gradients */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-dream-cyan/20 blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 h-80 w-80 rounded-full bg-dream-cyan/20 blur-3xl" />
+      </div>
+
+      
         <Sidebar>
           <SidebarContent />
         </Sidebar>

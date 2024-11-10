@@ -1,3 +1,4 @@
+// components/groups/agents/data-table.tsx
 "use client";
 
 import * as React from "react";
@@ -14,22 +15,24 @@ import {
   getFacetedRowModel,
   getFacetedUniqueValues,
   Row,
+  Table,
+  ColumnDef,
 } from "@tanstack/react-table";
-
-import { cn } from "@/lib/utils";
-import { motion } from "framer-motion";
-import { MoreHorizontal } from "lucide-react";
-import { DataTablePagination } from "@/components/data-table/pagination";
-import { DataTableToolbar } from "@/components/data-table/toolbar";
 import { SelectAgent } from "@/lib/schema";
+import { ArrowUp, ArrowDown, Search, MoreHorizontal } from "lucide-react";
 
-// Create a type that combines SelectAgent with our additional properties
+// Define the RowData type
 type RowData = SelectAgent & {
   currentStep: number;
   totalSteps: number;
 };
 
-const columns = [
+interface DataTableProps {
+  data: SelectAgent[];
+}
+
+// Define columns
+const columns: ColumnDef<RowData>[] = [
   {
     accessorKey: "progress",
     header: "Progress",
@@ -38,11 +41,11 @@ const columns = [
       const currentStep = row.original.currentStep || 0;
       const totalSteps = row.original.totalSteps || 1;
       const progress = (currentStep / totalSteps) * 100;
-      
+
       return (
         <div className="flex items-center gap-2">
           <div className="w-32 h-2 bg-neutral-800 rounded-full overflow-hidden">
-            <div 
+            <div
               className="h-full bg-white rounded-full"
               style={{ width: `${progress}%` }}
             />
@@ -50,9 +53,7 @@ const columns = [
           <span className="text-xs text-neutral-400">
             {currentStep}/{totalSteps} Steps
           </span>
-          <span className="text-xs text-neutral-500">
-            {progress.toFixed(0)}%
-          </span>
+          <span className="text-xs text-neutral-500">{progress.toFixed(0)}%</span>
         </div>
       );
     },
@@ -70,20 +71,19 @@ const columns = [
     accessorKey: "createdAt",
     header: "Date Created",
     cell: ({ row }: { row: Row<RowData> }) => {
-      const date = row.original.createdAt;
+      const date = new Date(row.original.createdAt);
       return (
         <span className="text-sm text-neutral-400">
-          {date instanceof Date 
-            ? date.toLocaleString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-                hour: 'numeric',
-                minute: 'numeric',
-                hour12: true
+          {date instanceof Date
+            ? date.toLocaleString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+                hour: "numeric",
+                minute: "numeric",
+                hour12: true,
               })
-            : "Unknown date"
-          }
+            : "Unknown date"}
         </span>
       );
     },
@@ -99,24 +99,134 @@ const columns = [
   },
 ];
 
-interface DataTableProps {
-  data: SelectAgent[];
-}
+// Dream UI Table Header Component
+const DreamTableHeader = ({ children }: { children: React.ReactNode }) => (
+  <th className="px-6 py-4 text-left text-sm font-medium text-neutral-300 first:pl-8 last:pr-8">
+    {children}
+  </th>
+);
+
+// Dream UI Table Cell Component
+const DreamTableCell = ({ children }: { children: React.ReactNode }) => (
+  <td className="px-6 py-4 text-sm text-neutral-300 first:pl-8 last:pr-8">
+    {children}
+  </td>
+);
+
+// Dream UI Search Component
+const DreamSearch = ({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) => (
+  <div className="relative">
+    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500" />
+    <input
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder="Search agents..."
+      className="
+        h-10 w-[250px] rounded-xl 
+        bg-neutral-900/50 pl-9 pr-4 
+        text-sm text-neutral-300 
+        placeholder:text-neutral-500
+        border border-white/[0.08]
+        focus:border-dream-purple/50 
+        focus:ring-dream-purple/20
+        transition-all duration-300
+        backdrop-blur-md
+      "
+    />
+  </div>
+);
+
+// Dream UI Toolbar Component
+const DreamToolbar = ({ table }: { table: Table<RowData> }) => {
+  const isFiltered = table.getState().columnFilters.length > 0;
+
+  return (
+    <div className="flex items-center justify-between p-1">
+      <DreamSearch
+        value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
+        onChange={(value) => table.getColumn("name")?.setFilterValue(value)}
+      />
+      <div className="flex items-center gap-2">
+        {isFiltered && (
+          <button
+            onClick={() => table.resetColumnFilters()}
+            className="px-3 py-1.5 rounded-xl bg-neutral-900/50 text-neutral-300 text-sm hover:bg-neutral-800/50 transition-colors duration-300 shine"
+          >
+            Reset Filters
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Dream UI Pagination Component
+const DreamPagination = ({ table }: { table: Table<RowData> }) => {
+  return (
+    <div className="flex items-center justify-between px-4 py-3">
+      <div className="flex items-center gap-2 text-sm text-neutral-400">
+        <span>
+          Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+        </span>
+        <span>·</span>
+        <span>{table.getFilteredRowModel().rows.length} row(s)</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => table.previousPage()}
+          disabled={!table.getCanPreviousPage()}
+          className="
+            px-3 py-1.5 rounded-xl 
+            bg-neutral-900/50 text-neutral-300 
+            text-sm hover:bg-neutral-800/50 
+            disabled:opacity-50 disabled:cursor-not-allowed 
+            transition-colors duration-300 shine
+          "
+        >
+          Previous
+        </button>
+        <button
+          onClick={() => table.nextPage()}
+          disabled={!table.getCanNextPage()}
+          className="
+            px-3 py-1.5 rounded-xl 
+            bg-neutral-900/50 text-neutral-300 
+            text-sm hover:bg-neutral-800/50 
+            disabled:opacity-50 disabled:cursor-not-allowed 
+            transition-colors duration-300 shine
+          "
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+};
 
 export function AgentsDataTable({ data }: DataTableProps) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
-  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
+  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
+    []
+  );
+  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>(
+    {}
+  );
   const [rowSelection, setRowSelection] = React.useState({});
 
   // Transform the data to include the required properties
-  const transformedData: RowData[] = data.map(agent => ({
+  const transformedData: RowData[] = data.map((agent) => ({
     ...agent,
-    currentStep: 0, // You should get these values from your actual data
-    totalSteps: 1,  // You should get these values from your actual data
+    currentStep: 0, // Default value or fetch from actual data
+    totalSteps: 1, // Default value or fetch from actual data
   }));
 
-  const table = useReactTable({
+  const table = useReactTable<RowData>({
     data: transformedData,
     columns,
     enableRowSelection: true,
@@ -139,103 +249,100 @@ export function AgentsDataTable({ data }: DataTableProps) {
   });
 
   return (
-    <div className="relative space-y-4">
-      <div className="flex items-center justify-between">
-        <input
-          placeholder="Search agents..."
-          className="w-full max-w-xs px-4 py-2 bg-neutral-900/50 border border-white/[0.02] rounded-lg 
-            text-sm text-neutral-300 placeholder:text-neutral-600
-            focus:outline-none focus:ring-1 focus:ring-white/[0.05]"
+    <div className="space-y-4">
+      <DreamToolbar table={table} />
+
+      <div className="relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine">
+        {/* Gradient Border Effect */}
+        <div
+          className="
+            absolute inset-[0] rounded-[inherit] [border:1px_solid_transparent] 
+            ![mask-clip:padding-box,border-box] ![mask-composite:intersect] 
+            [mask:linear-gradient(transparent,transparent),linear-gradient(white,white)] 
+            after:absolute after:aspect-square after:w-[320px] after:animate-border-beam 
+            after:[animation-delay:0s] 
+            after:[background:linear-gradient(to_left,#aaa,transparent,transparent)] 
+            after:[offset-anchor:90%_50%] 
+            after:[offset-path:rect(0_auto_auto_0_round_200px)]"
         />
-        <button className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 
-          text-emerald-400 text-sm font-medium rounded-lg transition-colors">
-          + Create Onboard
-        </button>
-      </div>
-      
-      {/* Table Container */}
-      <div className="relative overflow-hidden rounded-xl border border-white/[0.02] bg-neutral-900/50 backdrop-blur-md">
-        <table className="w-full border-collapse">
-          {/* Header */}
-          <thead>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <th
-                    key={header.id}
-                    className="px-4 py-3 text-left border-b border-white/[0.02]"
-                  >
-                    <div className="text-sm font-medium text-neutral-400">
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
-                          )}
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            ))}
-          </thead>
-          
-          {/* Body */}
-          <tbody>
-            {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row, i) => (
-                <motion.tr
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3, delay: i * 0.05 }}
-                  key={row.id}
-                  className="group hover:bg-white/[0.02] transition-colors"
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <td
-                      key={cell.id}
-                      className="px-4 py-3 border-t border-white/[0.02]"
-                    >
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
-                    </td>
+
+        <div className="relative overflow-x-auto">
+          <table className="w-full">
+            <thead className="border-b border-white/[0.08] bg-neutral-900/30">
+              {table.getHeaderGroups().map((headerGroup) => (
+                <tr key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => (
+                    <DreamTableHeader key={header.id}>
+                      <div className="flex items-center gap-2">
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(
+                              header.column.columnDef.header,
+                              header.getContext()
+                            )}
+                        {header.column.getCanSort() && (
+                          <button
+                            onClick={header.column.getToggleSortingHandler()}
+                            className={`
+                              ml-auto h-4 w-4 
+                              transition-colors duration-300
+                              ${
+                                header.column.getIsSorted()
+                                  ? "text-dream-purple"
+                                  : "text-neutral-500 hover:text-neutral-300"
+                              }
+                            `}
+                          >
+                            {header.column.getIsSorted() === "desc" ? (
+                              <ArrowDown className="h-3 w-3" />
+                            ) : header.column.getIsSorted() === "asc" ? (
+                              <ArrowUp className="h-3 w-3" />
+                            ) : (
+                              <MoreHorizontal className="h-3 w-3" />
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    </DreamTableHeader>
                   ))}
-                </motion.tr>
-              ))
-            ) : (
-              <tr>
-                <td
-                  colSpan={columns.length}
-                  className="h-24 text-center text-sm text-neutral-400"
-                >
-                  No results found.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                </tr>
+              ))}
+            </thead>
+            <tbody className="divide-y divide-white/[0.04]">
+              {table.getRowModel().rows?.length ? (
+                table.getRowModel().rows.map((row) => (
+                  <tr
+                    key={row.id}
+                    className="group hover:bg-white/[0.02] transition-colors duration-300"
+                    data-state={row.getIsSelected() ? "selected" : undefined}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <DreamTableCell key={cell.id}>
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext()
+                        )}
+                      </DreamTableCell>
+                    ))}
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td
+                    colSpan={table.getAllColumns().length}
+                    className="h-24 text-center text-sm text-neutral-500"
+                  >
+                    No results found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* Pagination */}
-      <div className="flex items-center justify-between px-2">
-        <div className="flex items-center gap-2 text-sm text-neutral-400">
-          <span>Rows per page</span>
-          <select className="bg-transparent border border-white/[0.02] rounded-lg px-2 py-1">
-            <option>10</option>
-            <option>20</option>
-            <option>50</option>
-          </select>
-        </div>
-        <div className="flex items-center gap-4 text-sm text-neutral-400">
-          <span>Page 1 of 1</span>
-          <div className="flex gap-1">
-            <button className="p-1 hover:bg-white/5 rounded" disabled>⟪</button>
-            <button className="p-1 hover:bg-white/5 rounded" disabled>⟨</button>
-            <button className="p-1 hover:bg-white/5 rounded" disabled>⟩</button>
-            <button className="p-1 hover:bg-white/5 rounded" disabled>⟫</button>
-          </div>
-        </div>
+      <div className="relative overflow-hidden rounded-2xl bg-neutral-900/30 backdrop-blur-md">
+        <DreamPagination table={table} />
       </div>
     </div>
   );

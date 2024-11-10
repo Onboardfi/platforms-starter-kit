@@ -135,6 +135,10 @@ export default function AgentCard({ data }: AgentCardProps) {
             >
               View Live
             </Link>
+
+
+
+
           ) : (
             <button 
               disabled

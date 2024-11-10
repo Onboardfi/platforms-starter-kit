@@ -86,13 +86,20 @@ const SAMPLE_INTEGRATIONS: IntegrationCategory[] = [
 // Dream UI Category Header
 const CategoryHeader = ({ title }: { title: string }) => (
   <div className="relative overflow-hidden rounded-2xl bg-neutral-900/30 backdrop-blur-md p-4 mb-6">
-    <div className="absolute inset-0 bg-gradient-to-r from-dream-cyan/10 to-dream-cyan/10 opacity-50" />
-    <div className="relative flex items-center gap-3">
+    {/* Background Elements */}
+    <div className="absolute inset-0 -z-10">
+      {/* Grid Background */}
+      <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-30" />
+      {/* Gradient Overlay */}
+      <div className="absolute inset-0 bg-gradient-to-r from-transparent to-neutral-900/50" />
+    </div>
+    <div className="relative flex items-center gap-3 z-10">
       <Grid className="h-5 w-5 text-dream-cyan" />
       <h2 className="text-xl font-light text-white">{title}</h2>
     </div>
   </div>
 );
+
 
 // Dream UI Integration Card
 const DreamIntegrationCard = ({ data }: { data: Integration }) => (
@@ -169,7 +176,15 @@ export default async function IntegrationsPage() {
     <div className="container mx-auto p-8 space-y-12">
       {/* Page Header */}
       <div className="relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine mb-12">
-        {/* Gradient Border */}
+        {/* Background Elements */}
+        <div className="absolute inset-0 -z-10">
+          {/* Grid Background */}
+          <div className="absolute inset-0 bg-[url('/grid.svg')] bg-repeat opacity-30" />
+          {/* Gradient Overlay to Fade Grid */}
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent to-neutral-900/80" />
+        </div>
+
+        {/* Gradient Border Effect */}
         <div className="
           absolute inset-[0] 
           rounded-[inherit] 
@@ -188,7 +203,7 @@ export default async function IntegrationsPage() {
         " />
 
         {/* Header Content */}
-        <div className="relative p-8">
+        <div className="relative p-8 z-10">
           <h1 className="text-4xl font-light text-white mb-2">Integrations</h1>
           <p className="text-neutral-400">
             Connect your favorite tools and services to enhance your workflow

@@ -104,11 +104,11 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
       
       {/* Sidebar Container */}
       <motion.div
-        initial={{ x: -320 }}
-        animate={{ 
-          x: isOpen || window.innerWidth >= 768 ? 0 : -320,
-          width: isCollapsed ? 80 : 280
-        }}
+      initial={{ x: -320 }}
+      animate={{ 
+        x: isOpen || window.innerWidth >= 768 ? 0 : -320,
+        width: isCollapsed ? 80 : 280  // Sidebar width
+      }}
         transition={{ type: "spring", damping: 20, stiffness: 300 }}
         className={cn(
           "fixed z-30 flex h-full flex-col",
@@ -223,14 +223,7 @@ export function SidebarContent() {
           icon: <LayoutDashboard className="h-4 w-4" />,
           description: "Dashboard overview"
         },
-        {
-          id: "Onboards",
-          name: "Onboards",
-          href: "/agents",
-          isActive: pathname === "/agents",
-          icon: <Users className="h-4 w-4" />,
-          description: "Manage your AI agents"
-        },
+        
         {
           id: "sites",
           name: "Sites",
@@ -289,10 +282,10 @@ export function SidebarContent() {
                     "w-9 h-9 rounded-lg",
                     "transition-all duration-300",
                     "bg-gradient-to-br",
-                    tab.isActive 
-                      ? "from-indigo-500/20 to-purple-500/20 text-indigo-400"
-                      : "from-neutral-800/50 to-neutral-900/50 group-hover:from-neutral-800/70 group-hover:to-neutral-900/70"
-                  )}>
+                    tab.isActive
+                    ? "from-custom-green/20 to-custom-green-light/20 text-custom-green-light"
+                    : "from-neutral-800/50 to-neutral-900/50 group-hover:from-neutral-800/70 group-hover:to-neutral-900/70"
+                )}>
                     {tab.icon}
                   </div>
   
@@ -328,8 +321,8 @@ export function SidebarContent() {
 
                 {/* Active Indicator */}
                 {tab.isActive && (
-                  <div className="absolute left-0 top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-indigo-500" />
-                )}
+  <div className="absolute left-0 top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-custom-green" />
+)}
               </Link>
             ))}
           </nav>
@@ -338,19 +331,20 @@ export function SidebarContent() {
        
         {/* Pro Features Section */}
         {!isCollapsed && (
-          <div className="relative mt-6 rounded-xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/10 to-purple-500/10 p-4">
-            <div className="absolute -top-3 right-4 rounded-full bg-indigo-500 px-2 py-0.5 text-xs font-medium text-white">
-              Pro
-            </div>
+         <div className="relative mt-6 rounded-xl border border-custom-green/20 bg-gradient-to-br from-custom-green/10 to-custom-green-light/10 p-4">
+         <div className="absolute -top-3 right-4 rounded-full bg-custom-green px-2 py-0.5 text-xs font-medium text-white">
+           Pro
+         </div>
 
             
-            <Sparkles className="mb-3 h-6 w-6 text-indigo-400" />
+         <Sparkles className="mb-3 h-6 w-6 text-custom-green-light" />
+
             <h4 className="mb-1 text-sm font-medium text-white">Upgrade to Pro</h4>
             <p className="mb-3 text-xs text-neutral-400">
               Get access to advanced features and priority support.
             </p>
-            <button className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-500 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-indigo-600">
-              <Plus className="h-4 w-4" />
+            <button className="flex w-full items-center justify-center gap-2 rounded-lg bg-custom-green px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-custom-green-light">
+            <Plus className="h-4 w-4" />
               Upgrade Now
               <ArrowUpRight className="h-4 w-4" />
             </button>

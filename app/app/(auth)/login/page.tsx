@@ -60,7 +60,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       
       <div className="flex flex-col md:flex-row w-[450px] md:w-[800px] md:h-[540px] bg-neutral-800/80 backdrop-blur-md rounded-3xl shadow-2xl relative animate-dream-fade-up overflow-hidden">
         <div className="hidden md:block md:w-1/2 h-full relative">
-          <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 to-blue-500/20" />
+          <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 to-dream-cyan" />
           <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-30" />
           
           <div className="absolute bottom-4 left-0 w-full z-10">
