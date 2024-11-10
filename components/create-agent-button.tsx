@@ -1,4 +1,3 @@
-// components/create-agent-button.tsx
 "use client";
 
 import { useTransition } from "react";
@@ -8,6 +7,7 @@ import { useRouter } from "next/navigation";
 import LoadingDots from "@/components/icons/loading-dots";
 import va from "@vercel/analytics";
 import { toast } from "sonner";
+import { Plus } from "lucide-react";
 
 interface CreateAgentButtonProps {
   siteId: string;
@@ -33,14 +33,21 @@ export default function CreateAgentButton({ siteId }: CreateAgentButtonProps) {
         })
       }
       className={cn(
-        "flex h-8 w-36 items-center justify-center space-x-2 rounded-lg border text-sm transition-all focus:outline-none sm:h-9",
+        "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm transition-all duration-300 group",
         isPending
-          ? "cursor-not-allowed border-stone-200 bg-stone-100 text-stone-400 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-300"
-          : "border border-black bg-black text-white hover:bg-white hover:text-black active:bg-stone-100 dark:border-stone-700 dark:hover:border-stone-200 dark:hover:bg-black dark:hover:text-white dark:active:bg-stone-800",
+          ? "cursor-not-allowed bg-neutral-900/20 text-neutral-600"
+          : "bg-gradient-to-r from-dream-pink/50 to-dream-cyan/50 text-white hover:brightness-110 shine shadow-dream"
       )}
       disabled={isPending}
     >
-      {isPending ? <LoadingDots color="#808080" /> : <p>New Onboard</p>}
+      {isPending ? (
+        <LoadingDots color="#808080" />
+      ) : (
+        <>
+          <Plus className="h-4 w-4 transition-transform group-hover:scale-110" />
+          <span>New Onboard</span>
+        </>
+      )}
     </button>
   );
 }

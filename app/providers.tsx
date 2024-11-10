@@ -3,11 +3,12 @@
 import { ReactNode } from "react";
 import { SessionProvider } from "next-auth/react";
 import { Toaster } from "sonner";
+import { ModalProvider } from "@/components/modal/provider";
 
 export function Providers({ children }: { children: ReactNode }) {
   return (
     <SessionProvider>
-      {children}
+     <ModalProvider>{children}</ModalProvider>
       <Toaster 
         position="top-right" 
         toastOptions={{

@@ -7,6 +7,35 @@ import { useFormStatus } from "react-dom";
 import { toast } from "sonner";
 import { deleteSite } from "@/lib/actions";
 import va from "@vercel/analytics";
+import { Trash2 } from "lucide-react";
+
+// Dream UI Label
+const DreamLabel = ({ children }: { children: React.ReactNode }) => (
+  <div className="text-sm text-neutral-400 dark:text-neutral-400">
+    {children}
+  </div>
+);
+
+// Dream UI Input
+const DreamInput = ({ className = "", ...props }: React.InputHTMLAttributes<HTMLInputElement>) => (
+  <input
+    className={`
+      w-full px-4 py-2.5 
+      bg-neutral-900/50 
+      text-white 
+      border border-white/[0.08] 
+      rounded-xl 
+      focus:border-red-500/50 
+      focus:ring-red-500/20 
+      transition-all duration-300 
+      placeholder:text-neutral-500
+      backdrop-blur-md
+      hover:border-white/20
+      ${className}
+    `}
+    {...props}
+  />
+);
 
 export default function DeleteSiteForm({ siteName }: { siteName: string }) {
   const { id } = useParams() as { id: string };
@@ -33,36 +62,50 @@ export default function DeleteSiteForm({ siteName }: { siteName: string }) {
   };
 
   return (
-    <form
-      action={handleSubmit}
-      className="rounded-lg border border-red-600 bg-white dark:bg-black"
-    >
-      <div className="relative flex flex-col space-y-4 p-5 sm:p-10">
-        <h2 className="font-cal text-xl dark:text-white">Delete Site</h2>
-        <p className="text-sm text-stone-500 dark:text-stone-400">
-          Deletes your site and all posts associated with it. Type in the name
-          of your site <b>{siteName}</b> to confirm.
-        </p>
+    <div className="relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine">
+      {/* Gradient Border Effect */}
+      <div className="absolute inset-[0] rounded-[inherit] [border:1px_solid_transparent] ![mask-clip:padding-box,border-box] ![mask-composite:intersect] [mask:linear-gradient(transparent,transparent),linear-gradient(white,white)] after:absolute after:aspect-square after:w-[320px] after:animate-border-beam after:[animation-delay:0s] after:[background:linear-gradient(to_left,#aaa,transparent,transparent)] after:[offset-anchor:90%_50%] after:[offset-path:rect(0_auto_auto_0_round_200px)]" />
 
-        <input
-          name="confirm"
-          type="text"
-          required
-          pattern={siteName}
-          placeholder={siteName}
-          className="w-full max-w-md rounded-md border border-stone-300 text-sm text-stone-900 placeholder-stone-300 focus:border-stone-500 focus:outline-none focus:ring-stone-500 dark:border-stone-600 dark:bg-black dark:text-white dark:placeholder-stone-700"
-        />
-      </div>
+      <form action={handleSubmit} className="relative">
+        <div className="flex flex-col space-y-6 p-6">
+          <div className="pb-4 border-b border-white/[0.08]">
+            <h2 className="font-cal text-2xl text-white flex items-center gap-2">
+              Delete Site
+            </h2>
+          </div>
 
-      <div className="flex flex-col items-center justify-center space-y-2 rounded-b-lg border-t border-stone-200 bg-stone-50 p-3 sm:flex-row sm:justify-between sm:space-y-0 sm:px-10 dark:border-stone-700 dark:bg-stone-800">
-        <p className="text-center text-sm text-stone-500 dark:text-stone-400">
-          This action is irreversible. Please proceed with caution.
-        </p>
-        <div className="w-32">
+          <div className="space-y-4">
+            <div className="p-4 bg-red-500/10 rounded-xl border border-red-500/20">
+              <DreamLabel>
+                Deletes your site and all posts associated with it. Type in the name
+                of your site <b className="text-red-400">{siteName}</b> to confirm.
+              </DreamLabel>
+            </div>
+
+            <div className="space-y-2">
+              <DreamLabel>Confirm site name</DreamLabel>
+              <DreamInput
+                name="confirm"
+                type="text"
+                required
+                pattern={siteName}
+                placeholder={siteName}
+              />
+            </div>
+
+            <div className="p-4 rounded-xl bg-neutral-900/30 backdrop-blur-md">
+              <p className="text-sm text-neutral-400">
+                This action is irreversible. Please proceed with caution.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end p-6 border-t border-white/[0.08]">
           <FormButton />
         </div>
-      </div>
-    </form>
+      </form>
+    </div>
   );
 }
 
@@ -71,15 +114,22 @@ function FormButton() {
   return (
     <button
       className={cn(
-        "flex h-8 w-32 items-center justify-center space-x-2 rounded-md border text-sm transition-all focus:outline-none sm:h-10",
+        "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm transition-all duration-300 group min-w-[140px] justify-center",
         pending
-          ? "cursor-not-allowed border-stone-200 bg-stone-100 text-stone-400 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-300"
-          : "border-red-600 bg-red-600 text-white hover:bg-white hover:text-red-600 dark:hover:bg-transparent",
+          ? "cursor-not-allowed bg-neutral-900/20 text-neutral-600"
+          : "bg-gradient-to-r from-red-500/50 to-red-600/50 text-white hover:brightness-110 shine shadow-dream"
       )}
       disabled={pending}
       type="submit"
     >
-      {pending ? <LoadingDots color="#808080" /> : <p>Confirm Delete</p>}
+      {pending ? (
+        <LoadingDots color="#808080" />
+      ) : (
+        <>
+          <Trash2 className="h-4 w-4 transition-transform group-hover:scale-110" />
+          <span>Delete Site</span>
+        </>
+      )}
     </button>
   );
 }

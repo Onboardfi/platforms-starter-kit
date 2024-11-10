@@ -188,6 +188,7 @@ export const systemLogs = pgTable(
 );
 
 export type Step = {
+  [x: string]: any;
   title: string;
   description: string;
   completionTool: 'email' | 'memory' | 'notesTaken' | 'notion' | null;

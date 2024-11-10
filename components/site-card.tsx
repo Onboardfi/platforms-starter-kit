@@ -30,7 +30,7 @@ export default function SiteCard({ data }: { data: SelectSite }) {
   };
 
   return (
-    <div className="group relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine">
+    <div className="group relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine min-w-[280px] w-full md:max-w-sm">
       {/* Gradient Border Effect */}
       <div className="absolute inset-[0] rounded-[inherit] [border:1px_solid_transparent] ![mask-clip:padding-box,border-box] ![mask-composite:intersect] [mask:linear-gradient(transparent,transparent),linear-gradient(white,white)] after:absolute after:aspect-square after:w-[320px] after:animate-border-beam after:[animation-delay:0s] after:[background:linear-gradient(to_left,#aaa,transparent,transparent)] after:[offset-anchor:90%_50%] after:[offset-path:rect(0_auto_auto_0_round_200px)]" />
 
@@ -67,6 +67,15 @@ export default function SiteCard({ data }: { data: SelectSite }) {
         <div className="space-y-2 mb-6">
           <h3 className="font-cal text-xl text-white">{data.name}</h3>
           <p className="text-sm text-neutral-400 line-clamp-2">{data.description}</p>
+        </div>
+
+        <div className="space-y-2 mb-6 p-3 rounded-xl bg-neutral-900/50 backdrop-blur-md shine">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-neutral-400">Domain Status</span>
+            <span className="text-xs px-2 py-1 rounded-lg bg-dream-cyan/20 text-dream-cyan border border-dream-cyan/20">
+              Active
+            </span>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4 mt-6 pt-4 border-t border-white/[0.08]">

@@ -1,4 +1,3 @@
-// components/groups/agents/data-table.tsx
 "use client";
 
 import * as React from "react";
@@ -21,15 +20,33 @@ import {
 import { SelectAgent } from "@/lib/schema";
 import { ArrowUp, ArrowDown, Search, MoreHorizontal } from "lucide-react";
 
-// Define the RowData type
+// Extend RowData type to include processed progress data
 type RowData = SelectAgent & {
-  currentStep: number;
-  totalSteps: number;
+  progress: {
+    currentStep: number;
+    totalSteps: number;
+    completedSteps: string[];
+  };
 };
 
 interface DataTableProps {
   data: SelectAgent[];
 }
+
+// Transform agent data to include progress information
+const processAgentData = (agent: SelectAgent): RowData => {
+  const steps = agent.settings?.steps || [];
+  const completedSteps = steps.filter(step => step.completed).map(step => step.id);
+  
+  return {
+    ...agent,
+    progress: {
+      currentStep: completedSteps.length,
+      totalSteps: steps.length || 1, // Minimum of 1 to avoid division by zero
+      completedSteps
+    }
+  };
+};
 
 // Define columns
 const columns: ColumnDef<RowData>[] = [
@@ -37,16 +54,14 @@ const columns: ColumnDef<RowData>[] = [
     accessorKey: "progress",
     header: "Progress",
     cell: ({ row }: { row: Row<RowData> }) => {
-      // Default to 0/1 steps if not provided
-      const currentStep = row.original.currentStep || 0;
-      const totalSteps = row.original.totalSteps || 1;
-      const progress = (currentStep / totalSteps) * 100;
+      const { currentStep, totalSteps } = row.original.progress;
+      const progress = totalSteps > 0 ? (currentStep / totalSteps) * 100 : 0;
 
       return (
         <div className="flex items-center gap-2">
           <div className="w-32 h-2 bg-neutral-800 rounded-full overflow-hidden">
             <div
-              className="h-full bg-white rounded-full"
+              className="h-full bg-white rounded-full transition-all duration-300"
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -62,9 +77,16 @@ const columns: ColumnDef<RowData>[] = [
     accessorKey: "name",
     header: "Onboard Name",
     cell: ({ row }: { row: Row<RowData> }) => (
-      <span className="text-sm text-white hover:text-white/80 transition-colors">
-        {row.original.name || "Untitled"}
-      </span>
+      <div className="flex flex-col">
+        <span className="text-sm text-white hover:text-white/80 transition-colors">
+          {row.original.name || "Untitled"}
+        </span>
+        {row.original.description && (
+          <span className="text-xs text-neutral-400">
+            {row.original.description}
+          </span>
+        )}
+      </div>
     ),
   },
   {
@@ -91,9 +113,12 @@ const columns: ColumnDef<RowData>[] = [
   {
     id: "actions",
     header: "Options",
-    cell: () => (
-      <button className="p-2 hover:bg-white/5 rounded-lg transition-colors">
-        <MoreHorizontal className="w-4 h-4 text-neutral-400" />
+    cell: ({ row }) => (
+      <button 
+        className="p-2 hover:bg-white/5 rounded-lg transition-colors group relative"
+        title={`Options for ${row.original.name}`}
+      >
+        <MoreHorizontal className="w-4 h-4 text-neutral-400 group-hover:text-neutral-300" />
       </button>
     ),
   },
@@ -211,20 +236,15 @@ const DreamPagination = ({ table }: { table: Table<RowData> }) => {
 
 export function AgentsDataTable({ data }: DataTableProps) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
-    []
-  );
-  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>(
-    {}
-  );
+  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
+  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = React.useState({});
 
-  // Transform the data to include the required properties
-  const transformedData: RowData[] = data.map((agent) => ({
-    ...agent,
-    currentStep: 0, // Default value or fetch from actual data
-    totalSteps: 1, // Default value or fetch from actual data
-  }));
+  // Transform the data to include progress information
+  const transformedData: RowData[] = React.useMemo(
+    () => data.map(processAgentData),
+    [data]
+  );
 
   const table = useReactTable<RowData>({
     data: transformedData,
@@ -253,18 +273,7 @@ export function AgentsDataTable({ data }: DataTableProps) {
       <DreamToolbar table={table} />
 
       <div className="relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine">
-        {/* Gradient Border Effect */}
-        <div
-          className="
-            absolute inset-[0] rounded-[inherit] [border:1px_solid_transparent] 
-            ![mask-clip:padding-box,border-box] ![mask-composite:intersect] 
-            [mask:linear-gradient(transparent,transparent),linear-gradient(white,white)] 
-            after:absolute after:aspect-square after:w-[320px] after:animate-border-beam 
-            after:[animation-delay:0s] 
-            after:[background:linear-gradient(to_left,#aaa,transparent,transparent)] 
-            after:[offset-anchor:90%_50%] 
-            after:[offset-path:rect(0_auto_auto_0_round_200px)]"
-        />
+        <div className="absolute inset-[0] rounded-[inherit] [border:1px_solid_transparent] ![mask-clip:padding-box,border-box] ![mask-composite:intersect] [mask:linear-gradient(transparent,transparent),linear-gradient(white,white)] after:absolute after:aspect-square after:w-[320px] after:animate-border-beam after:[animation-delay:0s] after:[background:linear-gradient(to_left,#aaa,transparent,transparent)] after:[offset-anchor:90%_50%] after:[offset-path:rect(0_auto_auto_0_round_200px)]" />
 
         <div className="relative overflow-x-auto">
           <table className="w-full">

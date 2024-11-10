@@ -1,4 +1,3 @@
-// components/modal/create-site.tsx
 "use client";
 
 import { toast } from "sonner";
@@ -10,6 +9,74 @@ import LoadingDots from "@/components/icons/loading-dots";
 import { useModal } from "./provider";
 import va from "@vercel/analytics";
 import { useEffect, useState } from "react";
+import { Plus } from "lucide-react";
+
+// Dream UI Component Types
+interface DreamLabelProps {
+  children: React.ReactNode;
+  htmlFor?: string;
+}
+
+interface DreamInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  className?: string;
+}
+
+interface DreamTextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+  className?: string;
+}
+
+// Dream UI Styled Label
+const DreamLabel = ({ children, htmlFor }: DreamLabelProps) => (
+  <label
+    htmlFor={htmlFor}
+    className="block text-sm font-light text-neutral-300 mb-2 transition-colors duration-300 group-hover:text-white"
+  >
+    {children}
+  </label>
+);
+
+// Dream UI Styled Input
+const DreamInput = ({ className = "", ...props }: DreamInputProps) => (
+  <input
+    className={`
+      w-full px-4 py-2.5 
+      bg-neutral-900/50 
+      text-white 
+      border border-white/[0.08] 
+      rounded-xl 
+      focus:border-dream-purple/50 
+      focus:ring-dream-purple/20 
+      transition-all duration-300 
+      placeholder:text-neutral-500
+      backdrop-blur-md
+      hover:border-white/20
+      ${className}
+    `}
+    {...props}
+  />
+);
+
+// Dream UI Styled Textarea
+const DreamTextarea = ({ className = "", ...props }: DreamTextareaProps) => (
+  <textarea
+    className={`
+      w-full px-4 py-2.5 
+      bg-neutral-900/50 
+      text-white 
+      border border-white/[0.08] 
+      rounded-xl 
+      focus:border-dream-purple/50 
+      focus:ring-dream-purple/20 
+      transition-all duration-300 
+      placeholder:text-neutral-500
+      backdrop-blur-md
+      hover:border-white/20
+      resize-none
+      ${className}
+    `}
+    {...props}
+  />
+);
 
 export default function CreateSiteModal() {
   const router = useRouter();
@@ -24,15 +91,11 @@ export default function CreateSiteModal() {
   useEffect(() => {
     setData((prev) => ({
       ...prev,
-      subdomain: prev.name
-        .toLowerCase()
-        .trim()
-        .replace(/[\W_]+/g, "-"),
+      subdomain: prev.name.toLowerCase().trim().replace(/[\W_]+/g, "-"),
     }));
   }, [data.name]);
 
-
-    return (
+  return (
     <form
       action={async (formData: FormData) => {
         const response = await createSite(formData);
@@ -46,96 +109,102 @@ export default function CreateSiteModal() {
           toast.success(`Successfully created site!`);
         }
       }}
-      className="w-full rounded-md bg-white md:max-w-md md:border md:border-stone-200 md:shadow dark:bg-black dark:md:border-stone-700"
+      className="w-full rounded-3xl bg-neutral-800/50 backdrop-blur-md md:max-w-md shine shadow-dream"
     >
-      <div className="relative flex flex-col space-y-4 p-5 md:p-10">
-        <h2 className="font-cal text-2xl dark:text-white">Create a new site</h2>
+      {/* Gradient Border Effect */}
+      <div className="absolute inset-[0] rounded-[inherit] [border:1px_solid_transparent] ![mask-clip:padding-box,border-box] ![mask-composite:intersect] [mask:linear-gradient(transparent,transparent),linear-gradient(white,white)] after:absolute after:aspect-square after:w-[320px] after:animate-border-beam after:[animation-delay:0s] after:[background:linear-gradient(to_left,#aaa,transparent,transparent)] after:[offset-anchor:90%_50%] after:[offset-path:rect(0_auto_auto_0_round_200px)]" />
 
-        <div className="flex flex-col space-y-2">
-          <label
-            htmlFor="name"
-            className="text-sm font-medium text-stone-500 dark:text-stone-400"
-          >
-            Site Name
-          </label>
-          <input
-            name="name"
-            type="text"
-            placeholder="My Awesome Site"
-            autoFocus
-            value={data.name}
-            onChange={(e) => setData({ ...data, name: e.target.value })}
-            maxLength={32}
-            required
-            className="w-full rounded-md border border-stone-200 bg-stone-50 px-4 py-2 text-sm text-stone-600 placeholder:text-stone-400 focus:border-black focus:outline-none focus:ring-black dark:border-stone-600 dark:bg-black dark:text-white dark:placeholder-stone-700 dark:focus:ring-white"
-          />
-        </div>
+      <div className="relative flex flex-col space-y-6 p-6">
+        <h2 className="font-cal text-2xl text-white pb-4 border-b border-white/[0.08]">
+          Create a new site
+        </h2>
 
-        <div className="flex flex-col space-y-2">
-          <label
-            htmlFor="subdomain"
-            className="text-sm font-medium text-stone-500"
-          >
-            Subdomain
-          </label>
-          <div className="flex w-full max-w-md">
-            <input
-              name="subdomain"
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <DreamLabel htmlFor="name">Site Name</DreamLabel>
+            <DreamInput
+              id="name"
+              name="name"
               type="text"
-              placeholder="subdomain"
-              value={data.subdomain}
-              onChange={(e) => setData({ ...data, subdomain: e.target.value })}
-              autoCapitalize="off"
-              pattern="[a-zA-Z0-9\-]+" // only allow lowercase letters, numbers, and dashes
+              placeholder="My Awesome Site"
+              autoFocus
+              value={data.name}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => 
+                setData({ ...data, name: e.target.value })
+              }
               maxLength={32}
               required
-              className="w-full rounded-l-lg border border-stone-200 bg-stone-50 px-4 py-2 text-sm text-stone-600 placeholder:text-stone-400 focus:border-black focus:outline-none focus:ring-black dark:border-stone-600 dark:bg-black dark:text-white dark:placeholder-stone-700 dark:focus:ring-white"
             />
-            <div className="flex items-center rounded-r-lg border border-l-0 border-stone-200 bg-stone-100 px-3 text-sm dark:border-stone-600 dark:bg-stone-800 dark:text-stone-400">
-              .{process.env.NEXT_PUBLIC_ROOT_DOMAIN}
+          </div>
+
+          <div className="space-y-2">
+            <DreamLabel htmlFor="subdomain">Subdomain</DreamLabel>
+            <div className="flex w-full">
+              <DreamInput
+                id="subdomain"
+                name="subdomain"
+                type="text"
+                placeholder="subdomain"
+                value={data.subdomain}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => 
+                  setData({ ...data, subdomain: e.target.value })
+                }
+                autoCapitalize="off"
+                pattern="[a-zA-Z0-9\-]+"
+                maxLength={32}
+                required
+                className="rounded-r-none"
+              />
+              <div className="flex items-center px-4 bg-neutral-900/50 border border-l-0 border-white/[0.08] rounded-r-xl text-sm text-neutral-400">
+                .{process.env.NEXT_PUBLIC_ROOT_DOMAIN}
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="flex flex-col space-y-2">
-          <label
-            htmlFor="description"
-            className="text-sm font-medium text-stone-500"
-          >
-            Description
-          </label>
-          <textarea
-            name="description"
-            placeholder="Description about why my site is so awesome"
-            value={data.description}
-            onChange={(e) => setData({ ...data, description: e.target.value })}
-            maxLength={140}
-            rows={3}
-            className="w-full rounded-md border border-stone-200 bg-stone-50 px-4 py-2 text-sm text-stone-600 placeholder:text-stone-400 focus:border-black  focus:outline-none focus:ring-black dark:border-stone-600 dark:bg-black dark:text-white dark:placeholder-stone-700 dark:focus:ring-white"
-          />
+          <div className="space-y-2">
+            <DreamLabel htmlFor="description">Description</DreamLabel>
+            <DreamTextarea
+              id="description"
+              name="description"
+              placeholder="Description about why my site is so awesome"
+              value={data.description}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => 
+                setData({ ...data, description: e.target.value })
+              }
+              maxLength={140}
+              rows={3}
+            />
+          </div>
         </div>
       </div>
-      <div className="flex items-center justify-end rounded-b-lg border-t border-stone-200 bg-stone-50 p-3 md:px-10 dark:border-stone-700 dark:bg-stone-800">
+
+      <div className="flex items-center justify-end p-6 border-t border-white/[0.08]">
         <CreateSiteFormButton />
       </div>
     </form>
   );
 }
 
-
 function CreateSiteFormButton() {
   const { pending } = useFormStatus();
   return (
     <button
       className={cn(
-        "flex h-10 w-full items-center justify-center space-x-2 rounded-md border text-sm transition-all focus:outline-none",
+        "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm transition-all duration-300 group",
         pending
-          ? "cursor-not-allowed border-stone-200 bg-stone-100 text-stone-400 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-300"
-          : "border-black bg-black text-white hover:bg-white hover:text-black dark:border-stone-700 dark:hover:border-stone-200 dark:hover:bg-black dark:hover:text-white dark:active:bg-stone-800",
+          ? "cursor-not-allowed bg-neutral-900/20 text-neutral-600"
+          : "bg-gradient-to-r from-dream-pink/50 to-dream-cyan/50 text-white hover:brightness-110 shine shadow-dream"
       )}
       disabled={pending}
     >
-      {pending ? <LoadingDots color="#808080" /> : <p>Create Site</p>}
+      {pending ? (
+        <LoadingDots color="#808080" />
+      ) : (
+        <>
+          <Plus className="h-4 w-4 transition-transform group-hover:scale-110" />
+          <span>Create Site</span>
+        </>
+      )}
     </button>
   );
 }

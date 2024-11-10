@@ -13,6 +13,7 @@ import {
   useReactTable,
   getFacetedRowModel,
   getFacetedUniqueValues,
+  Table
 } from "@tanstack/react-table";
 import { SelectSite } from "@/lib/schema";
 import { columns } from "@/components/groups/sites/columns";
@@ -20,6 +21,11 @@ import { ArrowUp, ArrowDown, Search, MoreHorizontal } from "lucide-react";
 
 interface DataTableProps {
   data: SelectSite[];
+}
+
+// Add proper typing for the table prop
+interface DreamTableProps {
+  table: Table<SelectSite>;
 }
 
 const DreamTableHeader = ({ children }: { children: React.ReactNode }) => (
@@ -34,7 +40,13 @@ const DreamTableCell = ({ children }: { children: React.ReactNode }) => (
   </td>
 );
 
-const DreamSearch = ({ value, onChange }: { value: string; onChange: (value: string) => void }) => (
+const DreamSearch = ({ 
+  value, 
+  onChange 
+}: { 
+  value: string; 
+  onChange: (value: string) => void 
+}) => (
   <div className="relative">
     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500" />
     <input
@@ -56,7 +68,7 @@ const DreamSearch = ({ value, onChange }: { value: string; onChange: (value: str
   </div>
 );
 
-const DreamToolbar = ({ table }) => {
+const DreamToolbar = ({ table }: DreamTableProps) => {
   const isFiltered = table.getState().columnFilters.length > 0;
 
   return (
@@ -79,7 +91,7 @@ const DreamToolbar = ({ table }) => {
   );
 };
 
-const DreamPagination = ({ table }) => {
+const DreamPagination = ({ table }: DreamTableProps) => {
   return (
     <div className="flex items-center justify-between px-4 py-3">
       <div className="flex items-center gap-2 text-sm text-neutral-400">
@@ -157,7 +169,6 @@ export function SitesDataTable({ data }: DataTableProps) {
       <DreamToolbar table={table} />
       
       <div className="relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine">
-        {/* Gradient Border Effect */}
         <div className="absolute inset-[0] rounded-[inherit] [border:1px_solid_transparent] ![mask-clip:padding-box,border-box] ![mask-composite:intersect] [mask:linear-gradient(transparent,transparent),linear-gradient(white,white)] after:absolute after:aspect-square after:w-[320px] after:animate-border-beam after:[animation-delay:0s] after:[background:linear-gradient(to_left,#aaa,transparent,transparent)] after:[offset-anchor:90%_50%] after:[offset-path:rect(0_auto_auto_0_round_200px)]" />
         
         <div className="relative overflow-x-auto">

@@ -144,14 +144,16 @@ export function Chart({ chartData, className }: ChartProps) {
                 strokeWidth={2}
                 dot={false}
               />
-              <Line
-                dataKey="sites"
-                name="Sites"
-                type="monotone"
-                stroke={chartConfig.sites.color}
-                strokeWidth={2}
-                dot={false}
-              />
+            <Line
+  dataKey="sites"
+  name="Sites"
+  type="monotone"
+  stroke={chartConfig.sites.color}
+  strokeWidth={2}
+  dot={false}
+  isAnimationActive={false} // Optional: disable animation for accurate initial render
+  connectNulls={true} // Connect points if there are gaps in data
+/>
             </LineChart>
           </ResponsiveContainer>
         </ChartContainer>
