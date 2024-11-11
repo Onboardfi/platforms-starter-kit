@@ -16,7 +16,7 @@ import { conversations, messages, agents, SelectAgent, SelectPost, SelectSite, p
 import { AgentState, SessionState, UpdateAgentMetadataResponse, Step, AgentSettings, MessageType, MessageRole, MessageContent, MessageMetadata, ConversationMetadata, ConversationStatus, ToolCall, SelectMessage, SelectConversation } from './types';
 import { redis, setAgentState, createSession, getSessionState, updateSessionState } from './upstash';
 import { addMessage, getConversationMessages, createConversation, getSessionConversations } from './upstash';
-
+import { sql } from "drizzle-orm";
 
 interface CreateSiteResponse {
   error?: string;
@@ -77,6 +77,166 @@ export const createSite = async (formData: FormData): Promise<CreateSiteResponse
     return { error: error.message || "Failed to create site" };
   }
 };
+
+
+
+// lib/actions.ts
+export async function getSitesWithAgentCount() {
+  const session = await getSession();
+  if (!session?.user.id) {
+    redirect("/login");
+    return [];
+  }
+
+  return await db.select({
+    // Site fields
+    id: sites.id,
+    name: sites.name,
+    description: sites.description,
+    logo: sites.logo,
+    font: sites.font,
+    image: sites.image,
+    imageBlurhash: sites.imageBlurhash,
+    subdomain: sites.subdomain,
+    customDomain: sites.customDomain,
+    message404: sites.message404,
+    createdAt: sites.createdAt,
+    updatedAt: sites.updatedAt,
+    userId: sites.userId,
+    // Count of agents
+    _count: {
+      agents: sql<number>`count(${agents.id})::int`
+    }
+  })
+  .from(sites)
+  .leftJoin(agents, eq(sites.id, agents.siteId))
+  .where(eq(sites.userId, session.user.id))
+  .groupBy(sites.id)
+  .orderBy(desc(sites.createdAt));
+}
+
+
+
+
+
+// lib/actions.ts
+
+export async function getAgentWithSessionCount(agentId: string) {
+  return await db.select({
+    id: agents.id,
+    name: agents.name,
+    description: agents.description,
+    slug: agents.slug,
+    image: agents.image,
+    imageBlurhash: agents.imageBlurhash,
+    published: agents.published,
+    settings: agents.settings,
+    createdAt: agents.createdAt,
+    updatedAt: agents.updatedAt,
+    siteId: agents.siteId,
+    userId: agents.userId,
+    site: sql`json_build_object(
+      'id', ${sites.id},
+      'name', ${sites.name},
+      'description', ${sites.description},
+      'logo', ${sites.logo},
+      'font', ${sites.font},
+      'image', ${sites.image},
+      'imageBlurhash', ${sites.imageBlurhash},
+      'subdomain', ${sites.subdomain},
+      'customDomain', ${sites.customDomain},
+      'message404', ${sites.message404},
+      'createdAt', ${sites.createdAt},
+      'updatedAt', ${sites.updatedAt},
+      'userId', ${sites.userId}
+    )`,
+    _count: {
+      sessions: sql<number>`count(${onboardingSessions.id})::int`
+    }
+  })
+  .from(agents)
+  .leftJoin(sites, eq(agents.siteId, sites.id))
+  .leftJoin(onboardingSessions, eq(agents.id, onboardingSessions.agentId))
+  .where(eq(agents.id, agentId))
+  .groupBy(agents.id, sites.id)
+  .then(rows => rows[0]);
+}
+export async function getAgentsWithSessionCount(siteId: string) {
+  return await db.select({
+    id: agents.id,
+    name: agents.name,
+    description: agents.description,
+    slug: agents.slug,
+    image: agents.image,
+    imageBlurhash: agents.imageBlurhash,
+    published: agents.published,
+    settings: agents.settings,
+    createdAt: agents.createdAt,
+    updatedAt: agents.updatedAt,
+    siteId: agents.siteId,
+    userId: agents.userId,
+    site: sql`json_build_object(
+      'id', ${sites.id},
+      'name', ${sites.name},
+      'description', ${sites.description},
+      'logo', ${sites.logo},
+      'font', ${sites.font},
+      'image', ${sites.image},
+      'imageBlurhash', ${sites.imageBlurhash},
+      'subdomain', ${sites.subdomain},
+      'customDomain', ${sites.customDomain},
+      'message404', ${sites.message404},
+      'createdAt', ${sites.createdAt},
+      'updatedAt', ${sites.updatedAt},
+      'userId', ${sites.userId}
+    )`,
+    _count: {
+      sessions: sql<number>`COUNT(DISTINCT ${onboardingSessions.id})::int`
+    }
+  })
+  .from(agents)
+  .leftJoin(sites, eq(agents.siteId, sites.id))
+  .leftJoin(onboardingSessions, eq(agents.id, onboardingSessions.agentId))
+  .where(eq(agents.siteId, siteId))
+  .groupBy(
+    agents.id,
+    agents.name,
+    agents.description,
+    agents.slug,
+    agents.image,
+    agents.imageBlurhash,
+    agents.published,
+    agents.settings,
+    agents.createdAt,
+    agents.updatedAt,
+    agents.siteId,
+    agents.userId,
+    sites.id,
+    sites.name,
+    sites.description,
+    sites.logo,
+    sites.font,
+    sites.image,
+    sites.imageBlurhash,
+    sites.subdomain,
+    sites.customDomain,
+    sites.message404,
+    sites.createdAt,
+    sites.updatedAt,
+    sites.userId
+  )
+  .orderBy(desc(agents.createdAt));
+}
+
+
+
+
+
+
+
+
+
+
 
 
 export const createAgent = withSiteAuth(

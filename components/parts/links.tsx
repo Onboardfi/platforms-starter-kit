@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { CircuitBoard, Layout, Puzzle, ArrowRight } from "lucide-react";
+import { Database, Layout, Puzzle, ArrowRight } from "lucide-react";
 
 const navLinks = [
   {
-    name: "Onboards",
-    description: "Create and manage your onboards",
+    name: "Storage",
+    description: "Manage your data ",
     href: "/agents",
-    icon: CircuitBoard
+    icon: Database
   },
   {
     name: "Sites",

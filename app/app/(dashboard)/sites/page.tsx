@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   description: "Manage your sites",
 };
 
-export default function AllSites({ params }: { params: { id: string } }) {
+export default function AllSites() {
   return (
     <div className="container mx-auto p-8 space-y-8">
       <div className="relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine">
@@ -43,8 +43,7 @@ export default function AllSites({ params }: { params: { id: string } }) {
           </div>
         }
       >
-        {/* @ts-expect-error Server Component */}
-        <Sites siteId={decodeURIComponent(params.id)} />
+        <Sites />
       </Suspense>
     </div>
   );

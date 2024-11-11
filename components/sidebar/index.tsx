@@ -12,6 +12,7 @@ import {
     Globe,
     LayoutDashboard,
     Menu,
+    Database, // Add this line
     Newspaper,
     Settings,
     ChevronLeft,
@@ -104,11 +105,11 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
       
       {/* Sidebar Container */}
       <motion.div
-      initial={{ x: -320 }}
-      animate={{ 
-        x: isOpen || window.innerWidth >= 768 ? 0 : -320,
-        width: isCollapsed ? 80 : 280  // Sidebar width
-      }}
+  initial={{ x: -320 }}
+  animate={{
+    x: isOpen || window.innerWidth >= 768 ? 0 : -320,
+    width: isCollapsed ? 80 : 280, // Sidebar width
+  }}
         transition={{ type: "spring", damping: 20, stiffness: 300 }}
         className={cn(
           "fixed z-30 flex h-full flex-col",
@@ -239,7 +240,19 @@ export function SidebarContent() {
           isActive: pathname === "/integrations",
           icon: <Boxes className="h-4 w-4" />,
           description: "Connect your tools and services"
+        },
+
+
+        {
+          id: "storage",
+          name: "Storage",
+          href: "/storage",
+          isActive: pathname === "/storage",
+          icon: <Database className="h-4 w-4" />,
+          description: "Manage your storage",
         }
+
+
       ];
     }, [segments, id, pathname]);
   

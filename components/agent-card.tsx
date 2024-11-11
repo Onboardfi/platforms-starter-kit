@@ -7,9 +7,14 @@ import { placeholderBlurhash, toDateString, cn } from "@/lib/utils";
 import { Agent, Site } from "@/types/agent";
 import { Progress } from "@/components/ui/progress";
 import { Step } from "@/lib/schema";
+import { MessageCircle } from "lucide-react";
 
 interface AgentCardProps {
-  data: Agent;
+  data: Agent & {
+    _count?: {
+      sessions: number;
+    }
+  };
 }
 
 export default function AgentCard({ data }: AgentCardProps) {
@@ -18,6 +23,7 @@ export default function AgentCard({ data }: AgentCardProps) {
   const completedSteps = steps.filter((step) => step.completed).length;
   const completionPercentage = totalSteps > 0 ? (completedSteps / totalSteps) * 100 : 0;
   const clampedValue = Math.min(Math.max(completionPercentage, 0), 100);
+  const sessionCount = data._count?.sessions || 0;
 
   const renderLogo = () => {
     if (data.site?.logo) {
@@ -105,6 +111,17 @@ export default function AgentCard({ data }: AgentCardProps) {
           </div>
         )}
 
+        {/* Session Count Display */}
+        <div className="space-y-2 mb-6 p-3 rounded-xl bg-neutral-900/50 backdrop-blur-md shine">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-neutral-400">Total Sessions</span>
+            <span className="text-xs px-2 py-1 rounded-lg bg-dream-pink/20 text-dream-pink border border-dream-pink/20 flex items-center gap-1">
+              <MessageCircle className="h-3 w-3" />
+              {sessionCount} Sessions
+            </span>
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-4 mt-6 pt-4 border-t border-white/[0.08]">
           <div>
             <p className="text-neutral-500 text-xs">Created</p>
@@ -135,10 +152,6 @@ export default function AgentCard({ data }: AgentCardProps) {
             >
               View Live
             </Link>
-
-
-
-
           ) : (
             <button 
               disabled

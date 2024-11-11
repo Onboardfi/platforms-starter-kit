@@ -1,7 +1,7 @@
 // components/parts/usage.tsx
 'use client';
 import { cn } from "@/lib/utils";
-import { CircleAlert, ArrowUpRight, Sparkles } from "lucide-react";
+import { CircleAlert, ArrowUpRight, Sparkles, Plus } from "lucide-react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 
@@ -38,7 +38,7 @@ export const Usage = ({
     )}>
       {/* Animated gradient background */}
       <div 
-        className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 via-purple-500/5 to-pink-500/5 
+        className="absolute inset-0 bg-gradient-to-br from-custom-green/5 via-custom-green-light/5 to-custom-green-light/5
           opacity-0 group-hover:opacity-100 transition-opacity duration-500"
         style={{ filter: "blur(40px)" }}
       />
@@ -47,21 +47,10 @@ export const Usage = ({
       <div className="relative space-y-2 mb-6 pb-6 border-b border-white/[0.02]">
         <div className="flex items-center justify-between">
           <h3 className="text-xl font-cal text-white">Usage Overview</h3>
-          <div 
-            className={cn(
-              "px-3 py-1 rounded-full text-sm font-medium",
-              "border border-white/[0.05] bg-white/[0.02]",
-              "flex items-center gap-2",
-              plan === "Pro" && "bg-indigo-500/20 border-indigo-500/30 text-indigo-400",
-              "transition-all duration-300"
-            )}
-          >
-            {plan === "Pro" && <Sparkles className="w-4 h-4" />}
-            {plan}
-          </div>
+         
         </div>
         <p className="text-sm text-neutral-400">
-          Total onboards captured out of your current plan limit.
+          Total minutes used out of your current plan limit.
         </p>
       </div>
 
@@ -75,7 +64,7 @@ export const Usage = ({
                 {used.toLocaleString()} <span className="text-neutral-500">/</span>{" "}
                 {totalUsage.toLocaleString()}
               </p>
-              <p className="text-sm text-neutral-400">Onboards created</p>
+              <p className="text-sm text-neutral-400">Minutes used</p>
             </div>
             <p className="text-2xl font-medium text-white">{usagePercentage.toFixed(1)}%</p>
           </div>
@@ -85,7 +74,7 @@ export const Usage = ({
             <motion.div
               className={cn(
                 "absolute h-full rounded-full",
-                "bg-gradient-to-r from-indigo-500 to-purple-500",
+                "bg-gradient-to-r from-custom-green to-custom-green-light",
                 usagePercentage > 90 && "from-red-500 to-orange-500"
               )}
               initial={{ width: 0 }}
@@ -97,12 +86,12 @@ export const Usage = ({
           {/* Stats */}
           <div className="flex justify-between text-sm">
             <p className="text-neutral-400">
-              {remaining.toLocaleString()} Onboards remaining
+              {remaining.toLocaleString()} minutes remaining
             </p>
             <p className="flex items-center gap-2">
               <CircleAlert className={cn(
                 "w-4 h-4",
-                usagePercentage > 90 ? "text-red-400" : "text-green-400"
+                usagePercentage > 90 ? "text-red-400" : "text-custom-green-light"
               )} />
               <span className="text-neutral-400">
                 Plan resets in{" "}
@@ -113,32 +102,30 @@ export const Usage = ({
           </div>
         </div>
 
-        {/* Upgrade Button */}
-        {plan === "Free" && (
-          <Link
-            href="https://router.so/upgrade"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={cn(
-              "group/btn flex flex-col gap-2 w-full",
-              "p-4 rounded-lg",
-              "border border-indigo-500/30 bg-indigo-500/10",
-              "hover:bg-indigo-500/20 hover:border-indigo-500/40",
-              "transition-all duration-300"
-            )}
-          >
-            <div className="flex items-center justify-between">
-              <p className="text-indigo-400 font-medium">Upgrade Plan</p>
-              <ArrowUpRight className="w-4 h-4 text-indigo-400 
-                transition-transform duration-300 
-                group-hover/btn:translate-x-0.5 
-                group-hover/btn:-translate-y-0.5" 
-              />
+        {/* Upgrade to Pro Section */}
+        {plan !== "Upgrade to Pro" && (
+          <div className="relative mt-6 rounded-xl border border-custom-green/20 bg-gradient-to-br from-custom-green/10 to-custom-green-light/10 p-4">
+            <div className="absolute -top-3 right-4 rounded-full bg-custom-green px-2 py-0.5 text-xs font-medium text-white">
+            Upgrade to Pro
             </div>
-            <p className="text-sm text-neutral-400">
-              Upgrade your plan to capture more leads
+
+            <Sparkles className="mb-3 h-6 w-6 text-custom-green-light" />
+
+            <h4 className="mb-1 text-sm font-medium text-white">Upgrade to Pro</h4>
+            <p className="mb-3 text-xs text-neutral-400">
+              Get access to advanced features and priority support.
             </p>
-          </Link>
+            <Link
+              href="https://router.so/upgrade"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-custom-green px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-custom-green-light"
+            >
+              <Plus className="h-4 w-4" />
+              Upgrade Now
+              <ArrowUpRight className="h-4 w-4" />
+            </Link>
+          </div>
         )}
       </div>
     </div>

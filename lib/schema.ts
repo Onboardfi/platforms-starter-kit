@@ -446,6 +446,9 @@ export const onboardingSessionsRelations = relations(onboardingSessions, ({ one,
   conversations: many(conversations),
 }));
 
+
+
+
 // Update SelectMessage type to include step reference
 export type SelectMessage = typeof messages.$inferSelect & {
   parentMessage?: SelectMessage;
@@ -465,7 +468,11 @@ export type SelectAgent = typeof agents.$inferSelect & {
   settings: AgentSettings;
 };
 
-export type SelectSite = typeof sites.$inferSelect;
+export type SelectSite = typeof sites.$inferSelect & {
+  _count?: {
+    agents: number;
+  };
+};
 
 export type SelectPost = typeof posts.$inferSelect;
 

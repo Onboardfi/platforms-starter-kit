@@ -1,12 +1,23 @@
+//Users/bobbygilbert/Documents/Github/platforms-starter-kit/components/site-card.tsx
+
 "use client";
 
 import BlurImage from "@/components/blur-image";
 import type { SelectSite } from "@/lib/schema";
 import { placeholderBlurhash, toDateString } from "@/lib/utils";
-import { ExternalLink, Settings, Users } from "lucide-react";
+import { ExternalLink, Settings, Users, Boxes } from "lucide-react";
 import Link from "next/link";
 
-export default function SiteCard({ data }: { data: SelectSite }) {
+// Update the SelectSite type to include agentCount
+interface SiteCardProps {
+  data: SelectSite & {
+    _count?: {
+      agents: number;
+    };
+  };
+}
+
+export default function SiteCard({ data }: SiteCardProps) {
   const url = `${data.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}`;
   const siteUrl = process.env.NEXT_PUBLIC_VERCEL_ENV ? `https://${url}` : `http://${data.subdomain}.localhost:3000`;
 
@@ -69,12 +80,25 @@ export default function SiteCard({ data }: { data: SelectSite }) {
           <p className="text-sm text-neutral-400 line-clamp-2">{data.description}</p>
         </div>
 
-        <div className="space-y-2 mb-6 p-3 rounded-xl bg-neutral-900/50 backdrop-blur-md shine">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-neutral-400">Domain Status</span>
-            <span className="text-xs px-2 py-1 rounded-lg bg-dream-cyan/20 text-dream-cyan border border-dream-cyan/20">
-              Active
-            </span>
+        <div className="space-y-2 mb-6">
+          {/* Domain Status */}
+          <div className="p-3 rounded-xl bg-neutral-900/50 backdrop-blur-md shine">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-neutral-400">Domain Status</span>
+              <span className="text-xs px-2 py-1 rounded-lg bg-dream-cyan/20 text-dream-cyan border border-dream-cyan/20">
+                Active
+              </span>
+            </div>
+          </div>
+
+          {/* Agents Count */}
+          <div className="p-3 rounded-xl bg-neutral-900/50 backdrop-blur-md shine">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-neutral-400">Total </span>
+              <span className="text-xs px-2 py-1 rounded-lg bg-dream-pink/20 text-dream-pink border border-dream-pink/20">
+                {data._count?.agents || 0} Onboards
+              </span>
+            </div>
           </div>
         </div>
 

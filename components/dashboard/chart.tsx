@@ -42,15 +42,15 @@ interface ChartProps {
 const chartConfig = {
   agents: {
     label: "Onboards",
-    color: "#8884d8",
+    color: "#80FFD2",
   },
   sites: {
     label: "Sites",
-    color: "#82ca9d",
+    color: "#85B8FE",
   },
   sessions: {
     label: "Sessions",
-    color: "#ffc658",
+    color: "#FFCAE2",
   },
 } satisfies ChartConfig;
 

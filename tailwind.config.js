@@ -257,7 +257,13 @@ module.exports = {
     // Animations
     {
       pattern: /^animate-dream-\w+$/,
+
+      
     },
+
+    'md:pl-[80px]',
+    'md:pl-[280px]',
+    
     // Shadows
     {
       pattern: /^shadow-dream-\w+$/,

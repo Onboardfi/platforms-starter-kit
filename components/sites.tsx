@@ -1,6 +1,6 @@
 // components/sites.tsx
 import { getSession } from "@/lib/auth";
-import db from "@/lib/db";
+import { getSitesWithAgentCount } from "@/lib/actions";
 import Image from "next/image";
 import { redirect } from "next/navigation";
 import SiteCard from "./site-card";
@@ -12,16 +12,15 @@ export default async function Sites({ limit }: { limit?: number }) {
     redirect("/login");
   }
 
-  const sites = await db.query.sites.findMany({
-    where: (sites, { eq }) => eq(sites.userId, session.user.id),
-    orderBy: (sites, { asc }) => asc(sites.createdAt),
-    ...(limit ? { limit } : {}),
-  });
+  const sites = await getSitesWithAgentCount();
 
   return sites.length > 0 ? (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
       {sites.map((site) => (
-        <SiteCard key={site.id} data={site} />
+        <SiteCard 
+          key={site.id} 
+          data={site} 
+        />
       ))}
     </div>
   ) : (
