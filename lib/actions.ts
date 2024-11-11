@@ -10,6 +10,9 @@ import { customAlphabet } from "nanoid";
 import { revalidateTag } from "next/cache";
 import { withPostAuth, withSiteAuth, withAgentAuth } from "./auth";
 import db from "./db";
+import { Agent, Site } from '@/types/agent';
+
+
 import { redirect } from "next/navigation";
 import { createId } from "@paralleldrive/cuid2";
 import { conversations, messages, agents, SelectAgent, SelectPost, SelectSite, posts, sites, users, onboardingSessions, SelectOnboardingSession } from './schema';
@@ -161,8 +164,10 @@ export async function getAgentWithSessionCount(agentId: string) {
   .groupBy(agents.id, sites.id)
   .then(rows => rows[0]);
 }
-export async function getAgentsWithSessionCount(siteId: string) {
-  return await db.select({
+
+// /lib/actions.ts
+export async function getAgentsWithSessionCount(siteId: string): Promise<Agent[]> {
+  const results = await db.select({
     id: agents.id,
     name: agents.name,
     description: agents.description,
@@ -172,23 +177,13 @@ export async function getAgentsWithSessionCount(siteId: string) {
     published: agents.published,
     settings: agents.settings,
     createdAt: agents.createdAt,
-    updatedAt: agents.updatedAt,
-    siteId: agents.siteId,
-    userId: agents.userId,
-    site: sql`json_build_object(
+    site: sql<Site>`json_build_object(
       'id', ${sites.id},
       'name', ${sites.name},
       'description', ${sites.description},
       'logo', ${sites.logo},
-      'font', ${sites.font},
-      'image', ${sites.image},
-      'imageBlurhash', ${sites.imageBlurhash},
       'subdomain', ${sites.subdomain},
-      'customDomain', ${sites.customDomain},
-      'message404', ${sites.message404},
-      'createdAt', ${sites.createdAt},
-      'updatedAt', ${sites.updatedAt},
-      'userId', ${sites.userId}
+      'customDomain', ${sites.customDomain}
     )`,
     _count: {
       sessions: sql<number>`COUNT(DISTINCT ${onboardingSessions.id})::int`
@@ -200,39 +195,32 @@ export async function getAgentsWithSessionCount(siteId: string) {
   .where(eq(agents.siteId, siteId))
   .groupBy(
     agents.id,
-    agents.name,
-    agents.description,
-    agents.slug,
-    agents.image,
-    agents.imageBlurhash,
-    agents.published,
-    agents.settings,
-    agents.createdAt,
-    agents.updatedAt,
-    agents.siteId,
-    agents.userId,
     sites.id,
     sites.name,
     sites.description,
     sites.logo,
-    sites.font,
-    sites.image,
-    sites.imageBlurhash,
     sites.subdomain,
-    sites.customDomain,
-    sites.message404,
-    sites.createdAt,
-    sites.updatedAt,
-    sites.userId
+    sites.customDomain
   )
   .orderBy(desc(agents.createdAt));
+
+  // Transform the results to match the Agent type
+  return results.map(result => ({
+    id: result.id,
+    name: result.name,
+    description: result.description,
+    slug: result.slug,
+    published: result.published,
+    image: result.image,
+    imageBlurhash: result.imageBlurhash,
+    createdAt: result.createdAt,
+    site: result.site,
+    settings: result.settings,
+    _count: {
+      sessions: result._count.sessions
+    }
+  }));
 }
-
-
-
-
-
-
 
 
 

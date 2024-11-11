@@ -1,3 +1,5 @@
+//Users/bobbygilbert/Documents/GitHub/platforms-starter-kit/types/agent.ts
+
 import { AgentSettings } from '@/lib/schema';
 
 export interface Site {
@@ -8,7 +10,7 @@ export interface Site {
   subdomain: string | null;
   customDomain?: string | null;
 }
-
+// /types/agent.ts
 export interface Agent {
   id: string;
   name: string | null;
@@ -20,4 +22,7 @@ export interface Agent {
   createdAt: Date;
   site: Site | null;
   settings: AgentSettings;
+  _count?: {
+    sessions: number;
+  };
 }

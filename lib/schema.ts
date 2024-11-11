@@ -466,6 +466,9 @@ export type SelectAgent = typeof agents.$inferSelect & {
   siteName?: string | null;
   userName?: string | null;
   settings: AgentSettings;
+  _count?: {
+    sessions: number;
+  };
 };
 
 export type SelectSite = typeof sites.$inferSelect & {
