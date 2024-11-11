@@ -15,6 +15,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 
+
 export default function AgentNav() {
   const { id } = useParams() as { id?: string };
   const segment = useSelectedLayoutSegment();
@@ -26,8 +27,11 @@ export default function AgentNav() {
   } = useAgent();
 
   const url = agent?.site?.subdomain
-    ? `https://${agent.site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}/${agent.slug}`
-    : "#";
+  ? `https://${agent.site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}/${agent.slug}`
+  : "#";
+
+  // Determine if we should show the tab switcher
+  const shouldShowTabs = !segment || segment === "tab2"; // Only show on main page and steps page
 
   const navItems = [
     { name: "Basic Info", href: `/agent/${id}`, segment: null },
@@ -37,7 +41,7 @@ export default function AgentNav() {
   return (
     <div className="space-y-4">
       <div className="relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine">
-        <div className="absolute inset-0 -z-10">
+      <div className="absolute inset-0 -z-10">
           <div className="absolute inset-0 bg-[url('/grid.svg')] bg-repeat opacity-30" />
           <div className="absolute inset-0 bg-gradient-to-r from-transparent to-neutral-900/80" />
         </div>
@@ -111,22 +115,33 @@ export default function AgentNav() {
         </div>
       </div>
 
-      <nav className="flex space-x-2 px-2">
-        {navItems.map((item) => (
+      {/* Only render the nav tabs if we should show them */}
+      {shouldShowTabs && (
+        <nav className="flex space-x-2 px-2">
           <Link
-            key={item.name}
-            href={item.href}
+            href={`/agent/${id}`}
             className={cn(
               "rounded-md px-3 py-2 text-sm font-medium transition-colors",
-              segment === item.segment
+              !segment
                 ? "bg-secondary text-secondary-foreground"
                 : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
             )}
           >
-            {item.name}
+            Basic Info
           </Link>
-        ))}
-      </nav>
+          <Link
+            href={`/agent/${id}/tab2`}
+            className={cn(
+              "rounded-md px-3 py-2 text-sm font-medium transition-colors",
+              segment === "tab2"
+                ? "bg-secondary text-secondary-foreground"
+                : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+            )}
+          >
+            Steps
+          </Link>
+        </nav>
+      )}
     </div>
   );
 }

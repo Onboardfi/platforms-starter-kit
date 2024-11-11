@@ -1,3 +1,5 @@
+//Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/app/(dashboard)/agent/[id]/settings/page.tsx
+
 import { getSession } from '@/lib/auth';
 import { notFound, redirect } from 'next/navigation';
 import Form from '@/components/form';

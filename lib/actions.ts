@@ -164,7 +164,6 @@ export async function getAgentWithSessionCount(agentId: string) {
   .groupBy(agents.id, sites.id)
   .then(rows => rows[0]);
 }
-
 // /lib/actions.ts
 export async function getAgentsWithSessionCount(siteId: string): Promise<Agent[]> {
   const results = await db.select({
@@ -177,13 +176,23 @@ export async function getAgentsWithSessionCount(siteId: string): Promise<Agent[]
     published: agents.published,
     settings: agents.settings,
     createdAt: agents.createdAt,
+    updatedAt: agents.updatedAt,
+    siteId: agents.siteId,
+    userId: agents.userId,
     site: sql<Site>`json_build_object(
       'id', ${sites.id},
       'name', ${sites.name},
       'description', ${sites.description},
       'logo', ${sites.logo},
+      'font', ${sites.font},
+      'image', ${sites.image},
+      'imageBlurhash', ${sites.imageBlurhash},
       'subdomain', ${sites.subdomain},
-      'customDomain', ${sites.customDomain}
+      'customDomain', ${sites.customDomain},
+      'message404', ${sites.message404},
+      'createdAt', ${sites.createdAt},
+      'updatedAt', ${sites.updatedAt},
+      'userId', ${sites.userId}
     )`,
     _count: {
       sessions: sql<number>`COUNT(DISTINCT ${onboardingSessions.id})::int`
@@ -195,35 +204,53 @@ export async function getAgentsWithSessionCount(siteId: string): Promise<Agent[]
   .where(eq(agents.siteId, siteId))
   .groupBy(
     agents.id,
+    agents.name,
+    agents.description,
+    agents.slug,
+    agents.image,
+    agents.imageBlurhash,
+    agents.published,
+    agents.settings,
+    agents.createdAt,
+    agents.updatedAt,
+    agents.siteId,
+    agents.userId,
     sites.id,
     sites.name,
     sites.description,
     sites.logo,
+    sites.font,
+    sites.image,
+    sites.imageBlurhash,
     sites.subdomain,
-    sites.customDomain
+    sites.customDomain,
+    sites.message404,
+    sites.createdAt,
+    sites.updatedAt,
+    sites.userId
   )
   .orderBy(desc(agents.createdAt));
 
-  // Transform the results to match the Agent type
+  // Transform the database results to match the Agent type exactly
   return results.map(result => ({
     id: result.id,
     name: result.name,
     description: result.description,
     slug: result.slug,
-    published: result.published,
     image: result.image,
     imageBlurhash: result.imageBlurhash,
     createdAt: result.createdAt,
-    site: result.site,
+    updatedAt: result.updatedAt,
+    published: result.published,
+    siteId: result.siteId,
+    userId: result.userId,
     settings: result.settings,
+    site: result.site as Site,
     _count: {
       sessions: result._count.sessions
     }
   }));
 }
-
-
-
 
 
 

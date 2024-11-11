@@ -19,6 +19,11 @@ export interface Site {
   userId: string | null;
 }
 
+// Add the SessionCount interface
+interface SessionCount {
+  sessions: number;
+}
+
 // Define the Agent interface to match your schema and include all relationships
 export interface Agent {
   id: string;
@@ -37,6 +42,8 @@ export interface Agent {
   site: Site | null;
   siteName?: string | null;
   userName?: string | null;
+  _count?: SessionCount;  // Add this line to include the session count
+
 }
 
 // Props interface for the AgentConsole component

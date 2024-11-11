@@ -186,6 +186,46 @@ export function SidebarContent() {
     const { id } = useParams() as { id?: string };
   
     const tabs = React.useMemo(() => {
+
+
+      if (segments[0] === "agent" && id) {
+        return [
+          {
+            id: "back",
+            name: "Back to Site",
+            href: `/site/${segments[2]}`, // You might need to store the siteId in a different way
+            icon: <ArrowLeft className="h-4 w-4" />,
+            description: "Return to site overview",
+            isActive: false
+          },
+          {
+            id: "agent-overview",
+            name: "Overview",
+            href: `/agent/${id}`,
+            isActive: segments.length === 2,
+            icon: <Users className="h-4 w-4" />,
+            description: "Manage your agent"
+          },
+          {
+            id: "agent-settings",
+            name: "Settings",
+            href: `/agent/${id}/settings`,
+            isActive: segments.includes("settings"),
+            icon: <Settings className="h-4 w-4" />,
+            description: "Agent settings"
+          },
+          {
+            id: "agent-analytics",
+            name: "Analytics",
+            href: `/agent/${id}/analytics`,
+            isActive: segments.includes("analytics"),
+            icon: <BarChart3 className="h-4 w-4" />,
+            description: "View agent analytics"
+          }
+        ];
+      }
+
+      
       if (segments[0] === "site" && id) {
         return [
           {

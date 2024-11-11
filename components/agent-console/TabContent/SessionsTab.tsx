@@ -1,31 +1,66 @@
 // SessionsTab.tsx
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+"use client";
+
+import * as React from "react";
+import {
+  ColumnFiltersState,
+  SortingState,
+  VisibilityState,
+  flexRender,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+  getFacetedRowModel,
+  getFacetedUniqueValues,
+  Row,
+  Table,
+  ColumnDef,
+} from "@tanstack/react-table";
+import { Session } from "@/lib/types";
+import {
+  Settings,
+  Trash2,
+  Plus,
+  Inbox,
+  Eye,
+  Search,
+  ArrowUp,
+  ArrowDown,
+  MoreHorizontal,
+} from "lucide-react"; // Import all necessary icons
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, Eye, Settings, Trash2, Inbox } from "lucide-react";
-import { toast } from "sonner";
 import { LoadingState } from "../shared/LoadingState";
-import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import apiClient from "@/lib/api-client";
-import { Session } from "@/lib/types";
-import { Badge } from "@/components/ui/badge";
 import { EditSessionModal } from "./EditSessionModal";
-import { useState, useEffect, useMemo } from "react";
 import SessionDetails from "./SessionDetails";
-
 
 interface SessionsTabProps {
   sessions: Session[];
   isLoadingSessions: boolean;
-  onSessionCreated: () => Promise<void>;
-  onSessionSelect: (sessionId: string) => Promise<void>;
+  onSessionCreated?: () => Promise<void>;
+  onSessionSelect?: (sessionId: string) => Promise<void>;
   agentId: string;
   currentSessionId: string | null;
   primaryColor: string;
   secondaryColor: string;
   allowMultipleSessions?: boolean;
+  readonly?: boolean;
 }
+
+type RowData = Session & {
+  progress: {
+    completedSteps: number;
+    totalSteps: number;
+    percentage: number;
+  };
+};
 
 export function SessionsTab({
   sessions: initialSessions,
@@ -34,37 +69,261 @@ export function SessionsTab({
   onSessionSelect,
   agentId,
   currentSessionId,
+  primaryColor,
   secondaryColor,
   allowMultipleSessions = true,
+  readonly = false,
 }: SessionsTabProps) {
-  const [isCreating, setIsCreating] = useState(false);
-  const [activeSession, setActiveSession] = useState<Session | null>(null);
-  const [sessions, setSessions] = useState<Session[]>(initialSessions);
-  const [isDeletingSession, setIsDeletingSession] = useState<string | null>(
+  const [sorting, setSorting] = React.useState<SortingState>([]);
+  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
+    []
+  );
+  const [columnVisibility, setColumnVisibility] =
+    React.useState<VisibilityState>({});
+  const [rowSelection, setRowSelection] = React.useState({});
+  const [isCreating, setIsCreating] = React.useState(false);
+  const [activeSession, setActiveSession] = React.useState<Session | null>(
     null
   );
-  const [editingSession, setEditingSession] = useState<Session | null>(null);
-  const [isEditingSession, setIsEditingSession] = useState(false);
+  const [sessions, setSessions] = React.useState<Session[]>(initialSessions);
+  const [isDeletingSession, setIsDeletingSession] = React.useState<
+    string | null
+  >(null);
+  const [editingSession, setEditingSession] = React.useState<Session | null>(
+    null
+  );
+  const [isEditingSession, setIsEditingSession] = React.useState(false);
 
-  useEffect(() => {
+  React.useEffect(() => {
     setSessions(initialSessions);
   }, [initialSessions]);
 
-  const getCompletionPercentage = (session: Session) => {
-    if (!session.stepProgress?.steps.length) return 0;
-    const completed = session.stepProgress.steps.filter(
-      (step) => step.completed
-    ).length;
-    return Math.round((completed / session.stepProgress.steps.length) * 100);
+  // Transform session data to include progress information
+  const processSessionData = (session: Session): RowData => {
+    const steps = session.stepProgress?.steps || [];
+    const completedSteps = steps.filter((step) => step.completed).length;
+    const totalSteps = steps.length || 1; // Avoid division by zero
+    const percentage = Math.round((completedSteps / totalSteps) * 100);
+
+    return {
+      ...session,
+      progress: {
+        completedSteps,
+        totalSteps,
+        percentage,
+      },
+    };
   };
 
-  const getCompletionStatus = (session: Session) => {
-    const percentage = getCompletionPercentage(session);
-    if (percentage === 100) return "complete";
-    if (percentage === 0) return "not-started";
-    return "in-progress";
+  const transformedData: RowData[] = React.useMemo(
+    () => sessions.map(processSessionData),
+    [sessions]
+  );
+
+  // Define columns
+  const columns: ColumnDef<RowData>[] = [
+    {
+      accessorKey: "name",
+      header: "Session Name",
+      cell: ({ row }: { row: Row<RowData> }) => (
+        <div className="flex flex-col">
+          <span className="text-sm text-white hover:text-white/80 transition-colors font-mono">
+            {row.original.name || "Untitled"}
+          </span>
+          {row.original.type && (
+            <span className="text-xs text-neutral-400">{row.original.type}</span>
+          )}
+        </div>
+      ),
+    },
+    {
+      accessorKey: "progress",
+      header: "Progress",
+      cell: ({ row }: { row: Row<RowData> }) => {
+        const { completedSteps, totalSteps, percentage } = row.original.progress;
+
+        return (
+          <div className="flex items-center gap-2">
+            <div className="w-32 h-2 bg-neutral-800 rounded-full overflow-hidden">
+              <div
+                className={cn("h-full rounded-full transition-all duration-300", {
+                  "bg-green-500": percentage === 100,
+                  "bg-yellow-500": percentage > 0 && percentage < 100,
+                  "bg-white/20": percentage === 0,
+                })}
+                style={{ width: `${percentage}%` }}
+              />
+            </div>
+            <span className="text-xs text-neutral-400">
+              {completedSteps}/{totalSteps} Steps
+            </span>
+            <span className="text-xs text-neutral-500">{percentage}%</span>
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "createdAt",
+      header: "Date Created",
+      cell: ({ row }: { row: Row<RowData> }) => {
+        const date = new Date(row.original.createdAt);
+        return (
+          <span className="text-sm text-neutral-400">
+            {date instanceof Date
+              ? date.toLocaleString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                  hour: "numeric",
+                  minute: "numeric",
+                  hour12: true,
+                })
+              : "Unknown date"}
+          </span>
+        );
+      },
+    },
+    {
+      accessorKey: "lastInteractionAt",
+      header: "Last Active",
+      cell: ({ row }: { row: Row<RowData> }) => {
+        const date = row.original.lastInteractionAt
+          ? new Date(row.original.lastInteractionAt)
+          : null;
+        return (
+          <span className="text-sm text-neutral-400">
+            {date
+              ? date.toLocaleString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                  hour: "numeric",
+                  minute: "numeric",
+                  hour12: true,
+                })
+              : "Never"}
+          </span>
+        );
+      },
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      cell: ({ row }) => (
+        <div className="flex items-center justify-end space-x-2">
+          {/* View Button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "h-8 w-8 p-0 rounded-full",
+              "hover:bg-white/5",
+              "transition-all duration-300"
+            )}
+            onClick={() => handleViewSession(row.original)}
+          >
+            <Eye className="h-4 w-4 text-white/70" />
+          </Button>
+
+          {/* Edit Button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "h-8 w-8 p-0 rounded-full",
+              "hover:bg-white/5",
+              "transition-all duration-300"
+            )}
+            onClick={() => setEditingSession(row.original)}
+            disabled={readonly}
+          >
+            <Settings className="h-4 w-4 text-white/70" />
+          </Button>
+
+          {/* Delete Button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "h-8 w-8 p-0 rounded-full",
+              "hover:bg-pink-500/10 hover:text-pink-500",
+              "transition-all duration-300",
+              isDeletingSession === row.original.id &&
+                "opacity-50 cursor-not-allowed"
+            )}
+            disabled={
+              row.original.id === currentSessionId ||
+              isDeletingSession === row.original.id ||
+              readonly
+            }
+            onClick={() => handleDeleteSession(row.original)}
+          >
+            {isDeletingSession === row.original.id ? (
+              <LoadingState />
+            ) : (
+              <Trash2
+                className={cn(
+                  "h-4 w-4",
+                  row.original.id === currentSessionId
+                    ? "text-white/20"
+                    : "text-white/70"
+                )}
+              />
+            )}
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  // Table setup
+  const table = useReactTable<RowData>({
+    data: transformedData,
+    columns,
+    enableRowSelection: true,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    onSortingChange: setSorting,
+    getSortedRowModel: getSortedRowModel(),
+    onColumnFiltersChange: setColumnFilters,
+    getFilteredRowModel: getFilteredRowModel(),
+    onColumnVisibilityChange: setColumnVisibility,
+    onRowSelectionChange: setRowSelection,
+    getFacetedRowModel: getFacetedRowModel(),
+    getFacetedUniqueValues: getFacetedUniqueValues(),
+    state: {
+      sorting,
+      columnFilters,
+      columnVisibility,
+      rowSelection,
+    },
+  });
+
+  // Helper functions
+  const getTimeAgo = (date: string) => {
+    const seconds = Math.floor(
+      (new Date().getTime() - new Date(date).getTime()) / 1000
+    );
+
+    let interval = seconds / 31536000;
+    if (interval > 1) return Math.floor(interval) + " years ago";
+
+    interval = seconds / 2592000;
+    if (interval > 1) return Math.floor(interval) + " months ago";
+
+    interval = seconds / 86400;
+    if (interval > 1) return Math.floor(interval) + " days ago";
+
+    interval = seconds / 3600;
+    if (interval > 1) return Math.floor(interval) + " hours ago";
+
+    interval = seconds / 60;
+    if (interval > 1) return Math.floor(interval) + " minutes ago";
+
+    return Math.floor(seconds) + " seconds ago";
   };
 
+  // Action handlers
   const handleEditSession = async (name: string) => {
     if (!editingSession) return;
 
@@ -106,65 +365,12 @@ export function SessionsTab({
     }
   };
 
-  const getTimeAgo = (date: string) => {
-    const seconds = Math.floor(
-      (new Date().getTime() - new Date(date).getTime()) / 1000
-    );
-
-    let interval = seconds / 31536000;
-    if (interval > 1) return Math.floor(interval) + " years ago";
-
-    interval = seconds / 2592000;
-    if (interval > 1) return Math.floor(interval) + " months ago";
-
-    interval = seconds / 86400;
-    if (interval > 1) return Math.floor(interval) + " days ago";
-
-    interval = seconds / 3600;
-    if (interval > 1) return Math.floor(interval) + " hours ago";
-
-    interval = seconds / 60;
-    if (interval > 1) return Math.floor(interval) + " minutes ago";
-
-    return Math.floor(seconds) + " seconds ago";
-  };
-
-  // Get active sessions count
-  const activeSessionsCount = useMemo(
-    () => sessions.filter((s) => s.status === "active").length,
-    [sessions]
-  );
-
-  const canCreateNewSession = useMemo(
-    () => allowMultipleSessions || activeSessionsCount === 0,
-    [allowMultipleSessions, activeSessionsCount]
-  );
-
-  const handleCreateSession = async () => {
-    if (isCreating) return;
-
-    if (!canCreateNewSession) {
-      toast.error(
-        "Multiple sessions are not allowed. Please delete the existing session first."
-      );
+  const handleDeleteSession = async (session: Session) => {
+    if (readonly) {
+      toast.error("Cannot delete sessions in analytics view.");
       return;
     }
 
-    setIsCreating(true);
-    try {
-      await onSessionCreated?.();
-      toast.success("New session created");
-    } catch (error: any) {
-      console.error("Failed to create session:", error);
-      const errorMessage =
-        error.response?.data?.error || "Failed to create session";
-      toast.error(errorMessage);
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
-  const handleDeleteSession = async (session: Session) => {
     if (session.id === currentSessionId) {
       toast.error("Cannot delete the current session");
       return;
@@ -213,13 +419,167 @@ export function SessionsTab({
   const handleViewSession = async (session: Session) => {
     try {
       setActiveSession(session);
-      await onSessionSelect?.(session.id);
+      if (onSessionSelect) {
+        await onSessionSelect(session.id);
+      }
     } catch (error) {
       console.error("Failed to select session:", error);
       toast.error("Failed to switch session");
     }
   };
 
+  const handleCreateSession = async () => {
+    if (isCreating) return;
+
+    if (!canCreateNewSession) {
+      toast.error(
+        "Multiple sessions are not allowed. Please delete the existing session first."
+      );
+      return;
+    }
+
+    if (readonly) {
+      toast.error("Cannot create a new session in analytics view.");
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      if (onSessionCreated) {
+        await onSessionCreated();
+        toast.success("New session created");
+      } else {
+        toast.error("Session creation is not available.");
+      }
+    } catch (error: any) {
+      console.error("Failed to create session:", error);
+      const errorMessage =
+        error.response?.data?.error || "Failed to create session";
+      toast.error(errorMessage);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  // Utility constants
+  const activeSessionsCount = React.useMemo(
+    () => sessions.filter((s) => s.status === "active").length,
+    [sessions]
+  );
+
+  const canCreateNewSession = React.useMemo(
+    () => allowMultipleSessions || activeSessionsCount === 0,
+    [allowMultipleSessions, activeSessionsCount]
+  );
+
+  // Dream UI components
+  const DreamTableHeader = ({ children }: { children: React.ReactNode }) => (
+    <th className="px-6 py-4 text-left text-sm font-medium text-neutral-300 first:pl-8 last:pr-8">
+      {children}
+    </th>
+  );
+
+  const DreamTableCell = ({ children }: { children: React.ReactNode }) => (
+    <td className="px-6 py-4 text-sm text-neutral-300 first:pl-8 last:pr-8">
+      {children}
+    </td>
+  );
+
+  const DreamSearch = ({
+    value,
+    onChange,
+  }: {
+    value: string;
+    onChange: (value: string) => void;
+  }) => (
+    <div className="relative">
+      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500" />
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Search sessions..."
+        className="
+          h-10 w-[250px] rounded-xl 
+          bg-neutral-900/50 pl-9 pr-4 
+          text-sm text-neutral-300 
+          placeholder:text-neutral-500
+          border border-white/[0.08]
+          focus:border-dream-purple/50 
+          focus:ring-dream-purple/20
+          transition-all duration-300
+          backdrop-blur-md
+        "
+      />
+    </div>
+  );
+
+  const DreamToolbar = ({ table }: { table: Table<RowData> }) => {
+    const isFiltered = table.getState().columnFilters.length > 0;
+
+    return (
+      <div className="flex items-center justify-between p-1">
+        <DreamSearch
+          value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
+          onChange={(value) => table.getColumn("name")?.setFilterValue(value)}
+        />
+        <div className="flex items-center gap-2">
+          {isFiltered && (
+            <button
+              onClick={() => table.resetColumnFilters()}
+              className="px-3 py-1.5 rounded-xl bg-neutral-900/50 text-neutral-300 text-sm hover:bg-neutral-800/50 transition-colors duration-300 shine"
+            >
+              Reset Filters
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const DreamPagination = ({ table }: { table: Table<RowData> }) => {
+    return (
+      <div className="flex items-center justify-between px-4 py-3">
+        <div className="flex items-center gap-2 text-sm text-neutral-400">
+          <span>
+            Page {table.getState().pagination.pageIndex + 1} of{" "}
+            {table.getPageCount()}
+          </span>
+          <span>·</span>
+          <span>{table.getFilteredRowModel().rows.length} row(s)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => table.previousPage()}
+            disabled={!table.getCanPreviousPage()}
+            className="
+              px-3 py-1.5 rounded-xl 
+              bg-neutral-900/50 text-neutral-300 
+              text-sm hover:bg-neutral-800/50 
+              disabled:opacity-50 disabled:cursor-not-allowed 
+              transition-colors duration-300 shine
+            "
+          >
+            Previous
+          </button>
+          <button
+            onClick={() => table.nextPage()}
+            disabled={!table.getCanNextPage()}
+            className="
+              px-3 py-1.5 rounded-xl 
+              bg-neutral-900/50 text-neutral-300 
+              text-sm hover:bg-neutral-800/50 
+              disabled:opacity-50 disabled:cursor-not-allowed 
+              transition-colors duration-300 shine
+            "
+          >
+            Next
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // Main return
   if (activeSession) {
     return (
       <SessionDetails
@@ -231,329 +591,181 @@ export function SessionsTab({
   }
 
   return (
-    <div className="relative animate-fade-in-up">
-      {/* Card Container */}
-      <Card className="bg-neutral-900/50 backdrop-blur-md border border-white/10 rounded-3xl overflow-hidden shadow-lg">
-        {/* Card Header */}
-        <CardHeader className="relative space-y-0 pb-2">
-          <div className="flex items-center justify-between">
-            {/* Title and Badges */}
-            <div className="flex items-center space-x-4">
-              {/* Title */}
-              <CardTitle className="text-sm font-light text-white/90">
-                Onboarding Sessions
-              </CardTitle>
+    <div className="relative animate-fade-in-up space-y-4">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-4">
+          <h2 className="text-xl font-light text-white">Sessions</h2>
 
-              {/* Single Session Mode Badge */}
-              {!allowMultipleSessions && (
-                <Badge
-                  variant="secondary"
-                  className={cn(
-                    "px-3 py-1 rounded-full text-[10px] font-light",
-                    "bg-purple-500/10 border-purple-500/20 text-purple-500",
-                    "backdrop-blur-md"
-                  )}
-                >
-                  Single Session Mode
-                </Badge>
-              )}
-
-              {/* Current Session Badge */}
-              {currentSessionId && (
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "px-3 py-1 rounded-full text-[10px] font-light",
-                    "bg-blue-500/10 border-blue-500/20 text-blue-500",
-                    "backdrop-blur-md"
-                  )}
-                >
-                  Current:{" "}
-                  {sessions.find((s) => s.id === currentSessionId)?.name ||
-                    currentSessionId}
-                </Badge>
-              )}
-            </div>
-
-            {/* New Session Button */}
-            <Button
-              onClick={handleCreateSession}
+          {/* Single Session Mode Badge */}
+          {!allowMultipleSessions && (
+            <Badge
+              variant="secondary"
               className={cn(
-                "h-9 px-4 rounded-xl text-white/70 font-light",
-                "bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500",
-                "hover:from-cyan-500 hover:via-purple-500 hover:to-pink-500",
-                "transition-all duration-500 ease-in-out",
-                "shadow-md hover:shadow-lg"
+                "px-3 py-1 rounded-full text-[10px] font-light",
+                "bg-purple-500/10 border-purple-500/20 text-purple-500",
+                "backdrop-blur-md"
               )}
-              disabled={isCreating || !canCreateNewSession}
-              title={
-                !canCreateNewSession
-                  ? "Delete existing session to create a new one"
-                  : undefined
-              }
             >
-              {isCreating ? (
-                <LoadingState />
-              ) : (
-                <div className="flex items-center space-x-2">
-                  <Plus className="h-4 w-4" />
-                  <span>New Session</span>
-                </div>
+              Single Session Mode
+            </Badge>
+          )}
+
+          {/* Current Session Badge */}
+          {currentSessionId && (
+            <Badge
+              variant="outline"
+              className={cn(
+                "px-3 py-1 rounded-full text-[10px] font-light",
+                "bg-blue-500/10 border-blue-500/20 text-blue-500",
+                "backdrop-blur-md"
               )}
-            </Button>
-          </div>
-        </CardHeader>
+            >
+              Current:{" "}
+              {sessions.find((s) => s.id === currentSessionId)?.name ||
+                currentSessionId}
+            </Badge>
+          )}
+        </div>
 
-        {/* Content Area */}
-        <CardContent>
-          {isLoadingSessions ? (
-            // Loading State
-            <div className="flex justify-center items-center py-12">
-              <LoadingState />
-            </div>
-          ) : sessions.length === 0 ? (
-            // No Sessions Found
-            <div className="flex flex-col items-center justify-center py-16 space-y-4 animate-fade-in-up">
-              {/* Empty State Icon */}
-              <div className="rounded-full bg-neutral-800/50 p-6 backdrop-blur-md shadow-md">
-                <Inbox className="h-12 w-12 text-white/20" />
-              </div>
-              {/* Messages */}
-              <p className="text-sm text-white/50 font-light">
-                No active sessions found
-              </p>
-              <p className="text-xs text-white/30 font-light">
-                Create a new session to get started
-              </p>
-            </div>
+        {/* New Session Button */}
+        <Button
+          onClick={handleCreateSession}
+          className={cn(
+            "h-9 px-4 rounded-xl text-white/70 font-light",
+            "bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500",
+            "hover:from-cyan-500 hover:via-purple-500 hover:to-pink-500",
+            "transition-all duration-500 ease-in-out",
+            "shadow-md hover:shadow-lg"
+          )}
+          disabled={isCreating || !canCreateNewSession || readonly}
+          title={
+            !canCreateNewSession
+              ? "Delete existing session to create a new one"
+              : readonly
+              ? "Cannot create sessions in analytics view"
+              : undefined
+          }
+        >
+          {isCreating ? (
+            <LoadingState />
           ) : (
-            // Sessions Table
-            <div className="relative overflow-hidden rounded-2xl">
-              {/* Scrollable Area */}
-              <ScrollArea className="h-[500px]">
-                {/* Table Container */}
-                <div className="relative overflow-x-auto">
-                  {/* Table */}
-                  <table className="w-full text-left">
-                    {/* Table Head */}
-                    <thead className="text-xs uppercase bg-neutral-800/50 backdrop-blur-md">
-                      <tr>
-                        {/* Column Headers */}
-                        <th
-                          scope="col"
-                          className="px-6 py-4 text-white/50 font-light"
-                        >
-                          Name
-                        </th>
-                        <th
-                          scope="col"
-                          className="px-6 py-4 text-white/50 font-light"
-                        >
-                          Progress
-                        </th>
-                        <th
-                          scope="col"
-                          className="px-6 py-4 text-white/50 font-light"
-                        >
-                          Created
-                        </th>
-                        <th
-                          scope="col"
-                          className="px-6 py-4 text-white/50 font-light"
-                        >
-                          Last Active
-                        </th>
-                        <th
-                          scope="col"
-                          className="px-6 py-4 text-right text-white/50 font-light"
-                        >
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-
-                    {/* Table Body */}
-                    <tbody className="divide-y divide-white/10">
-                      {sessions.map((session, index) => (
-                        <tr
-                          key={session.id}
-                          className={cn(
-                            "hover:bg-white/5 transition-all duration-300",
-                            session.id === currentSessionId && "bg-white/5"
-                          )}
-                          style={{ animationDelay: `${index * 0.05}s` }}
-                        >
-                          {/* Session Name */}
-                          <td className="px-6 py-4">
-                            <div className="flex items-center space-x-2">
-                              {/* Status Indicator */}
-                              <div
-                                className={cn(
-                                  "h-2.5 w-2.5 rounded-full",
-                                  {
-                                    "bg-green-500":
-                                      getCompletionStatus(session) ===
-                                      "complete",
-                                    "bg-yellow-500":
-                                      getCompletionStatus(session) ===
-                                      "in-progress",
-                                    "bg-white/20":
-                                      getCompletionStatus(session) ===
-                                      "not-started",
-                                  }
-                                )}
-                              ></div>
-                              {/* Session Name */}
-                              <span className="text-sm text-white/90 font-mono">
-                                {session.name}
-                              </span>
-                              {/* Current Session Badge */}
-                              {session.id === currentSessionId && (
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    "px-2 py-0.5 rounded-full text-[10px] font-light",
-                                    "bg-blue-500/10 border-blue-500/20 text-blue-500",
-                                    "backdrop-blur-md"
-                                  )}
-                                >
-                                  Current
-                                </Badge>
-                              )}
-                            </div>
-                          </td>
-
-                          {/* Progress Bar */}
-                          <td className="px-6 py-4">
-                            <div className="flex items-center space-x-2">
-                              {/* Progress Bar Container */}
-                              <div className="w-32 h-2 bg-white/10 rounded-full overflow-hidden">
-                                {/* Progress Bar */}
-                                <div
-                                  className={cn(
-                                    "h-full transition-all duration-500",
-                                    getCompletionStatus(session) ===
-                                      "complete" && "bg-green-500",
-                                    getCompletionStatus(session) ===
-                                      "in-progress" && "bg-yellow-500",
-                                    getCompletionStatus(session) ===
-                                      "not-started" && "bg-white/20"
-                                  )}
-                                  style={{
-                                    width: `${getCompletionPercentage(
-                                      session
-                                    )}%`,
-                                  }}
-                                />
-                              </div>
-                              {/* Percentage */}
-                              <span className="text-sm text-white/50 font-light">
-                                {getCompletionPercentage(session)}%
-                              </span>
-                              {/* Steps Completed */}
-                              <span className="text-xs text-white/30 font-light">
-                                (
-                                {
-                                  session.stepProgress.steps.filter(
-                                    (s) => s.completed
-                                  ).length
-                                }
-                                /{session.stepProgress.steps.length} steps)
-                              </span>
-                            </div>
-                          </td>
-
-                          {/* Created Time */}
-                          <td className="px-6 py-4">
-                            <span className="text-sm text-white/50 font-light">
-                              {getTimeAgo(session.createdAt)}
-                            </span>
-                          </td>
-
-                          {/* Last Active */}
-                          <td className="px-6 py-4">
-                            <span className="text-sm text-white/50 font-light">
-                              {session.lastInteractionAt
-                                ? getTimeAgo(session.lastInteractionAt)
-                                : "Never"}
-                            </span>
-                          </td>
-
-                          {/* Actions */}
-                          <td className="px-6 py-4 text-right">
-                            <div className="flex items-center justify-end space-x-2">
-                              {/* View Button */}
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className={cn(
-                                  "h-8 w-8 p-0 rounded-full",
-                                  "hover:bg-white/5",
-                                  "transition-all duration-300",
-                                  session.id === currentSessionId &&
-                                    "bg-blue-500/10 text-blue-500"
-                                )}
-                                onClick={() => handleViewSession(session)}
-                              >
-                                <Eye className="h-4 w-4 text-white/70" />
-                              </Button>
-
-                              {/* Edit Button */}
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className={cn(
-                                  "h-8 w-8 p-0 rounded-full",
-                                  "hover:bg-white/5",
-                                  "transition-all duration-300"
-                                )}
-                                onClick={() => setEditingSession(session)}
-                              >
-                                <Settings className="h-4 w-4 text-white/70" />
-                              </Button>
-
-                              {/* Delete Button */}
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className={cn(
-                                  "h-8 w-8 p-0 rounded-full",
-                                  "hover:bg-pink-500/10 hover:text-pink-500",
-                                  "transition-all duration-300",
-                                  isDeletingSession === session.id &&
-                                    "opacity-50 cursor-not-allowed"
-                                )}
-                                disabled={
-                                  session.id === currentSessionId ||
-                                  isDeletingSession === session.id
-                                }
-                                onClick={() => handleDeleteSession(session)}
-                              >
-                                {isDeletingSession === session.id ? (
-                                  <LoadingState />
-                                ) : (
-                                  <Trash2
-                                    className={cn(
-                                      "h-4 w-4",
-                                      session.id === currentSessionId
-                                        ? "text-white/20"
-                                        : "text-white/70"
-                                    )}
-                                  />
-                                )}
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </ScrollArea>
+            <div className="flex items-center space-x-2">
+              <Plus className="h-4 w-4" />
+              <span>New Session</span>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </Button>
+      </div>
+
+      {isLoadingSessions ? (
+        // Loading State
+        <div className="flex justify-center items-center py-12">
+          <LoadingState />
+        </div>
+      ) : sessions.length === 0 ? (
+        // No Sessions Found
+        <div className="flex flex-col items-center justify-center py-16 space-y-4 animate-fade-in-up">
+          {/* Empty State Icon */}
+          <div className="rounded-full bg-neutral-800/50 p-6 backdrop-blur-md shadow-md">
+            <Inbox className="h-12 w-12 text-white/20" />
+          </div>
+          {/* Messages */}
+          <p className="text-sm text-white/50 font-light">
+            No active sessions found
+          </p>
+          <p className="text-xs text-white/30 font-light">
+            Create a new session to get started
+          </p>
+        </div>
+      ) : (
+        // Sessions Table
+        <div className="space-y-4">
+          <DreamToolbar table={table} />
+
+          <div className="relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine">
+            <div className="absolute inset-[0] rounded-[inherit] [border:1px_solid_transparent] ![mask-clip:padding-box,border-box] ![mask-composite:intersect] [mask:linear-gradient(transparent,transparent),linear-gradient(white,white)] after:absolute after:aspect-square after:w-[320px] after:animate-border-beam after:[animation-delay:0s] after:[background:linear-gradient(to_left,#aaa,transparent,transparent)] after:[offset-anchor:90%_50%] after:[offset-path:rect(0_auto_auto_0_round_200px)]" />
+
+            <div className="relative overflow-x-auto">
+              <table className="w-full">
+                <thead className="border-b border-white/[0.08] bg-neutral-900/30">
+                  {table.getHeaderGroups().map((headerGroup) => (
+                    <tr key={headerGroup.id}>
+                      {headerGroup.headers.map((header) => (
+                        <DreamTableHeader key={header.id}>
+                          <div className="flex items-center gap-2">
+                            {header.isPlaceholder
+                              ? null
+                              : flexRender(
+                                  header.column.columnDef.header,
+                                  header.getContext()
+                                )}
+                            {header.column.getCanSort() && (
+                              <button
+                                onClick={header.column.getToggleSortingHandler()}
+                                className={`
+                                  ml-auto h-4 w-4 
+                                  transition-colors duration-300
+                                  ${
+                                    header.column.getIsSorted()
+                                      ? "text-dream-purple"
+                                      : "text-neutral-500 hover:text-neutral-300"
+                                  }
+                                `}
+                              >
+                                {header.column.getIsSorted() === "desc" ? (
+                                  <ArrowDown className="h-3 w-3" />
+                                ) : header.column.getIsSorted() === "asc" ? (
+                                  <ArrowUp className="h-3 w-3" />
+                                ) : (
+                                  <MoreHorizontal className="h-3 w-3" />
+                                )}
+                              </button>
+                            )}
+                          </div>
+                        </DreamTableHeader>
+                      ))}
+                    </tr>
+                  ))}
+                </thead>
+                <tbody className="divide-y divide-white/[0.04]">
+                  {table.getRowModel().rows?.length ? (
+                    table.getRowModel().rows.map((row) => (
+                      <tr
+                        key={row.id}
+                        className="group hover:bg-white/[0.02] transition-colors duration-300"
+                        data-state={row.getIsSelected() ? "selected" : undefined}
+                      >
+                        {row.getVisibleCells().map((cell) => (
+                          <DreamTableCell key={cell.id}>
+                            {flexRender(
+                              cell.column.columnDef.cell,
+                              cell.getContext()
+                            )}
+                          </DreamTableCell>
+                        ))}
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td
+                        colSpan={table.getAllColumns().length}
+                        className="h-24 text-center text-sm text-neutral-500"
+                      >
+                        No results found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="relative overflow-hidden rounded-2xl bg-neutral-900/30 backdrop-blur-md">
+            <DreamPagination table={table} />
+          </div>
+        </div>
+      )}
 
       {/* Edit Session Modal */}
       <EditSessionModal
