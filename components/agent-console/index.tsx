@@ -1,3 +1,5 @@
+
+///Users/bobbygilbert/Documents/Github/platforms-starter-kit/components/agent-console/index.tsx
 'use client';
 
 // Core React imports
@@ -87,12 +89,18 @@ function AgentConsole({ agent }: AgentConsoleProps) {
   const [memoryKv, setMemoryKv] = useState<{ [key: string]: any }>({});
 
   // Refs
-  const wavRecorderRef = useRef<WavRecorder>(new WavRecorder({ sampleRate: 24000 }));
-  const wavStreamPlayerRef = useRef<WavStreamPlayer>(new WavStreamPlayer({ sampleRate: 24000 }));
+  const wavRecorderRef = useRef<WavRecorder>(
+    new WavRecorder({ sampleRate: 24000 })
+  );
+  const wavStreamPlayerRef = useRef<WavStreamPlayer>(
+    new WavStreamPlayer({ sampleRate: 24000 })
+  );
   const clientCanvasRef = useRef<HTMLCanvasElement>(null);
   const serverCanvasRef = useRef<HTMLCanvasElement>(null);
   const startTimeRef = useRef<string>(new Date().toISOString());
 
+ // **Add this ref to keep track of audio lengths per message**
+ const audioLengthsPerMessage = useRef<{ [messageId: string]: number }>({});
 
   // API Key Management
   const handleApiKeyUpdate = useCallback((newApiKey: string) => {
@@ -286,10 +294,49 @@ function AgentConsole({ agent }: AgentConsoleProps) {
       });
 
      // Update the conversation.updated event handler in AgentConsole.tsx
-     client.on('conversation.updated', async ({ item, delta }: any) => {
-      if (delta?.audio) {
-        wavStreamPlayerRef.current.add16BitPCM(delta.audio, item.id);
-      }
+   // **Update the conversation.updated event handler**
+   client.on('conversation.updated', async ({ item, delta }: any) => {
+    if (delta?.audio) {
+      wavStreamPlayerRef.current.add16BitPCM(delta.audio, item.id);
+
+   // **Accumulate audio length for this message**
+   const audioDataLength = delta.audio.length; // Length in bytes
+
+   if (!audioLengthsPerMessage.current[item.id]) {
+     audioLengthsPerMessage.current[item.id] = 0;
+   }
+   audioLengthsPerMessage.current[item.id] += audioDataLength;
+
+   // **Calculate the duration**
+   const sampleRate = wavStreamPlayerRef.current.sampleRate;
+   const totalAudioLength = audioLengthsPerMessage.current[item.id];
+   const durationSeconds = totalAudioLength / (sampleRate * 2); // 2 bytes per sample
+
+   // **Include duration in item metadata**
+   item.metadata = item.metadata || {};
+   item.metadata.audioDurationSeconds = durationSeconds;
+ }
+
+
+
+
+      // **For user messages**
+        if (item.status === 'completed' && item.role === 'user') {
+          // **Get the recorded duration**
+          const durationSeconds = wavRecorderRef.current.getRecordedDuration();
+
+          // **Include duration in item metadata**
+          item.metadata = item.metadata || {};
+          item.metadata.audioDurationSeconds = durationSeconds;
+
+          // **Reset total samples recorded**
+          wavRecorderRef.current.totalSamplesRecorded = 0;
+        }
+ // **For assistant messages, reset accumulated length when completed**
+ if (item.status === 'completed' && item.role === 'assistant') {
+  delete audioLengthsPerMessage.current[item.id];
+}
+
       
       if (item.status === 'completed' && item.role) {
         try {
@@ -380,18 +427,18 @@ function AgentConsole({ agent }: AgentConsoleProps) {
         }
       }
       
-      // Update local state
-      setItems(prevItems => {
-        const newItems = [...prevItems];
-        const index = newItems.findIndex(i => i.id === item.id);
-        if (index >= 0) {
-          newItems[index] = item;
-        } else {
-          newItems.push(item);
-        }
-        return newItems;
-      });
+    // Update local state
+    setItems(prevItems => {
+      const newItems = [...prevItems];
+      const index = newItems.findIndex(i => i.id === item.id);
+      if (index >= 0) {
+        newItems[index] = item;
+      } else {
+        newItems.push(item);
+      }
+      return newItems;
     });
+  });
       // Add tool setup
       if (agent.settings?.tools) {
         // Email tool
@@ -615,7 +662,9 @@ const connectConversation = useCallback(async (sessionId?: string) => {
     setIsRecording(false);
     await wavRecorderRef.current.pause();
     clientRef.current.createResponse();
+    // No need to get duration here as it's handled in conversation.updated
   };
+
 
   // Draft Handlers
   const handleSendNote = useCallback(async () => {

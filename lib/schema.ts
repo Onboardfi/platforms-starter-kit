@@ -79,9 +79,13 @@ export const users = pgTable('users', {
   email: text('email').notNull().unique(),
   emailVerified: timestamp('emailVerified', { mode: 'date' }),
   image: text('image'),
+  stripeCustomerId: text('stripeCustomerId'), // Add this line
+  stripeSubscriptionId: text('stripeSubscriptionId'), // Optionally add this line
   createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
   updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
 });
+
+
 export const sessions = pgTable(
   'sessions',
   {
@@ -143,6 +147,39 @@ export const accounts = pgTable(
     compositePk: primaryKey(table.provider, table.providerAccountId),
   })
 );
+
+
+
+export const usageLogs = pgTable(
+  'usage_logs',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId()),
+    userId: text('userId')
+      .references(() => users.id, { onDelete: 'set null' }),
+    sessionId: text('sessionId')
+      .references(() => onboardingSessions.id, { onDelete: 'set null' }),
+    conversationId: text('conversationId')
+      .references(() => conversations.id, { onDelete: 'set null' }),
+    messageId: text('messageId')
+      .references(() => messages.id, { onDelete: 'set null' }),
+    durationSeconds: integer('durationSeconds').notNull(),
+    messageRole: text('messageRole').$type<'assistant' | 'user'>().notNull(),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    // Fields for future Stripe integration
+    stripeCustomerId: text('stripeCustomerId'),
+    stripeEventId: text('stripeEventId'),
+    reportingStatus: text('reportingStatus')
+      .$type<'pending' | 'reported'>()
+      .default('pending'),
+  },
+  (table) => ({
+    userIdIdx: index('usage_logs_userId_idx').on(table.userId),
+    sessionIdIdx: index('usage_logs_sessionId_idx').on(table.sessionId),
+    conversationIdIdx: index('usage_logs_conversationId_idx').on(table.conversationId),
+    createdAtIdx: index('usage_logs_createdAt_idx').on(table.createdAt),
+  })
+);
+
 
 export const sites = pgTable(
   'sites',
@@ -523,6 +560,7 @@ export type MessageMetadata = {
   stepId?: string;
   stepTitle?: string;
   isFinal?: boolean;
+  audioDurationSeconds?: number;  // Add this
 };
 
 export type ConversationMetadata = {
@@ -540,6 +578,8 @@ export type ConversationMetadata = {
     success: boolean;
   };
 };
+
+export type SelectUsageLog = typeof usageLogs.$inferSelect;
 
 // Export Redis key generation utilities
 export const getConversationKey = (conversationId: string) => 

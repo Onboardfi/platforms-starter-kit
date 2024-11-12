@@ -1,8 +1,18 @@
+//Users/bobbygilbert/Documents/Github/platforms-starter-kit/lib/upstash.ts
+
 import { Redis } from '@upstash/redis';
 import { createId } from '@paralleldrive/cuid2';
 import { eq, desc, and, lt } from 'drizzle-orm';
+
+import { stripe } from '@/lib/stripe'; // Existing import
+import { users } from '@/lib/schema'; // Add this imp
 import db from '@/lib/db';
-import { onboardingSessions, conversations, messages } from '@/lib/schema';
+import { 
+  onboardingSessions, 
+  conversations, 
+  messages,
+  usageLogs,  // Add this
+} from '@/lib/schema';
 import {
   AgentState,
   SessionState,
@@ -71,7 +81,6 @@ function ensureMetadata<T extends Record<string, any>>(metadata: Record<string, 
     ...(metadata || {}),
   };
 }
-
 const defaultMessageMetadata: MessageMetadata = {
   clientId: '',
   deviceInfo: {},
@@ -81,6 +90,7 @@ const defaultMessageMetadata: MessageMetadata = {
   totalTokens: 0,
   toolCalls: [],
   isFinal: false,
+  audioDurationSeconds: 0,  // Add this
 };
 
 const defaultConversationMetadata: ConversationMetadata = {
@@ -620,10 +630,41 @@ export async function addMessage(
   try {
     const finalMetadata = ensureMetadata(metadata, defaultMessageMetadata);
 
+    // Get conversation with complete session and user details
+    const conversation = await db.query.conversations.findFirst({
+      where: eq(conversations.id, conversationId),
+      with: {
+        session: {
+          with: {
+            user: true,
+            agent: {
+              with: {
+                user: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!conversation) {
+      throw new Error('Conversation not found');
+    }
+
+    // Get actual user ID either from the session or the agent owner
+    const effectiveUserId = conversation.session?.userId || 
+                          conversation.session?.agent?.userId || 
+                          conversation.session?.agent?.user?.id;
+
+    if (!effectiveUserId) {
+      console.warn('No user ID found for conversation:', conversationId);
+    }
+
     const orderIndex = (
       await redis.incr(`${CONVERSATION_PREFIX}${conversationId}:message_count`)
     ).toString();
 
+    // Create message
     const [dbMessage] = await db
       .insert(messages)
       .values({
@@ -648,6 +689,81 @@ export async function addMessage(
       parentMessageId: dbMessage.parentMessageId || undefined,
     };
 
+
+// After logging usage in your database, send a meter event to Stripe
+if (role === 'assistant' && finalMetadata.audioDurationSeconds && effectiveUserId) {
+  try {
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, effectiveUserId),
+    });
+
+    if (user?.stripeCustomerId) {
+      await stripe.billing.meterEvents.create({
+        event_name: 'api_requests',
+        payload: {
+          stripe_customer_id: user.stripeCustomerId,
+          value: finalMetadata.audioDurationSeconds.toString(), // Usage in seconds
+        },
+      });
+
+      console.log(`Sent meter event to Stripe for user ${effectiveUserId}`);
+    }
+  } catch (error) {
+    console.error('Failed to send meter event to Stripe:', error);
+  }
+}
+
+
+   // Log usage if this is an assistant message with audio duration
+   if (role === 'assistant' && finalMetadata.audioDurationSeconds) {
+    try {
+      const usageLog = {
+        userId: effectiveUserId,
+        sessionId: conversation.sessionId,
+        conversationId: conversation.id,
+        messageId: message.id,
+        durationSeconds: Math.round(finalMetadata.audioDurationSeconds),
+        messageRole: role,
+        stripeCustomerId: null,
+        reportingStatus: 'pending' as const
+      };
+
+      const [logResult] = await db
+        .insert(usageLogs)
+        .values(usageLog)
+        .returning();
+
+        // Double log for redundancy - one with user ID from session, one with user ID from agent
+        if (conversation.session?.userId && conversation.session.agent?.userId &&
+            conversation.session.userId !== conversation.session.agent.userId) {
+          await db
+            .insert(usageLogs)
+            .values({
+              ...usageLog,
+              id: createId(),
+              userId: conversation.session.agent.userId
+            })
+            .returning();
+        }
+
+        console.log(`Usage logged for message ${message.id}:`, {
+          duration: finalMetadata.audioDurationSeconds,
+          userId: effectiveUserId,
+          logId: logResult.id
+        });
+      } catch (error) {
+        console.error('Failed to log usage:', error);
+        // Don't fail the message creation if usage logging fails
+        // But do log the full context for debugging
+        console.error('Usage logging context:', {
+          userId: effectiveUserId,
+          sessionId: conversation.sessionId,
+          messageId: message.id,
+          duration: finalMetadata.audioDurationSeconds
+        });
+      }
+    }
+
     // Update conversation
     await db
       .update(conversations)
@@ -655,7 +771,7 @@ export async function addMessage(
         lastMessageAt: new Date(),
         messageCount: parseInt(message.orderIndex),
         metadata: {
-          ...message.metadata,
+          ...conversation.metadata,
           lastMessageId: message.id,
         },
       })
@@ -685,10 +801,9 @@ export async function addMessage(
     return message;
   } catch (error) {
     console.error('Failed to add message:', error);
-    throw new Error('Failed to add message');
+    throw error instanceof Error ? error : new Error('Failed to add message');
   }
 }
-
 export async function updateMessage(
   messageId: string,
   updates: Partial<{

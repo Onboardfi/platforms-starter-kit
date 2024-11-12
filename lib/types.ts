@@ -53,6 +53,7 @@ export interface MessageMetadata {
   stepId?: string;
   stepTitle?: string;
   isFinal?: boolean;
+  audioDurationSeconds?: number;  // Add this
 }
 
 export interface ConversationMetadata {
@@ -90,7 +91,8 @@ export interface SelectMessage {
   type: MessageType;
   role: MessageRole;
   content: MessageContent;
-  metadata: MessageMetadata;
+  metadata: MessageMetadata;  // This will now include audioDurationSeconds
+
   toolCalls: ToolCall[];
   stepId?: string;
   orderIndex: string;

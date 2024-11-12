@@ -85,6 +85,27 @@
       "when": 1730744713517,
       "tag": "0011_add_agents_table20",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1731424741703,
+      "tag": "0012_add_agents_table0001",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1731429169063,
+      "tag": "0013_add_agents_table0002",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1731434263348,
+      "tag": "0014_add_agents_table0003",
+      "breakpoints": true
     }
   ]
 }

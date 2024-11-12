@@ -44,8 +44,7 @@ export default async function Page() {
     !agentsData ||
     !sitesData ||
     !chartData ||
-    usageData === null ||
-    usageData === undefined
+    !usageData
   ) {
     notFound();
   }
@@ -55,6 +54,17 @@ export default async function Page() {
 
   // Get the 5 most recent sites
   const recentSites: SelectSite[] = sitesData.slice(0, 5);
+
+  // Define usage limits based on plan (adjust these as needed)
+  const USAGE_LIMITS = {
+    Free: 1000,
+    Pro: 10000,
+    Enterprise: 100000
+  };
+
+  // Determine user's plan (you might want to get this from your user data)
+  const userPlan = 'Pro'; // This should come from your user data
+  const usageLimit = USAGE_LIMITS[userPlan];
 
   return (
     <div className="space-y-6">
@@ -66,18 +76,19 @@ export default async function Page() {
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Chart 
-              chartData={chartData} // Changed from initialData to chartData
+              chartData={chartData}
               className="col-span-2 rounded-xl border border-white/[0.02] 
                 bg-neutral-900/50 backdrop-blur-md p-6 shine shadow-dream" 
             />
+            <Suspense fallback={<div>Loading usage data...</div>}>
             <Usage 
-              totalUsage={100} 
-              used={usageData} 
-              plan="Pro"
-              className="rounded-xl border border-white/[0.02] 
-                bg-neutral-900/50 backdrop-blur-md p-6 shine shadow-dream"
-            />
+  plan={userPlan}
+  limit={usageLimit}
+
+/>
+            </Suspense>
           </div>
+
           {/* Quick Links */}
           <div className="py-6">
             <Links />

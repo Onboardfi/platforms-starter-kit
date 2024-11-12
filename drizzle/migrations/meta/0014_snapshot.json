@@ -1,6 +1,6 @@
 {
-  "id": "1e8e24b3-96b2-47bd-be9f-aacdbc4d299e",
-  "prevId": "f143bd0f-f38c-4b29-9170-8aac16d9f401",
+  "id": "1ff809d1-edfe-42f4-a7e3-b9d06d83cfe7",
+  "prevId": "bbe16b58-d55b-4bfc-9ce6-7afbf627851e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1488,7 +1488,7 @@
           "type": "text",
           "primaryKey": true,
           "notNull": true,
-          "default": "'vy32tccnxgog8z4w2giw6xs0'"
+          "default": "'oghjmso84fj8tvrh0j12cowc'"
         },
         "type": {
           "name": "type",
@@ -1705,7 +1705,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "set null",
           "onUpdate": "no action"
         },
         "usage_logs_sessionId_onboarding_sessions_id_fk": {
@@ -1718,7 +1718,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "set null",
           "onUpdate": "no action"
         },
         "usage_logs_conversationId_conversations_id_fk": {
@@ -1731,7 +1731,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "set null",
           "onUpdate": "no action"
         },
         "usage_logs_messageId_messages_id_fk": {
@@ -1744,7 +1744,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -1793,6 +1793,18 @@
         },
         "image": {
           "name": "image",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stripeCustomerId": {
+          "name": "stripeCustomerId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stripeSubscriptionId": {
+          "name": "stripeSubscriptionId",
           "type": "text",
           "primaryKey": false,
           "notNull": false

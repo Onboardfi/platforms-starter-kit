@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { MessageCircle, User } from "lucide-react";
+import { MessageCircle, User, Clock } from "lucide-react";
 
 interface ConversationTabProps {
   items: any[];
@@ -36,6 +36,16 @@ export function ConversationTab({
       return item.formatted.transcript || item.formatted.text || "(Truncated)";
     }
     return item.content?.text || item.content?.transcript || "(No content)";
+  };
+
+  const formatDuration = (seconds: number): string => {
+    if (!seconds) return '';
+    if (seconds < 60) {
+      return `${Math.round(seconds)}s`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.round(seconds % 60);
+    return `${minutes}m ${remainingSeconds}s`;
   };
 
   return (
@@ -93,14 +103,25 @@ export function ConversationTab({
                         color: 'white',
                       }}
                     >
-                      {/* Role Icon */}
-                      <div className="flex items-center space-x-2 mb-2 text-xs text-white/50">
-                        {item.role === "assistant" ? (
-                          <MessageCircle size={12} />
-                        ) : (
-                          <User size={12} />
-                        )}
-                        <span className="capitalize">{item.role}</span>
+                      {/* Role Icon and Audio Duration */}
+                      <div className="flex items-center justify-between mb-2 text-xs text-white/50">
+                        <div className="flex items-center space-x-2">
+                          {item.role === "assistant" ? (
+                            <MessageCircle size={12} />
+                          ) : (
+                            <User size={12} />
+                          )}
+                          <span className="capitalize">{item.role}</span>
+                        </div>
+                        {item.metadata?.audioDurationSeconds && (
+  <div className="flex items-center space-x-1">
+    <Clock size={12} className="opacity-50" />
+    <span>
+      {formatDuration(item.metadata.audioDurationSeconds)}
+    </span>
+  </div>
+)}
+
                       </div>
 
                       {/* Message Text */}
@@ -109,20 +130,30 @@ export function ConversationTab({
                           {formatMessageContent(item)}
                         </p>
 
+                        {/* Audio Info Badge */}
+                        {item.metadata?.audio && (
+                          <Badge
+                            variant="outline"
+                            className="mt-2 mr-2 text-[10px] px-2 py-0.5 rounded-full
+                                     bg-white/5 border-white/10 text-white/50 shine"
+                          >
+                            {`${item.metadata.audio.sampleRate/1000}kHz`}
+                            {item.metadata.audio.channels && ` · ${item.metadata.audio.channels}ch`}
+                          </Badge>
+                        )}
+
                         {/* Step Badge */}
                         {item.metadata?.stepTitle && (
                           <Badge
                             variant="outline"
                             className="mt-2 text-[10px] px-2 py-0.5 rounded-full
-                                       bg-white/5 border-white/10 text-white/50 shine"
+                                     bg-white/5 border-white/10 text-white/50 shine"
                           >
                             {item.metadata.stepTitle}
                           </Badge>
                         )}
                       </div>
                     </div>
-
-                    {/* Removed Hover Effect Gradient Border */}
                   </div>
                 </div>
               ))}
@@ -147,3 +178,5 @@ function EmptyState({ message }: { message: string }) {
     </div>
   );
 }
+
+export default ConversationTab;
