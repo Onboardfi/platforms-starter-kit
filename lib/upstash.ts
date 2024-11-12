@@ -696,16 +696,15 @@ if (role === 'assistant' && finalMetadata.audioDurationSeconds && effectiveUserI
     const user = await db.query.users.findFirst({
       where: eq(users.id, effectiveUserId),
     });
-
     if (user?.stripeCustomerId) {
       await stripe.billing.meterEvents.create({
         event_name: 'api_requests',
         payload: {
           stripe_customer_id: user.stripeCustomerId,
-          value: finalMetadata.audioDurationSeconds.toString(), // Usage in seconds
+          value: Math.round(finalMetadata.audioDurationSeconds).toString(), // Round to nearest integer
         },
       });
-
+    
       console.log(`Sent meter event to Stripe for user ${effectiveUserId}`);
     }
   } catch (error) {
