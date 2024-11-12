@@ -6,6 +6,7 @@ import CreateSiteButton from "@/components/create-site-button";
 import CreateSiteModal from "@/components/modal/create-site";
 import { Metadata } from "next";
 
+
 export const metadata: Metadata = {
   title: "Sites | Platform",
   description: "Manage your sites",
