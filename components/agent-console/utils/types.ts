@@ -85,19 +85,12 @@ export interface FooterProps {
 
 export interface NavbarProps {
   LOCAL_RELAY_SERVER_URL: string;
-  apiKey: string;
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  primaryColor: string;
+  secondaryColor: string;
 }
 
-
-export interface NavbarProps {
-  LOCAL_RELAY_SERVER_URL: string;
-  apiKey: string;
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
-  onApiKeyUpdate: (newApiKey: string) => void;  // Add this line
-}
 
 export interface RealtimeEvent {
   time: string;

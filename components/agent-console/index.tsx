@@ -1,5 +1,3 @@
-
-///Users/bobbygilbert/Documents/Github/platforms-starter-kit/components/agent-console/index.tsx
 'use client';
 
 // Core React imports
@@ -9,15 +7,16 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Navbar } from './Navbar';
 import { TabContent } from './TabContent';
 import { Footer } from './Footer';
-
 import { EmailTemplate } from '@/components/email-template';
 import OnboardingProgressSidebar from '@/components/OnboardingProgressCard';
+
 // UI Component imports
 import { Badge } from "@/components/ui/badge";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-// Third-party imports
-import { RealtimeClient } from '@openai/realtime-api-beta';
+// WebSocket and utils imports
+import { WebSocketClient } from '@/lib/realtime/websocket-client';
+import type { WebSocketMessage, ToolDefinition, ToolCallData } from '@/lib/realtime/types';
 import { toast } from 'sonner';
 import axios from 'axios';
 
@@ -38,16 +37,53 @@ import {
   RealtimeEvent 
 } from './utils/types';
 
+// Type definitions
+interface WebSocketEvent {
+  item: {
+    id: string;
+    role?: string;
+    status?: string;
+    formatted?: {
+      text?: string;
+      transcript?: string;
+      audio?: ArrayBuffer;
+      tool?: {
+        name: string;
+        arguments: string;
+      };
+    };
+    metadata?: Record<string, any>;
+  };
+  delta?: {
+    audio?: Int16Array;
+    transcript?: string;
+  };
+}
+
+interface MessageData {
+  conversationId: string;
+  message: {
+    role: string;
+    content: {
+      text: string;
+      transcript?: string;
+      audioUrl?: string;
+    };
+    metadata: Record<string, any>;
+  };
+}
+
+interface ConversationMetadata {
+  sessionId: string;
+  conversationId: string;
+  agentId: string;
+  clientId: string;
+  timestamp: string;
+}
+
 function AgentConsole({ agent }: AgentConsoleProps) {
-  // Initialize RealtimeClient ref at the top level
-  const clientRef = useRef<InstanceType<typeof RealtimeClient>>(
-    new RealtimeClient({
-      apiKey: typeof window !== 'undefined' 
-        ? localStorage.getItem('tmp::voice_api_key') || ''
-        : '',
-      dangerouslyAllowAPIKeyInBrowser: true,
-    })
-  );
+  // WebSocket client ref
+  const clientRef = useRef<WebSocketClient>(new WebSocketClient());
 
   // UI State
   const [activeTab, setActiveTab] = useState('workspace');
@@ -55,17 +91,9 @@ function AgentConsole({ agent }: AgentConsoleProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [canPushToTalk, setCanPushToTalk] = useState(true);
   const [data, setData] = useState(agent);
-  
-  // API Key State
-  const [apiKey, setApiKey] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('tmp::voice_api_key') || '';
-    }
-    return '';
-  });
 
   // Conversation State
-  const [items, setItems] = useState<any[]>([]);
+  const [items, setItems] = useState<WebSocketEvent['item'][]>([]);
   const [realtimeEvents, setRealtimeEvents] = useState<RealtimeEvent[]>([]);
   const [draftNote, setDraftNote] = useState<string | null>(null);
   const [draftEmail, setDraftEmail] = useState<DraftEmail | null>(null);
@@ -88,7 +116,7 @@ function AgentConsole({ agent }: AgentConsoleProps) {
   const [notionMessageSent, setNotionMessageSent] = useState(false);
   const [memoryKv, setMemoryKv] = useState<{ [key: string]: any }>({});
 
-  // Refs
+  // Audio and UI Refs
   const wavRecorderRef = useRef<WavRecorder>(
     new WavRecorder({ sampleRate: 24000 })
   );
@@ -99,335 +127,79 @@ function AgentConsole({ agent }: AgentConsoleProps) {
   const serverCanvasRef = useRef<HTMLCanvasElement>(null);
   const startTimeRef = useRef<string>(new Date().toISOString());
 
- // **Add this ref to keep track of audio lengths per message**
- const audioLengthsPerMessage = useRef<{ [messageId: string]: number }>({});
+  // Audio Message Tracking
+  const audioLengthsPerMessage = useRef<{ [messageId: string]: number }>({});
 
-  // API Key Management
-  const handleApiKeyUpdate = useCallback((newApiKey: string) => {
-    setApiKey(newApiKey);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('tmp::voice_api_key', newApiKey);
-    }
-    
-    // Update client with new API key
-    clientRef.current = new RealtimeClient({
-      apiKey: newApiKey,
-      dangerouslyAllowAPIKeyInBrowser: true,
-    });
-    
-    // Reconnect if connected
-    if (isConnected) {
-      disconnectConversation().then(() => connectConversation());
-    }
-  }, [isConnected]);
-
-  // Session Management
-  const fetchSessions = useCallback(async () => {
-    if (!agent.id) return;
-    
+  // Message Handlers
+  const saveMessage = async (item: WebSocketEvent['item']) => {
     try {
-      setIsLoadingSessions(true);
-      const response = await axios.get(`/api/getSessions?agentId=${agent.id}`);
-      setSessions(response.data.sessions || []);
-    } catch (error) {
-      console.error('Failed to fetch sessions:', error);
-      toast.error('Failed to load sessions');
-    } finally {
-      setIsLoadingSessions(false);
-    }
-  }, [agent.id]);
-
-  const createNewSession = useCallback(async () => {
-    if (!agent.id) return null;
-    
-    try {
-      const response = await apiClient.post('/api/createSession', {
-        name: `Session ${new Date().toLocaleString()}`,
-        type: data.settings?.onboardingType || 'internal',
-        agentId: agent.id
-      }, {
-        headers: {
-          'x-agent-id': agent.id,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (response.data.error) {
-        throw new Error(response.data.error);
-      }
-  
-      const newSessionId = response.data.sessionId;
-      
-      // Reset states and save session ID
-      setCurrentSessionId(newSessionId);
-      localStorage.setItem('lastSessionId', newSessionId);
-      setEmailSent(false);
-      setNotesTaken(false);
-      setNotionMessageSent(false);
-      setMemoryKv({});
-      setItems([]);
-      
-      // Reset conversation if connected
-      if (isConnected) {
-        await disconnectConversation();
-        await connectConversation(newSessionId);
-      }
-      
-      toast.success('New session created');
-      await fetchSessions();
-      return newSessionId;
-    } catch (error) {
-      console.error('Failed to create session:', error);
-      toast.error('Failed to create session');
-      return null;
-    }
-  }, [agent.id, data.settings?.onboardingType, fetchSessions, isConnected]);
-
-  // Session State Management
-  const loadSessionState = useCallback(async (sessionId: string) => {
-    const session = sessions.find(s => s.id === sessionId);
-    if (!session) return;
-
-    // Reset states
-    setEmailSent(false);
-    setNotesTaken(false);
-    setNotionMessageSent(false);
-    setMemoryKv({});
-
-    // Update based on session progress
-    session.stepProgress.steps.forEach(step => {
-      if (step.completed) {
-        switch (step.completionTool) {
-          case 'email':
-            setEmailSent(true);
-            break;
-          case 'notesTaken':
-            setNotesTaken(true);
-            break;
-          case 'notion':
-            setNotionMessageSent(true);
-            break;
-        }
-      }
-    });
-  }, [sessions]);
-
-  const handleSessionSelect = useCallback(async (sessionId: string) => {
-    try {
-      setCurrentSessionId(sessionId);
-      localStorage.setItem('lastSessionId', sessionId);
-      await loadSessionState(sessionId);
-      
-      if (isConnected) {
-        await disconnectConversation();
-      }
-      await connectConversation(sessionId);
-    } catch (error) {
-      console.error('Failed to switch session:', error);
-      toast.error('Failed to switch session');
-    }
-  }, [loadSessionState, isConnected]);
-
-  // Step Completion Management
-  const updateStepStatus = useCallback(async (completionTool: string) => {
-    if (!currentSessionId) {
-      console.warn('No active session for step update');
-      return;
-    }
-
-    try {
-      await axios.post('/api/updateSessionSteps', {
-        agentId: agent.id,
-        sessionId: currentSessionId,
-        completionTool,
-        completed: true
-      });
-
-      // Update local state based on tool
-      switch (completionTool) {
-        case 'email':
-          setEmailSent(true);
-          break;
-        case 'notesTaken':
-          setNotesTaken(true);
-          break;
-        case 'notion':
-          setNotionMessageSent(true);
-          break;
-      }
-
-      await fetchSessions();
-    } catch (error) {
-      console.error('Failed to update step:', error);
-      toast.error('Failed to update step completion');
-    }
-  }, [currentSessionId, agent.id, fetchSessions]);
-
-  // Client Setup Effect
-  useEffect(() => {
-    const client = clientRef.current;
-
-    const setupClient = () => {
-      // Basic session setup
-      client.updateSession({ 
-        instructions: instructions,
-        input_audio_transcription: { model: 'whisper-1' }
-      });
-
-      // Set up event handlers
-      client.on('realtime.event', (realtimeEvent: RealtimeEvent) => {
-        setRealtimeEvents(prev => {
-          const lastEvent = prev[prev.length - 1];
-          if (lastEvent?.event.type === realtimeEvent.event.type) {
-            lastEvent.count = (lastEvent.count || 0) + 1;
-            return [...prev.slice(0, -1), lastEvent];
+      const messageData: MessageData = {
+        conversationId: item.metadata?.conversationId || '',
+        message: {
+          role: item.role || 'user',
+          content: {
+            text: item.formatted?.text || '',
+            transcript: item.formatted?.transcript || '',
+            audioUrl: item.formatted?.audio ? `/audio/${item.id}.wav` : undefined
+          },
+          metadata: {
+            ...item.metadata,
+            sessionId: currentSessionId,
+            isFinal: true,
+            clientId: `${agent.id}-${currentSessionId}`,
+            toolCalls: item.metadata?.toolCalls || []
           }
-          return [...prev, realtimeEvent];
-        });
-      });
+        }
+      };
 
-      client.on('conversation.interrupted', async () => {
-        const trackSampleOffset = await wavStreamPlayerRef.current.interrupt();
-        if (trackSampleOffset?.trackId) {
-          await client.cancelResponse(trackSampleOffset.trackId, trackSampleOffset.offset);
+      await axios.post('/api/saveMessage', messageData, {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-agent-id': agent.id
         }
       });
+    } catch (error) {
+      console.error('Failed to save message:', error);
+      if (error instanceof Error) {
+        toast.error(`Failed to save message: ${error.message}`);
+      } else {
+        toast.error('Failed to save message');
+      }
+    }
+  };
 
-     // Update the conversation.updated event handler in AgentConsole.tsx
-   // **Update the conversation.updated event handler**
-   client.on('conversation.updated', async ({ item, delta }: any) => {
+  // WebSocket Event Handler
+  const handleConversationEvent = useCallback(({ item, delta }: WebSocketEvent) => {
     if (delta?.audio) {
       wavStreamPlayerRef.current.add16BitPCM(delta.audio, item.id);
 
-   // **Accumulate audio length for this message**
-   const audioDataLength = delta.audio.length; // Length in bytes
-
-   if (!audioLengthsPerMessage.current[item.id]) {
-     audioLengthsPerMessage.current[item.id] = 0;
-   }
-   audioLengthsPerMessage.current[item.id] += audioDataLength;
-
-   // **Calculate the duration**
-   const sampleRate = wavStreamPlayerRef.current.sampleRate;
-   const totalAudioLength = audioLengthsPerMessage.current[item.id];
-   const durationSeconds = totalAudioLength / (sampleRate * 2); // 2 bytes per sample
-
-   // **Include duration in item metadata**
-   item.metadata = item.metadata || {};
-   item.metadata.audioDurationSeconds = durationSeconds;
- }
-
-
-
-
-      // **For user messages**
-        if (item.status === 'completed' && item.role === 'user') {
-          // **Get the recorded duration**
-          const durationSeconds = wavRecorderRef.current.getRecordedDuration();
-
-          // **Include duration in item metadata**
-          item.metadata = item.metadata || {};
-          item.metadata.audioDurationSeconds = durationSeconds;
-
-          // **Reset total samples recorded**
-          wavRecorderRef.current.totalSamplesRecorded = 0;
-        }
- // **For assistant messages, reset accumulated length when completed**
- if (item.status === 'completed' && item.role === 'assistant') {
-  delete audioLengthsPerMessage.current[item.id];
-}
-
-      
-      if (item.status === 'completed' && item.role) {
-        try {
-          // Get metadata from stored state
-          const clientMetadata = client.metadata || {};
-          let effectiveConversationId = clientMetadata.conversationId;
-          
-          if (!effectiveConversationId) {
-            console.warn('No conversation ID found in client metadata');
-            
-            if (item.metadata?.conversationId) {
-              console.log('Found conversation ID in item metadata:', item.metadata.conversationId);
-              effectiveConversationId = item.metadata.conversationId;
-            } else {
-              console.error('No conversation ID available in either source');
-              return;
-            }
-          }
-    
-          // Log state for debugging
-          console.log('Saving message with metadata:', {
-            conversationId: effectiveConversationId,
-            sessionId: clientMetadata.sessionId,
-            agentId: clientMetadata.agentId,
-            messageId: item.id,
-            role: item.role
-          });
-    
-          // Prepare message data
-          const messageData = {
-            conversationId: effectiveConversationId,
-            message: {
-              role: item.role,
-              content: {
-                text: item.formatted?.text || '',
-                transcript: item.formatted?.transcript || '',
-                audioUrl: item.formatted?.audio ? `/audio/${item.id}.wav` : undefined
-              },
-              metadata: {
-                ...item.metadata,
-                sessionId: clientMetadata.sessionId,
-                stepTitle: item.metadata?.stepTitle,
-                isFinal: true,
-                clientId: clientMetadata.clientId || item.metadata?.clientId,
-                toolCalls: item.metadata?.toolCalls || []
-              }
-            }
-          };
-    
-          // Save message with proper headers
-          await axios.post('/api/saveMessage', messageData, {
-            headers: {
-              'Content-Type': 'application/json',
-              'x-agent-id': clientMetadata.agentId || agent.id
-            }
-          });
-          
-          console.log('Successfully saved message:', {
-            messageId: item.id,
-            conversationId: effectiveConversationId,
-            agentId: clientMetadata.agentId || agent.id,
-            role: item.role
-          });
-    
-        } catch (error) {
-          console.error('Failed to save message:', error, {
-            itemId: item.id,
-            metadata: item.metadata,
-            clientMetadata: client.metadata,
-            agentId: agent.id
-          });
-    
-          // Enhanced error logging
-          if (axios.isAxiosError(error)) {
-            console.error('Axios error details:', {
-              status: error.response?.status,
-              statusText: error.response?.statusText,
-              data: error.response?.data,
-              headers: error.config?.headers
-            });
-          }
-    
-          if (error instanceof Error) {
-            toast.error(`Failed to save message: ${error.message}`);
-          } else {
-            toast.error('Failed to save message');
-          }
-        }
+      // Calculate audio duration
+      const audioDataLength = delta.audio.length;
+      if (!audioLengthsPerMessage.current[item.id]) {
+        audioLengthsPerMessage.current[item.id] = 0;
       }
-      
-    // Update local state
+      audioLengthsPerMessage.current[item.id] += audioDataLength;
+
+      const sampleRate = wavStreamPlayerRef.current.sampleRate;
+      const totalAudioLength = audioLengthsPerMessage.current[item.id];
+      const durationSeconds = totalAudioLength / (sampleRate * 2);
+
+      item.metadata = item.metadata || {};
+      item.metadata.audioDurationSeconds = durationSeconds;
+    }
+
+    if (item.status === 'completed') {
+      if (item.role === 'user') {
+        const durationSeconds = wavRecorderRef.current.getRecordedDuration();
+        item.metadata = item.metadata || {};
+        item.metadata.audioDurationSeconds = durationSeconds;
+        wavRecorderRef.current.totalSamplesRecorded = 0;
+      } else if (item.role === 'assistant') {
+        delete audioLengthsPerMessage.current[item.id];
+      }
+      saveMessage(item);
+    }
+
     setItems(prevItems => {
       const newItems = [...prevItems];
       const index = newItems.findIndex(i => i.id === item.id);
@@ -438,104 +210,235 @@ function AgentConsole({ agent }: AgentConsoleProps) {
       }
       return newItems;
     });
+  }, [agent.id, currentSessionId]);
+
+// Session Management Functions
+const fetchSessions = useCallback(async () => {
+  if (!agent.id) return;
+  
+  try {
+    setIsLoadingSessions(true);
+    const response = await axios.get(`/api/getSessions?agentId=${agent.id}`);
+    setSessions(response.data.sessions || []);
+  } catch (error) {
+    console.error('Failed to fetch sessions:', error);
+    toast.error('Failed to load sessions');
+  } finally {
+    setIsLoadingSessions(false);
+  }
+}, [agent.id]);
+
+const createNewSession = useCallback(async () => {
+  if (!agent.id) return null;
+  
+  try {
+    const response = await apiClient.post('/api/createSession', {
+      name: `Session ${new Date().toLocaleString()}`,
+      type: data.settings?.onboardingType || 'internal',
+      agentId: agent.id
+    }, {
+      headers: {
+        'x-agent-id': agent.id,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (response.data.error) {
+      throw new Error(response.data.error);
+    }
+
+    const newSessionId = response.data.sessionId;
+    
+    // Reset states and save session ID
+    setCurrentSessionId(newSessionId);
+    localStorage.setItem('lastSessionId', newSessionId);
+    setEmailSent(false);
+    setNotesTaken(false);
+    setNotionMessageSent(false);
+    setMemoryKv({});
+    setItems([]);
+    
+    // Reset conversation if connected
+    if (isConnected) {
+      await disconnectConversation();
+      await connectConversation(newSessionId);
+    }
+    
+    toast.success('New session created');
+    await fetchSessions();
+    return newSessionId;
+  } catch (error) {
+    console.error('Failed to create session:', error);
+    toast.error('Failed to create session');
+    return null;
+  }
+}, [agent.id, data.settings?.onboardingType, fetchSessions, isConnected]);
+
+const loadSessionState = useCallback(async (sessionId: string) => {
+  const session = sessions.find(s => s.id === sessionId);
+  if (!session) return;
+
+  // Reset states
+  setEmailSent(false);
+  setNotesTaken(false);
+  setNotionMessageSent(false);
+  setMemoryKv({});
+
+  // Update based on session progress
+  session.stepProgress.steps.forEach(step => {
+    if (step.completed) {
+      switch (step.completionTool) {
+        case 'email':
+          setEmailSent(true);
+          break;
+        case 'notesTaken':
+          setNotesTaken(true);
+          break;
+        case 'notion':
+          setNotionMessageSent(true);
+          break;
+      }
+    }
   });
-      // Add tool setup
-      if (agent.settings?.tools) {
-        // Email tool
-        if (agent.settings.tools.includes('email')) {
-          client.addTool(
-            {
-              name: 'send_email',
-              description: 'Prepare a draft email to send to a new client.',
-              parameters: {
-                type: 'object',
-                properties: {
-                  to: { type: 'string', description: 'Email address of the recipient.' },
-                  subject: { type: 'string', description: 'Subject of the email.' },
-                  firstName: { type: 'string', description: 'First name of the recipient.' }
-                },
-                required: ['to', 'subject', 'firstName']
-              }
-            },
-            async ({ to, subject, firstName }: { [key: string]: any }) => {
-              setDraftEmail({ to, subject, firstName });
-              return { 
-                ok: true,
-                message: 'Draft email created. You can now review and edit it before sending.'
-              };
-            }
-          );
-        }
+}, [sessions]);
 
-        // Memory tool
-        if (agent.settings.tools.includes('memory')) {
-          client.addTool(
-            {
-              name: 'set_memory',
-              description: 'Saves important data about the user into memory.',
-              parameters: {
-                type: 'object',
-                properties: {
-                  key: {
-                    type: 'string',
-                    description: 'The key of the memory value. Always use lowercase and underscores.'
-                  },
-                  value: {
-                    type: 'string',
-                    description: 'Value can be anything represented as a string'
-                  }
-                },
-                required: ['key', 'value']
-              }
-            },
-            async ({ key, value }: { [key: string]: any }) => {
-              setMemoryKv(prev => ({
-                ...prev,
-                [key]: key === 'tasks' ? value.split(',').map((t: string) => t.trim()) : value
-              }));
-              return { ok: true };
-            }
-          );
-        }
+const handleSessionSelect = useCallback(async (sessionId: string) => {
+  try {
+    setCurrentSessionId(sessionId);
+    localStorage.setItem('lastSessionId', sessionId);
+    await loadSessionState(sessionId);
+    
+    if (isConnected) {
+      await disconnectConversation();
+    }
+    await connectConversation(sessionId);
+  } catch (error) {
+    console.error('Failed to switch session:', error);
+    toast.error('Failed to switch session');
+  }
+}, [loadSessionState, isConnected]);
 
-        // Notion tool
-        if (agent.settings.tools.includes('notion')) {
-          client.addTool(
-            {
-              name: 'add_notion_message',
-              description: 'Prepare a draft message or note to potentially add to a specified Notion page.',
-              parameters: {
-                type: 'object',
-                properties: {
-                  messageContent: {
-                    type: 'string',
-                    description: 'The content of the draft message or note.'
-                  }
-                },
-                required: ['messageContent']
-              }
-            },
-            async ({ messageContent }: { [key: string]: any }) => {
-              setDraftNote(messageContent);
-              return {
-                ok: true,
-                message: 'Draft note created. You can now review and edit it before sending.'
-              };
-            }
-          );
-        }
+// Tool Setup Functions
+const setupTools = useCallback((client: WebSocketClient) => {
+  if (!agent.settings?.tools) return;
+
+  // Email Tool
+  if (agent.settings.tools.includes('email')) {
+    const emailTool: ToolDefinition = {
+      name: 'send_email',
+      description: 'Prepare a draft email to send to a new client.',
+      parameters: {
+        type: 'object',
+        properties: {
+          to: { type: 'string', description: 'Email address of the recipient.' },
+          subject: { type: 'string', description: 'Subject of the email.' },
+          firstName: { type: 'string', description: 'First name of the recipient.' }
+        },
+        required: ['to', 'subject', 'firstName']
       }
     };
 
-    setupClient();
+    client.addTool(emailTool, async (params) => {
+      setDraftEmail(params as DraftEmail);
+      return {
+        ok: true,
+        message: 'Draft email created. You can now review and edit it before sending.'
+      };
+    });
+  }
 
-    return () => {
-      client.reset();
+  // Memory Tool
+  if (agent.settings.tools.includes('memory')) {
+    const memoryTool: ToolDefinition = {
+      name: 'set_memory',
+      description: 'Saves important data about the user into memory.',
+      parameters: {
+        type: 'object',
+        properties: {
+          key: {
+            type: 'string',
+            description: 'The key of the memory value. Always use lowercase and underscores.'
+          },
+          value: {
+            type: 'string',
+            description: 'Value can be anything represented as a string'
+          }
+        },
+        required: ['key', 'value']
+      }
     };
-  }, [agent.id, agent.settings?.tools, instructions]); // Added agent.id to deps
 
-// Connect/Disconnect Handlers
+    client.addTool(memoryTool, async ({ key, value }) => {
+      setMemoryKv(prev => ({
+        ...prev,
+        [key]: key === 'tasks' ? value.split(',').map((t: string) => t.trim()) : value
+      }));
+      return { ok: true };
+    });
+  }
 
+  // Notion Tool
+  if (agent.settings.tools.includes('notion')) {
+    const notionTool: ToolDefinition = {
+      name: 'add_notion_message',
+      description: 'Prepare a draft message or note to potentially add to a specified Notion page.',
+      parameters: {
+        type: 'object',
+        properties: {
+          messageContent: {
+            type: 'string',
+            description: 'The content of the draft message or note.'
+          }
+        },
+        required: ['messageContent']
+      }
+    };
+
+    client.addTool(notionTool, async ({ messageContent }) => {
+      setDraftNote(messageContent);
+      return {
+        ok: true,
+        message: 'Draft note created. You can now review and edit it before sending.'
+      };
+    });
+  }
+}, []);
+
+// Step Completion Management
+const updateStepStatus = useCallback(async (completionTool: string) => {
+  if (!currentSessionId) {
+    console.warn('No active session for step update');
+    return;
+  }
+
+  try {
+    await axios.post('/api/updateSessionSteps', {
+      agentId: agent.id,
+      sessionId: currentSessionId,
+      completionTool,
+      completed: true
+    });
+
+    // Update local state based on tool
+    switch (completionTool) {
+      case 'email':
+        setEmailSent(true);
+        break;
+      case 'notesTaken':
+        setNotesTaken(true);
+        break;
+      case 'notion':
+        setNotionMessageSent(true);
+        break;
+    }
+
+    await fetchSessions();
+  } catch (error) {
+    console.error('Failed to update step:', error);
+    toast.error('Failed to update step completion');
+  }
+}, [currentSessionId, agent.id, fetchSessions]);
+// Connection and Conversation Management
 const connectConversation = useCallback(async (sessionId?: string) => {
   const effectiveSessionId = sessionId || currentSessionId;
   if (!effectiveSessionId) {
@@ -543,13 +446,8 @@ const connectConversation = useCallback(async (sessionId?: string) => {
     return;
   }
 
-  if (!apiKey) {
-    toast.error('API key not set');
-    return;
-  }
-
   try {
-    // Create or get conversation
+    // Get or create conversation ID
     const conversationResponse = await axios.post('/api/getOrCreateConversation', {
       sessionId: effectiveSessionId,
       agentId: agent.id
@@ -561,26 +459,30 @@ const connectConversation = useCallback(async (sessionId?: string) => {
     
     const { conversationId, isNew } = conversationResponse.data;
 
-    // Set up client metadata
-    const client = clientRef.current;
-    
-    // Store metadata in client instance
-    client.metadata = {
-      sessionId: effectiveSessionId,
-      conversationId,
-      agentId: agent.id,
-      clientId: `${agent.id}-${effectiveSessionId}`,
-      timestamp: new Date().toISOString()
-    };
+    // Initialize audio components
+    await wavRecorderRef.current.begin();
+    await wavStreamPlayerRef.current.connect();
 
-    // Update session with metadata and instructions
-    await client.updateSession({ 
-      metadata: client.metadata,
-      instructions,
-      input_audio_transcription: { model: 'whisper-1' }
+    // Connect WebSocket client
+    await clientRef.current.connect();
+
+    // Send initialization data
+    clientRef.current.send({
+      type: 'connect',
+      data: {
+        metadata: {
+          sessionId: effectiveSessionId,
+          conversationId,
+          agentId: agent.id,
+          clientId: `${agent.id}-${effectiveSessionId}`,
+          timestamp: new Date().toISOString()
+        },
+        instructions,
+        input_audio_transcription: { model: 'whisper-1' }
+      }
     });
-    
-    // If existing conversation, load previous messages
+
+    // Load existing messages if needed
     if (!isNew) {
       try {
         const messagesResponse = await axios.get(
@@ -598,305 +500,352 @@ const connectConversation = useCallback(async (sessionId?: string) => {
       }
     }
 
-    // Initialize audio components
-    await wavRecorderRef.current.begin();
-    await wavStreamPlayerRef.current.connect();
-    
-    // Connect client
-    startTimeRef.current = new Date().toISOString();
     setIsConnected(true);
     setRealtimeEvents([]);
-    await client.connect();
-
+    
     // Send initial message if new conversation
     if (isNew && agent.settings?.initialMessage) {
-      client.sendUserMessageContent([
-        { type: 'input_text', text: agent.settings.initialMessage }
-      ]);
+      clientRef.current.send({
+        type: 'user_message',
+        data: [{ type: 'input_text', text: agent.settings.initialMessage }]
+      });
     }
 
-    if (client.getTurnDetectionType() === 'server_vad') {
-      await wavRecorderRef.current.record((data) => 
-        client.appendInputAudio(data.mono)
-      );
-    }
-
-    console.log('Connected to conversation with metadata:', client.metadata);
     toast.success('Connected to conversation!');
-    
   } catch (error) {
     console.error('Failed to connect conversation:', error);
     toast.error('Failed to connect to conversation');
     setIsConnected(false);
   }
-}, [currentSessionId, agent.id, agent.settings?.initialMessage, apiKey, instructions]);
+}, [currentSessionId, agent.id, agent.settings?.initialMessage, instructions]);
 
-
-
-  const disconnectConversation = useCallback(async () => {
-    try {
-      setIsConnected(false);
-      setItems([]);
-      await wavRecorderRef.current.end();
-      await wavStreamPlayerRef.current.interrupt();
-      if (clientRef.current) {
-        clientRef.current.disconnect();
-      }
-      toast.info('Disconnected from conversation.');
-    } catch (error) {
-      console.error('Failed to disconnect:', error);
+const disconnectConversation = useCallback(async () => {
+  try {
+    setIsConnected(false);
+    setItems([]);
+    await wavRecorderRef.current.end();
+    await wavStreamPlayerRef.current.interrupt();
+    if (clientRef.current) {
+      clientRef.current.disconnect();
     }
-  }, []);
+    toast.info('Disconnected from conversation.');
+  } catch (error) {
+    console.error('Failed to disconnect:', error);
+  }
+}, []);
 
-  // Recording Handlers
-  const startRecording = async () => {
-    if (!clientRef.current) return;
-    setIsRecording(true);
-    await wavRecorderRef.current.record((data) => 
-      clientRef.current?.appendInputAudio(data.mono)
-    );
+// Recording Handlers
+const startRecording = async () => {
+  if (!clientRef.current) return;
+  setIsRecording(true);
+  await wavRecorderRef.current.record((data) => 
+    clientRef.current?.appendInputAudio(data.mono)
+  );
+};
+
+const stopRecording = async () => {
+  if (!clientRef.current) return;
+  setIsRecording(false);
+  await wavRecorderRef.current.pause();
+  clientRef.current.createResponse();
+};
+
+// Draft Message Handlers
+const handleSendNote = useCallback(async () => {
+  if (!draftNote || !currentSessionId) return;
+  
+  try {
+    await axios.post('/api/addMessageToNotion', { 
+      messageContent: draftNote,
+      sessionId: currentSessionId 
+    });
+    
+    setNotesTaken(true);
+    setNotionMessageSent(true);
+    setDraftNote(null);
+
+    if (clientRef.current) {
+      clientRef.current.send({
+        type: 'user_message',
+        data: [{ type: 'input_text', text: 'I just added a note to Notion.' }]
+      });
+    }
+
+    toast.success('Note successfully sent to Notion!');
+    await updateStepStatus('notion');
+  } catch (error) {
+    console.error('Error in add_notion_message:', error);
+    toast.error('Failed to add note to Notion.');
+  }
+}, [draftNote, currentSessionId, updateStepStatus]);
+
+const handleSendEmail = useCallback(async () => {
+  if (!draftEmail || !currentSessionId) return;
+  
+  try {
+    await axios.post('/api/send_email', { 
+      ...draftEmail,
+      sessionId: currentSessionId 
+    });
+    
+    setEmailSent(true);
+    setDraftEmail(null);
+
+    if (clientRef.current) {
+      clientRef.current.send({
+        type: 'user_message',
+        data: [{ type: 'input_text', text: 'I just clicked send email.' }]
+      });
+    }
+
+    toast.success('Email successfully sent!');
+    await updateStepStatus('email');
+  } catch (error) {
+    console.error('Error in send_email:', error);
+    toast.error('Failed to send email.');
+  }
+}, [draftEmail, currentSessionId, updateStepStatus]);
+
+// Client Setup Effect
+useEffect(() => {
+  const client = clientRef.current;
+
+  const handleRealtimeEvent = (event: RealtimeEvent) => {
+    setRealtimeEvents(prev => {
+      const lastEvent = prev[prev.length - 1];
+      if (lastEvent?.event.type === event.event.type) {
+        return [...prev.slice(0, -1), { 
+          ...lastEvent, 
+          count: (lastEvent.count || 0) + 1 
+        }];
+      }
+      return [...prev, event];
+    });
   };
 
-  const stopRecording = async () => {
-    if (!clientRef.current) return;
-    setIsRecording(false);
-    await wavRecorderRef.current.pause();
-    clientRef.current.createResponse();
-    // No need to get duration here as it's handled in conversation.updated
+  const handleConversationInterrupted = async () => {
+    const trackSampleOffset = await wavStreamPlayerRef.current.interrupt();
+    if (trackSampleOffset?.trackId) {
+      await client.cancelResponse(
+        trackSampleOffset.trackId, 
+        trackSampleOffset.offset
+      );
+    }
   };
 
+  const setupClient = () => {
+    // Basic session setup
+    client.updateSession({ 
+      instructions: instructions,
+      input_audio_transcription: { model: 'whisper-1' }
+    });
 
-  // Draft Handlers
-  const handleSendNote = useCallback(async () => {
-    if (!draftNote || !currentSessionId) return;
-    
-    try {
-      await axios.post('/api/addMessageToNotion', { 
-        messageContent: draftNote,
-        sessionId: currentSessionId 
-      });
-      
-      setNotesTaken(true);
-      setNotionMessageSent(true);
-      setDraftNote(null);
+    // Set up event handlers
+    client.on('realtime.event', handleRealtimeEvent);
+    client.on('conversation.interrupted', handleConversationInterrupted);
+    client.on('conversation.updated', handleConversationEvent);
 
-      if (clientRef.current) {
-        clientRef.current.sendUserMessageContent([
-          { type: 'input_text', text: 'I just added a note to Notion.' }
-        ]);
-      }
-
-      toast.success('Note successfully sent to Notion!');
-      await updateStepStatus('notion');
-    } catch (err) {
-      console.error('Error in add_notion_message:', err);
-      toast.error('Failed to add note to Notion.');
+    // Setup tools if available
+    if (agent.settings?.tools) {
+      setupTools(client);
     }
-  }, [draftNote, currentSessionId, updateStepStatus]);
+  };
 
-  const handleSendEmail = useCallback(async () => {
-    if (!draftEmail || !currentSessionId) return;
-    
-    try {
-      await axios.post('/api/send_email', { 
-        ...draftEmail,
-        sessionId: currentSessionId 
-      });
-      
-      setEmailSent(true);
-      setDraftEmail(null);
+  setupClient();
 
-      if (clientRef.current) {
-        clientRef.current.sendUserMessageContent([
-          { type: 'input_text', text: 'I just clicked send email.' }
-        ]);
+  return () => {
+    client.disconnect();
+  };
+}, [
+  agent.id, 
+  agent.settings?.tools, 
+  instructions, 
+  handleConversationEvent, 
+  setupTools
+]);
+
+// Audio Visualization Effect
+useEffect(() => {
+  let isLoaded = true;
+  const wavRecorder = wavRecorderRef.current;
+  const wavStreamPlayer = wavStreamPlayerRef.current;
+
+  const renderVisualizations = () => {
+    if (!isLoaded) return;
+
+    // Client canvas rendering
+    if (clientCanvasRef.current) {
+      const canvas = clientCanvasRef.current;
+      const ctx = canvas.getContext('2d');
+
+      if (!canvas.width || !canvas.height) {
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
       }
 
-      toast.success('Email successfully sent!');
-      await updateStepStatus('email');
-    } catch (err) {
-      console.error('Error in send_email:', err);
-      toast.error('Failed to send email.');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const result = wavRecorder.recording
+          ? wavRecorder.getFrequencies('voice')
+          : { values: new Float32Array([0]) };
+        
+        WavRenderer.drawBars(
+          canvas,
+          ctx,
+          result.values,
+          data.settings?.primaryColor || "#3b82f6",
+          10,
+          0,
+          8
+        );
+      }
     }
-  }, [draftEmail, currentSessionId, updateStepStatus]);
 
-  // Audio Visualization Effect
-  useEffect(() => {
-    let isLoaded = true;
-    const wavRecorder = wavRecorderRef.current;
-    const wavStreamPlayer = wavStreamPlayerRef.current;
+    // Server canvas rendering
+    if (serverCanvasRef.current) {
+      const canvas = serverCanvasRef.current;
+      const ctx = canvas.getContext('2d');
 
-    const render = () => {
-      if (!isLoaded) return;
-
-      // Client canvas rendering
-      if (clientCanvasRef.current) {
-        const canvas = clientCanvasRef.current;
-        const ctx = canvas.getContext('2d');
-
-        if (!canvas.width || !canvas.height) {
-          canvas.width = canvas.offsetWidth;
-          canvas.height = canvas.offsetHeight;
-        }
-
-        if (ctx) {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          const result = wavRecorder.recording
-            ? wavRecorder.getFrequencies('voice')
-            : { values: new Float32Array([0]) };
-          
-          WavRenderer.drawBars(
-            canvas,
-            ctx,
-            result.values,
-            data.settings?.primaryColor || "#3b82f6",
-            10,
-            0,
-            8
-          );
-        }
+      if (!canvas.width || !canvas.height) {
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
       }
 
-      // Server canvas rendering
-      if (serverCanvasRef.current) {
-        const canvas = serverCanvasRef.current;
-        const ctx = canvas.getContext('2d');
-
-        if (!canvas.width || !canvas.height) {
-          canvas.width = canvas.offsetWidth;
-          canvas.height = canvas.offsetHeight;
-        }
-
-        if (ctx) {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          const result = wavStreamPlayer.analyser
-            ? wavStreamPlayer.getFrequencies('voice')
-            : { values: new Float32Array([0]) };
-          
-          WavRenderer.drawBars(
-            canvas,
-            ctx,
-            result.values,
-            data.settings?.secondaryColor || "#10b981",
-            10,
-            0,
-            8
-          );
-        }
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const result = wavStreamPlayer.analyser
+          ? wavStreamPlayer.getFrequencies('voice')
+          : { values: new Float32Array([0]) };
+        
+        WavRenderer.drawBars(
+          canvas,
+          ctx,
+          result.values,
+          data.settings?.secondaryColor || "#10b981",
+          10,
+          0,
+          8
+        );
       }
-
-      requestAnimationFrame(render);
-    };
-
-    render();
-    return () => { isLoaded = false; };
-  }, [data.settings?.primaryColor, data.settings?.secondaryColor]);
-
-  // Initial Setup Effects
-  useEffect(() => {
-    fetchSessions();
-  }, [fetchSessions]);
-
-  useEffect(() => {
-    if (currentSessionId) {
-      loadSessionState(currentSessionId);
     }
-  }, [currentSessionId, loadSessionState]);
 
-  // JSX Return
-  return (
-    <PasswordAuthWrapper 
-      agentId={agent.id}
-      siteName={agent.name || "Internal Onboarding"}
-      authMessage={agent.settings.authentication?.message}
-    >
-      <TooltipProvider>
-        <div className="min-h-screen bg-gray-1100 bg-[url('/grid.svg')]">
-          {/* Sidebar */}
-          <div className="fixed left-0 top-0 bottom-0 w-96 border-r border-gray-800 bg-black overflow-y-auto">
-            <div className="flex-1 flex flex-col">
-             
-              <OnboardingProgressSidebar
-                emailSent={emailSent}
-                notesTaken={notesTaken}
-                notionMessageSent={notionMessageSent}
-                memoryKv={memoryKv}
-                steps={data.settings?.steps || []}
-                title={data.name || undefined}
-                logo={data.site?.logo || null}
-                availableTools={data.settings?.tools || []}
-                agentId={data.id}
-                onStepsUpdated={fetchSessions}
-                primaryColor={data.settings?.primaryColor || "#3b82f6"}
-                secondaryColor={data.settings?.secondaryColor || "#10b981"}
-                currentSessionId={currentSessionId}
-              />
-            </div>
-          </div>
+    requestAnimationFrame(renderVisualizations);
+  };
 
-          {/* Main Content */}
-          <div className="ml-96 min-h-screen flex flex-col">
-          <Navbar
-  LOCAL_RELAY_SERVER_URL={process.env.NEXT_PUBLIC_LOCAL_RELAY_SERVER_URL || ''}
-  apiKey={apiKey}
-  activeTab={activeTab}
-  setActiveTab={setActiveTab}
-  onApiKeyUpdate={handleApiKeyUpdate}
-  primaryColor={data.settings?.primaryColor || '#7928CA'}
-  secondaryColor={data.settings?.secondaryColor || '#FF0080'}
-/>
-<TabContent
-  activeTab={activeTab}
-  agentId={agent.id}
-  items={items}
-  draftNote={draftNote}
-  draftEmail={draftEmail}
-  isEditingDraft={isEditingDraft}
-  isEditingEmail={isEditingEmail}
-  handleEditDraft={() => setIsEditingDraft(true)}
-  handleEditEmail={() => setIsEditingEmail(true)}
-  handleSaveDraft={(draft: string) => {
-    setDraftNote(draft);
-    setIsEditingDraft(false);
-  }}
-  handleSaveEmail={(email: DraftEmail) => {
-    setDraftEmail(email);
-    setIsEditingEmail(false);
-  }}
-  handleSendNote={handleSendNote}
-  handleSendEmail={handleSendEmail}
-  setDraftNote={setDraftNote}
-  setDraftEmail={setDraftEmail}
-  sessions={sessions}
-  isLoadingSessions={isLoadingSessions}
-  createNewSession={createNewSession}
-  currentSessionId={currentSessionId}
-  onSessionSelect={handleSessionSelect}
-  primaryColor={data.settings?.primaryColor || '#7928CA'}  // Added this line
-  secondaryColor={data.settings?.secondaryColor || '#FF0080'}
-/>
+  renderVisualizations();
 
-            <Footer
-              isConnected={isConnected}
-              isRecording={isRecording}
-              canPushToTalk={canPushToTalk}
-              connectConversation={() => connectConversation()}
-              disconnectConversation={disconnectConversation}
-              startRecording={startRecording}
-              stopRecording={stopRecording}
-              changeTurnEndType={(value: string) => setCanPushToTalk(value === 'none')}
-              clientCanvasRef={clientCanvasRef}
-              serverCanvasRef={serverCanvasRef}
-              wavRecorder={wavRecorderRef.current!}
-              wavStreamPlayer={wavStreamPlayerRef.current!}
-              primaryColor={data.settings?.primaryColor}
-              secondaryColor={data.settings?.secondaryColor}
+  return () => { 
+    isLoaded = false; 
+  };
+}, [data.settings?.primaryColor, data.settings?.secondaryColor]);
+
+// Initial Setup Effects
+useEffect(() => {
+  fetchSessions();
+}, [fetchSessions]);
+
+useEffect(() => {
+  if (currentSessionId) {
+    loadSessionState(currentSessionId);
+  }
+}, [currentSessionId, loadSessionState]);
+
+// Component Render
+return (
+  <PasswordAuthWrapper 
+    agentId={agent.id}
+    siteName={agent.name || "Internal Onboarding"}
+    authMessage={agent.settings.authentication?.message}
+  >
+    <TooltipProvider>
+      <div className="min-h-screen bg-gray-1100 bg-[url('/grid.svg')]">
+        {/* Sidebar */}
+        <div className="fixed left-0 top-0 bottom-0 w-96 border-r border-gray-800 bg-black overflow-y-auto">
+          <div className="flex-1 flex flex-col">
+            <OnboardingProgressSidebar
+              emailSent={emailSent}
+              notesTaken={notesTaken}
+              notionMessageSent={notionMessageSent}
+              memoryKv={memoryKv}
+              steps={data.settings?.steps || []}
+              title={data.name || undefined}
+              logo={data.site?.logo || null}
+              availableTools={data.settings?.tools || []}
+              agentId={data.id}
+              onStepsUpdated={fetchSessions}
+              primaryColor={data.settings?.primaryColor || "#3b82f6"}
+              secondaryColor={data.settings?.secondaryColor || "#10b981"}
+              currentSessionId={currentSessionId}
             />
           </div>
         </div>
-      </TooltipProvider>
-    </PasswordAuthWrapper>
-  );
+
+        {/* Main Content */}
+        <div className="ml-96 min-h-screen flex flex-col">
+          {/* Navbar */}
+          <Navbar
+            LOCAL_RELAY_SERVER_URL={process.env.NEXT_PUBLIC_LOCAL_RELAY_SERVER_URL || ''}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            primaryColor={data.settings?.primaryColor || '#7928CA'}
+            secondaryColor={data.settings?.secondaryColor || '#FF0080'}
+          />
+
+          {/* Tab Content */}
+          <TabContent
+            activeTab={activeTab}
+            agentId={agent.id}
+            items={items}
+            draftNote={draftNote}
+            draftEmail={draftEmail}
+            isEditingDraft={isEditingDraft}
+            isEditingEmail={isEditingEmail}
+            handleEditDraft={() => setIsEditingDraft(true)}
+            handleEditEmail={() => setIsEditingEmail(true)}
+            handleSaveDraft={(draft: string) => {
+              setDraftNote(draft);
+              setIsEditingDraft(false);
+            }}
+            handleSaveEmail={(email: DraftEmail) => {
+              setDraftEmail(email);
+              setIsEditingEmail(false);
+            }}
+            handleSendNote={handleSendNote}
+            handleSendEmail={handleSendEmail}
+            setDraftNote={setDraftNote}
+            setDraftEmail={setDraftEmail}
+            sessions={sessions}
+            isLoadingSessions={isLoadingSessions}
+            createNewSession={createNewSession}
+            currentSessionId={currentSessionId}
+            onSessionSelect={handleSessionSelect}
+            primaryColor={data.settings?.primaryColor || '#7928CA'}
+            secondaryColor={data.settings?.secondaryColor || '#FF0080'}
+          />
+
+          {/* Footer */}
+          <Footer
+            isConnected={isConnected}
+            isRecording={isRecording}
+            canPushToTalk={canPushToTalk}
+            connectConversation={() => connectConversation()}
+            disconnectConversation={disconnectConversation}
+            startRecording={startRecording}
+            stopRecording={stopRecording}
+            changeTurnEndType={(value: string) => setCanPushToTalk(value === 'none')}
+            clientCanvasRef={clientCanvasRef}
+            serverCanvasRef={serverCanvasRef}
+            wavRecorder={wavRecorderRef.current!}
+            wavStreamPlayer={wavStreamPlayerRef.current!}
+            primaryColor={data.settings?.primaryColor}
+            secondaryColor={data.settings?.secondaryColor}
+          />
+        </div>
+      </div>
+    </TooltipProvider>
+  </PasswordAuthWrapper>
+);
 }
 
+// Export
 export default AgentConsole;
