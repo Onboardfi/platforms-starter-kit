@@ -123,6 +123,7 @@ export default async function AgentAnalytics({
         <div className="rounded-xl border border-white/[0.02] bg-neutral-900/50 backdrop-blur-md p-6 shine shadow-dream">
           <h2 className="text-xl font-cal text-white mb-6">Sessions and Usage Duration Over Time</h2>
           <Chart
+            agentId={agent.id} // Pass agentId here
             chartData={chartData}
             className="w-full h-64" // Adjust height as needed
           />

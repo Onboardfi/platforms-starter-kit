@@ -24,6 +24,7 @@ import {
     CardHeader,
     CardTitle,
   } from "@/components/ui/card";
+
 interface ChartDataPoint {
   date: string;
   sessions: number;
@@ -31,6 +32,7 @@ interface ChartDataPoint {
 }
 
 interface ChartProps {
+  agentId: string; // Added agentId
   chartData: ChartDataPoint[];
   className?: string;
 }
@@ -46,26 +48,27 @@ const chartConfig = {
   },
 } satisfies Record<string, { label: string; color: string }>;
 
-export function Chart({ chartData: initialData, className }: ChartProps) {
+export function Chart({ agentId, chartData: initialData, className }: ChartProps) {
   const [chartData, setChartData] = React.useState<ChartDataPoint[]>(initialData);
   const [isLoading, setIsLoading] = React.useState(false);
   const [selectedRange, setSelectedRange] = React.useState<DateRange>({
     value: '30d',
     label: 'Last 30 Days',
-    startDate: new Date(new Date().setDate(new Date().getDate() - 30)),
+    startDate: new Date(new Date().getTime() - 30 * 24 * 60 * 60 * 1000), // Corrected to prevent mutation
     endDate: new Date()
   });
 
-  // If you have date range selectors, handle range changes here
-  // Otherwise, rely on the parent component to pass updated data
+  React.useEffect(() => {
+    setChartData(initialData);
+  }, [initialData]);
 
   const handleRangeChange = async (range: DateRange) => {
     try {
       setIsLoading(true);
       setSelectedRange(range);
 
-      // Fetch new data based on the selected range
-      const response = await fetch(`/api/agent/${range.agentId}/analytics`, {
+      // ✅ Use agentId from props, not from range
+      const response = await fetch(`/api/agent/${agentId}/analytics`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -84,6 +87,7 @@ export function Chart({ chartData: initialData, className }: ChartProps) {
       setChartData(result.data);
     } catch (error) {
       console.error('Error fetching chart data:', error);
+      // Optionally, set an error state to display in the UI
     } finally {
       setIsLoading(false);
     }
@@ -93,7 +97,7 @@ export function Chart({ chartData: initialData, className }: ChartProps) {
   const formattedChartData = React.useMemo(() => {
     return chartData.map(point => ({
       ...point,
-      totalDurationMinutes: (point.totalDuration / 60).toFixed(2), // Convert seconds to minutes
+      totalDurationMinutes: point.totalDuration / 60, // Keep as number
     }));
   }, [chartData]);
 
@@ -103,15 +107,15 @@ export function Chart({ chartData: initialData, className }: ChartProps) {
         <div className="flex flex-1 flex-col justify-center gap-1 px-6">
           <div className="flex items-center justify-between">
             <CardTitle>Sessions and Usage Overview</CardTitle>
-            {/* Optional: Date Range Selector */}
-            {/* <DateRangeSelector 
+            {/* Enable Date Range Selector */}
+            <DateRangeSelector 
               onRangeChange={handleRangeChange} 
               selectedRange={selectedRange.value} 
-            /> */}
+            />
           </div>
           <CardDescription>
-            {/* Optional: Display selected date range */}
-            {/* {`${selectedRange.startDate.toLocaleDateString()} - ${selectedRange.endDate.toLocaleDateString()}`} */}
+            {/* Display selected date range */}
+            {`${selectedRange.startDate.toLocaleDateString()} - ${selectedRange.endDate.toLocaleDateString()}`}
           </CardDescription>
         </div>
         <div className="flex flex-wrap">
@@ -134,7 +138,7 @@ export function Chart({ chartData: initialData, className }: ChartProps) {
               {chartConfig.totalDuration.label}
             </span>
             <span className="text-lg font-bold leading-none sm:text-3xl">
-              {formattedChartData.reduce((acc, curr) => acc + Number(curr.totalDurationMinutes), 0).toFixed(2)} mins
+              {formattedChartData.reduce((acc, curr) => acc + curr.totalDurationMinutes, 0).toFixed(2)} mins
             </span>
           </div>
         </div>
@@ -142,7 +146,7 @@ export function Chart({ chartData: initialData, className }: ChartProps) {
       <CardContent className={cn("px-2 sm:p-6", isLoading && "opacity-50")}>
         <ChartContainer
           config={chartConfig}
-          className="aspect-auto h-[250px] w-full"
+          className="w-full h-full" // Ensure full height
         >
           <ResponsiveContainer width="100%" height="100%">
             <LineChart
@@ -183,7 +187,7 @@ export function Chart({ chartData: initialData, className }: ChartProps) {
                   />
                 }
               />
-              <Legend />
+   
               <Line
                 dataKey="sessions"
                 name={chartConfig.sessions.label}
