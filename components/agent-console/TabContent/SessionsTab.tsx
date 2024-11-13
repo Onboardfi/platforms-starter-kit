@@ -1,5 +1,3 @@
-// SessionsTab.tsx
-
 "use client";
 
 import * as React from "react";
@@ -51,7 +49,7 @@ interface SessionsTabProps {
   primaryColor: string;
   secondaryColor: string;
   allowMultipleSessions?: boolean;
-  readonly?: boolean;
+  readonly?: boolean; // Indicates if the component is in readonly mode (Analytics page)
 }
 
 type RowData = Session & {
@@ -72,7 +70,7 @@ export function SessionsTab({
   primaryColor,
   secondaryColor,
   allowMultipleSessions = true,
-  readonly = false,
+  readonly = false, // Default to false for Agent page
 }: SessionsTabProps) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
@@ -221,6 +219,7 @@ export function SessionsTab({
               "transition-all duration-300"
             )}
             onClick={() => handleViewSession(row.original)}
+            aria-label="View Session"
           >
             <Eye className="h-4 w-4 text-white/70" />
           </Button>
@@ -236,6 +235,7 @@ export function SessionsTab({
             )}
             onClick={() => setEditingSession(row.original)}
             disabled={readonly}
+            aria-label="Edit Session"
           >
             <Settings className="h-4 w-4 text-white/70" />
           </Button>
@@ -257,6 +257,7 @@ export function SessionsTab({
               readonly
             }
             onClick={() => handleDeleteSession(row.original)}
+            aria-label="Delete Session"
           >
             {isDeletingSession === row.original.id ? (
               <LoadingState />
@@ -628,34 +629,35 @@ export function SessionsTab({
           )}
         </div>
 
-        {/* New Session Button */}
-        <Button
-          onClick={handleCreateSession}
-          className={cn(
-            "h-9 px-4 rounded-xl text-white/70 font-light",
-            "bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500",
-            "hover:from-cyan-500 hover:via-purple-500 hover:to-pink-500",
-            "transition-all duration-500 ease-in-out",
-            "shadow-md hover:shadow-lg"
-          )}
-          disabled={isCreating || !canCreateNewSession || readonly}
-          title={
-            !canCreateNewSession
-              ? "Delete existing session to create a new one"
-              : readonly
-              ? "Cannot create sessions in analytics view"
-              : undefined
-          }
-        >
-          {isCreating ? (
-            <LoadingState />
-          ) : (
-            <div className="flex items-center space-x-2">
-              <Plus className="h-4 w-4" />
-              <span>New Session</span>
-            </div>
-          )}
-        </Button>
+        {/* Conditionally render the New Session Button only if not readonly */}
+        {!readonly && (
+          <Button
+            onClick={handleCreateSession}
+            className={cn(
+              "h-9 px-4 rounded-xl text-white/70 font-light",
+              "bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500",
+              "hover:from-cyan-500 hover:via-purple-500 hover:to-pink-500",
+              "transition-all duration-500 ease-in-out",
+              "shadow-md hover:shadow-lg"
+            )}
+            disabled={isCreating || !canCreateNewSession}
+            title={
+              !canCreateNewSession
+                ? "Delete existing session to create a new one"
+                : undefined
+            }
+            aria-label="Create a new session"
+          >
+            {isCreating ? (
+              <LoadingState />
+            ) : (
+              <div className="flex items-center space-x-2">
+                <Plus className="h-4 w-4" />
+                <span>New Session</span>
+              </div>
+            )}
+          </Button>
+        )}
       </div>
 
       {isLoadingSessions ? (

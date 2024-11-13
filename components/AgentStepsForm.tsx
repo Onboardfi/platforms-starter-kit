@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useAgent } from "@/app/contexts/AgentContext";
 import { Step } from "@/lib/schema";
 import { Trash2, Plus, GripVertical } from "lucide-react";
+import { createId } from "@paralleldrive/cuid2"; // Ensure unique IDs
 
 interface AgentStepsFormProps {
   existingSteps?: Step[];
@@ -25,7 +26,7 @@ const DreamCardHeader = ({
   </div>
 );
 
-// Dream UI Button Component
+// Dream UI Button Component (As defined above)
 const DreamButton = ({
   children,
   onClick,
@@ -44,7 +45,8 @@ const DreamButton = ({
     rounded-xl font-light
     transition-all duration-300
     disabled:opacity-50 disabled:cursor-not-allowed
-    shine shadow-dream
+    pointer-events-auto    /* Ensure the button is interactive */
+    z-10                   /* Position above overlapping elements */
   `;
 
   const variants = {
@@ -217,14 +219,28 @@ export default function AgentStepsForm({
   const [steps, setSteps] = useState<Step[]>(existingSteps ?? agent?.settings?.steps ?? []);
   const tools = providedTools ?? agent?.settings?.tools ?? [];
 
+  console.log("Component Rendered with steps:", steps);
+
   useEffect(() => {
     if (agent) {
       setSteps(agent.settings?.steps ?? []);
     }
   }, [agent]);
 
+  const addStep = () => {
+    console.log("Add Step button clicked");
+    const newSteps = [
+      ...steps,
+      { id: createId(), title: "", description: "", completionTool: null, completed: false },
+    ];
+    console.log("New Steps:", newSteps);
+    setSteps(newSteps);
+    saveSteps(newSteps);
+  };
+  
   const saveSteps = (newSteps: Step[]) => {
     if (agent) {
+      console.log("Saving new steps:", newSteps);
       setAgent({
         ...agent,
         settings: {
@@ -233,18 +249,11 @@ export default function AgentStepsForm({
         },
       });
       onStepsUpdated?.();
+    } else {
+      console.log("Agent is not available");
     }
   };
-
-  const addStep = () => {
-    const newSteps = [
-      ...steps,
-      { title: "", description: "", completionTool: null, completed: false },
-    ];
-    setSteps(newSteps);
-    saveSteps(newSteps);
-  };
-
+  
   const removeStep = (index: number) => {
     const newSteps = [...steps];
     newSteps.splice(index, 1);
@@ -272,7 +281,7 @@ export default function AgentStepsForm({
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine">
+      <div className="relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine z-10">
         {/* Gradient Border Effect */}
         <div className="
           absolute inset-[0] 
@@ -289,12 +298,18 @@ export default function AgentStepsForm({
           after:[background:linear-gradient(to_left,#aaa,transparent,transparent)] 
           after:[offset-anchor:90%_50%] 
           after:[offset-path:rect(0_auto_auto_0_round_200px)]
+          pointer-events-none    /* Prevent blocking of pointer events */
+          z-0                    /* Position below main content */
         " />
 
         <DreamCardHeader
           title="Agent Steps"
           action={
-            <DreamButton onClick={addStep} variant="gradient">
+            <DreamButton 
+              onClick={addStep} 
+              variant="default" 
+              className="text-neutral-300"  /* Override text color */
+            >
               <Plus className="h-4 w-4 mr-2" />
               Add Step
             </DreamButton>
@@ -304,7 +319,7 @@ export default function AgentStepsForm({
         <div className="p-6 space-y-6">
           {steps.map((step, index) => (
             <div 
-              key={index}
+              key={step.id}   /* Use unique id instead of index */
               className="relative overflow-hidden rounded-2xl bg-neutral-900/50 backdrop-blur-md shine"
             >
               <div className="p-6 space-y-6">

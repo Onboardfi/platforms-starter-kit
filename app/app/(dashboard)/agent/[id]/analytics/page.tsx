@@ -1,15 +1,18 @@
-// /app/app/(dashboard)/agent/[id]/analytics/page.tsx
+// app/(dashboard)/agent/[id]/analytics/page.tsx
 
 import { Suspense } from 'react';
 import { getSession } from "@/lib/auth";
 import { notFound, redirect } from "next/navigation";
 import { getAgentById, getSessions } from "@/lib/actions";
+import { getSessionAndUsageCountsForAgent } from "@/lib/data/dashboard2"; // Updated function
 import { ExternalLink } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import dynamic from 'next/dynamic';
 import Link from "next/link";
 import { Session } from "@/lib/types";
+import { Chart } from "@/components/dashboard/session-chart"; // Import the Chart component
 
+// Dynamically import SessionsTab with client-side rendering
 const SessionsTabWrapper = dynamic(
   () =>
     import('@/components/agent-console/TabContent/SessionsTab').then((mod) => {
@@ -70,6 +73,16 @@ export default async function AgentAnalytics({
     metadata: s.metadata || {},
   }));
 
+  // Fetch chart data for the specific agent
+  let chartData;
+  try {
+    const charts = await getSessionAndUsageCountsForAgent(agent.id);
+    chartData = charts.data;
+  } catch (error) {
+    console.error("Error fetching session and usage counts for agent:", error);
+    notFound(); // Optionally handle errors more gracefully
+  }
+
   return (
     <div className="space-y-8">
       {/* Header Card */}
@@ -103,6 +116,18 @@ export default async function AgentAnalytics({
           </div>
         </div>
       </div>
+
+      {/* **New Chart Section** */}
+      {/* Insert the Chart component here */}
+      {chartData && (
+        <div className="rounded-xl border border-white/[0.02] bg-neutral-900/50 backdrop-blur-md p-6 shine shadow-dream">
+          <h2 className="text-xl font-cal text-white mb-6">Sessions and Usage Duration Over Time</h2>
+          <Chart
+            chartData={chartData}
+            className="w-full h-64" // Adjust height as needed
+          />
+        </div>
+      )}
 
       {/* Sessions Table */}
       <div className="relative">
