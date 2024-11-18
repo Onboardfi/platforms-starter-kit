@@ -1,3 +1,6 @@
+///Users/bobbygilbert/Documents/Github/platforms-starter-kit/lib/wavtools/dist/lib/wav_recorder.d.ts
+
+
 /**
  * Decodes audio into a wav file
  * @typedef {Object} DecodedAudioType

@@ -1,3 +1,5 @@
+// components/agent-console/TabContent/ConversationTab.tsx
+
 import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -12,7 +14,7 @@ interface ConversationTabProps {
   secondaryColor?: string;
 }
 
-export function ConversationTab({
+export default function ConversationTab({
   items,
   currentSessionId,
   primaryColor = '#7928CA',
@@ -114,14 +116,13 @@ export function ConversationTab({
                           <span className="capitalize">{item.role}</span>
                         </div>
                         {item.metadata?.audioDurationSeconds && (
-  <div className="flex items-center space-x-1">
-    <Clock size={12} className="opacity-50" />
-    <span>
-      {formatDuration(item.metadata.audioDurationSeconds)}
-    </span>
-  </div>
-)}
-
+                          <div className="flex items-center space-x-1">
+                            <Clock size={12} className="opacity-50" />
+                            <span>
+                              {formatDuration(item.metadata.audioDurationSeconds)}
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Message Text */}
@@ -178,5 +179,3 @@ function EmptyState({ message }: { message: string }) {
     </div>
   );
 }
-
-export default ConversationTab;

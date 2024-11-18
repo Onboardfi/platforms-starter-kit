@@ -1,3 +1,5 @@
+// ConversationControls.tsx
+
 import { Button } from '@/components/ui/button';
 import { FooterProps } from '../utils/types';
 import { X, Zap, Mic } from 'lucide-react';
@@ -20,6 +22,7 @@ export function ConversationControls({
   changeTurnEndType,
   primaryColor = '#7928CA',
   secondaryColor = '#FF0080',
+  isListening, // Destructure the new prop
 }: ConversationControlsProps) {
   return (
     <div className="bg-background/60 backdrop-blur-dream rounded-2xl p-6 shadow-dream-lg shine">
@@ -41,8 +44,6 @@ export function ConversationControls({
                   borderColor: primaryColor,
                   color: primaryColor,
                   backgroundColor: 'transparent',
-                  // Hover effect
-             
                 }
               : {
                   backgroundImage: `linear-gradient(to right, ${primaryColor}, ${secondaryColor})`,
@@ -100,6 +101,13 @@ export function ConversationControls({
             <Mic className="h-4 w-4 mr-2" />
             {isRecording ? "Release to Send" : "Push to Talk"}
           </Button>
+        )}
+
+        {/* Listening Indicator */}
+        {!canPushToTalk && isListening && (
+          <div className="flex items-center space-x-2">
+            <span className="text-green-500">🎤 Listening...</span>
+          </div>
         )}
       </div>
     </div>

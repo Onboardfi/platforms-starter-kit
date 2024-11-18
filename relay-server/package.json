@@ -1,0 +1,32 @@
+{
+  "name": "relay-server",
+  "version": "1.0.0",
+  "description": "Relay Server for OpenAI Realtime API to securely handle API keys and relay messages between frontend and OpenAI.",
+  "type": "module",
+  "directories": {
+    "lib": "lib"
+  },
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "relay",
+    "openai",
+    "realtime-api",
+    "websocket",
+    "nextjs"
+  ],
+  "author": "Bobby Gilbert",
+  "license": "MIT",
+  "dependencies": {
+    "@openai/realtime-api-beta": "github:openai/openai-realtime-api-beta",
+    "dotenv": "^10.0.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
+  }
+}

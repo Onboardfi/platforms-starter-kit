@@ -177,242 +177,233 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
       </motion.div>
     </>
   );
-}
-// Sidebar Content Component
+}// Sidebar Content Component
 export function SidebarContent() {
-    const { isCollapsed, hoveredItem, setHoveredItem } = useSidebar();
-    const segments = useSelectedLayoutSegments();
-    const pathname = usePathname();
-    const { id } = useParams() as { id?: string };
-  
-    const tabs = React.useMemo(() => {
+  const { isCollapsed, hoveredItem, setHoveredItem } = useSidebar();
+  const segments = useSelectedLayoutSegments();
+  const pathname = usePathname();
+  const { siteId, id: agentId } = useParams() as { siteId?: string; id?: string };
 
+  const tabs = React.useMemo(() => {
 
-      if (segments[0] === "agent" && id) {
-        return [
-          {
-            id: "back",
-            name: "Back to Site",
-            href: `/site/${segments[2]}`, // You might need to store the siteId in a different way
-            icon: <ArrowLeft className="h-4 w-4" />,
-            description: "Return to site overview",
-            isActive: false
-          },
-          {
-            id: "agent-overview",
-            name: "Overview",
-            href: `/agent/${id}`,
-            isActive: segments.length === 2,
-            icon: <Users className="h-4 w-4" />,
-            description: "Manage your agent"
-          },
-          {
-            id: "agent-settings",
-            name: "Settings",
-            href: `/agent/${id}/settings`,
-            isActive: segments.includes("settings"),
-            icon: <Settings className="h-4 w-4" />,
-            description: "Agent settings"
-          },
-          {
-            id: "agent-analytics",
-            name: "Analytics",
-            href: `/agent/${id}/analytics`,
-            isActive: segments.includes("analytics"),
-            icon: <BarChart3 className="h-4 w-4" />,
-            description: "View agent analytics"
-          }
-        ];
-      }
-
-      
-      if (segments[0] === "site" && id) {
-        return [
-          {
-            id: "back",
-            name: "Back to All Sites",
-            href: "/sites",
-            icon: <ArrowLeft className="h-4 w-4" />,
-            description: "Return to sites overview",
-            isActive: false
-          },
-          {
-            id: "onboards",
-            name: "Onboards",
-            href: `/site/${id}`,
-            isActive: segments.length === 2,
-            icon: <Newspaper className="h-4 w-4" />,
-            description: "Manage your onboarding flows"
-          },
-          {
-            id: "analytics",
-            name: "Analytics",
-            href: `/site/${id}/analytics`,
-            isActive: segments.includes("analytics"),
-            icon: <BarChart3 className="h-4 w-4" />,
-            description: "Track onboarding metrics"
-          },
-        ];
-      }
-  
+    if (segments[0] === "agent" && agentId) {
       return [
         {
-          id: "overview",
+          id: "back",
+          name: "Back to Site",
+          href: siteId ? `/site/${siteId}` : "/sites", // Use siteId correctly
+          icon: <ArrowLeft className="h-4 w-4" />,
+          description: "Return to site overview",
+          isActive: false
+        },
+        {
+          id: "agent-overview",
           name: "Overview",
-          href: "/",
-          isActive: pathname === "/",
-          icon: <LayoutDashboard className="h-4 w-4" />,
-          description: "Dashboard overview"
-        },
-        
-        {
-          id: "sites",
-          name: "Sites",
-          href: "/sites",
-          isActive: pathname === "/sites",
-          icon: <Globe className="h-4 w-4" />,
-          description: "Manage your sites"
+          href: `/agent/${agentId}`,
+          isActive: segments.length === 2,
+          icon: <Users className="h-4 w-4" />,
+          description: "Manage your agent"
         },
         {
-          id: "integrations",
-          name: "Integrations",
-          href: "/integrations",
-          isActive: pathname === "/integrations",
-          icon: <Boxes className="h-4 w-4" />,
-          description: "Connect your tools and services"
+          id: "agent-settings",
+          name: "Settings",
+          href: `/agent/${agentId}/settings`,
+          isActive: segments.includes("settings"),
+          icon: <Settings className="h-4 w-4" />,
+          description: "Agent settings"
         },
-
-
         {
-          id: "storage",
-          name: "Storage",
-          href: "/storage",
-          isActive: pathname === "/storage",
-          icon: <Database className="h-4 w-4" />,
-          description: "Manage your storage",
+          id: "agent-analytics",
+          name: "Analytics",
+          href: `/agent/${agentId}/analytics`,
+          isActive: segments.includes("analytics"),
+          icon: <BarChart3 className="h-4 w-4" />,
+          description: "View agent analytics"
         }
-
-
       ];
-    }, [segments, id, pathname]);
-  
-    return (
-      <div className="flex flex-1 flex-col gap-4 p-4">
-        {/* Search Bar */}
-        {!isCollapsed && (
-          <SidebarSearch className="mb-2" />
-        )}
-  
-        {/* Navigation Groups */}
-        <div className="space-y-4">
-          <div>
-            <SidebarGroupLabel>Navigation</SidebarGroupLabel>
-            <nav className="mt-2 grid gap-1">
-              {tabs.map((tab, index) => (
-                <Link
-                  key={tab.id}
-                  href={tab.href}
-                  onMouseEnter={() => setHoveredItem(tab.id)}
-                  onMouseLeave={() => setHoveredItem(null)}
-                  className={cn(
-                    "group relative flex items-center gap-3",
-                    "rounded-xl px-3 py-2.5",
-                    "text-sm font-light",
-                    "transition-all duration-300",
-                    "hover:bg-white/[0.02]",
-                    tab.isActive && "bg-white/[0.04] text-white",
-                    !tab.isActive && "text-neutral-400",
-                    "overflow-hidden"
-                  )}
-                  style={{ 
-                    opacity: 0, 
-                    animation: `blurUp 0.5s ${0.1 + index * 0.05}s forwards`
-                  }}
-                >
-                  {/* Icon Container */}
-                  <div className={cn(
-                    "flex items-center justify-center",
-                    "w-9 h-9 rounded-lg",
-                    "transition-all duration-300",
-                    "bg-gradient-to-br",
-                    tab.isActive
-                    ? "from-custom-green/20 to-custom-green-light/20 text-custom-green-light"
-                    : "from-neutral-800/50 to-neutral-900/50 group-hover:from-neutral-800/70 group-hover:to-neutral-900/70"
-                )}>
-                    {tab.icon}
-                  </div>
-  
-                  {/* Label */}
-                  {!isCollapsed && (
-                    <span className="transition-all duration-300 group-hover:translate-x-0.5">
-                      {tab.name}
-                    </span>
-                  )}
-  
-                  {/* Hover Card for Collapsed State */}
-                  {isCollapsed && hoveredItem === tab.id && (
-                    <SidebarHoverCard
-                      trigger={<span className="sr-only">{tab.name}</span>}
-                      content={
-                        <div className="flex flex-col gap-2">
-                          <p className="font-medium">{tab.name}</p>
-                          <p className="text-xs text-neutral-400">{tab.description}</p>
-                        </div>
-                      }
-                    />
-                  )}
-  
-                  {/* Hover Glow Effect */}
-                  <div 
-                    className={cn(
-                      "absolute inset-0 opacity-0 transition-opacity duration-300",
-                      "bg-gradient-to-r from-indigo-500/5 via-purple-500/5 to-pink-500/5",
-                      "group-hover:opacity-100"
-                    )}
-                    style={{ filter: "blur(20px)" }}
+    }
+
+    if (segments[0] === "site" && siteId) {
+      return [
+        {
+          id: "back",
+          name: "Back to All Sites",
+          href: "/sites",
+          icon: <ArrowLeft className="h-4 w-4" />,
+          description: "Return to sites overview",
+          isActive: false
+        },
+        {
+          id: "onboards",
+          name: "Onboards",
+          href: `/site/${siteId}`,
+          isActive: segments.length === 2,
+          icon: <Newspaper className="h-4 w-4" />,
+          description: "Manage your onboarding flows"
+        },
+        {
+          id: "analytics",
+          name: "Analytics",
+          href: `/site/${siteId}/analytics`,
+          isActive: segments.includes("analytics"),
+          icon: <BarChart3 className="h-4 w-4" />,
+          description: "Track onboarding metrics"
+        },
+      ];
+    }
+
+    return [
+      {
+        id: "overview",
+        name: "Overview",
+        href: "/",
+        isActive: pathname === "/",
+        icon: <LayoutDashboard className="h-4 w-4" />,
+        description: "Dashboard overview"
+      },
+      {
+        id: "sites",
+        name: "Sites",
+        href: "/sites",
+        isActive: pathname === "/sites",
+        icon: <Globe className="h-4 w-4" />,
+        description: "Manage your sites"
+      },
+      {
+        id: "integrations",
+        name: "Integrations",
+        href: "/integrations",
+        isActive: pathname === "/integrations",
+        icon: <Boxes className="h-4 w-4" />,
+        description: "Connect your tools and services"
+      },
+      {
+        id: "storage",
+        name: "Storage",
+        href: "/storage",
+        isActive: pathname === "/storage",
+        icon: <Database className="h-4 w-4" />,
+        description: "Manage your storage",
+      }
+    ];
+  }, [segments, siteId, agentId, pathname]);
+
+  return (
+    <div className="flex flex-1 flex-col gap-4 p-4">
+      {/* Search Bar */}
+      {!isCollapsed && (
+        <SidebarSearch className="mb-2" />
+      )}
+
+      {/* Navigation Groups */}
+      <div className="space-y-4">
+        <div>
+          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+          <nav className="mt-2 grid gap-1">
+            {tabs.map((tab, index) => (
+              <Link
+                key={tab.id}
+                href={tab.href}
+                onMouseEnter={() => setHoveredItem(tab.id)}
+                onMouseLeave={() => setHoveredItem(null)}
+                className={cn(
+                  "group relative flex items-center gap-3",
+                  "rounded-xl px-3 py-2.5",
+                  "text-sm font-light",
+                  "transition-all duration-300",
+                  "hover:bg-white/[0.02]",
+                  tab.isActive && "bg-white/[0.04] text-white",
+                  !tab.isActive && "text-neutral-400",
+                  "overflow-hidden"
+                )}
+                style={{ 
+                  opacity: 0, 
+                  animation: `blurUp 0.5s ${0.1 + index * 0.05}s forwards`
+                }}
+              >
+                {/* Icon Container */}
+                <div className={cn(
+                  "flex items-center justify-center",
+                  "w-9 h-9 rounded-lg",
+                  "transition-all duration-300",
+                  "bg-gradient-to-br",
+                  tab.isActive
+                  ? "from-custom-green/20 to-custom-green-light/20 text-custom-green-light"
+                  : "from-neutral-800/50 to-neutral-900/50 group-hover:from-neutral-800/70 group-hover:to-neutral-900/70"
+              )}>
+                  {tab.icon}
+                </div>
+
+                {/* Label */}
+                {!isCollapsed && (
+                  <span className="transition-all duration-300 group-hover:translate-x-0.5">
+                    {tab.name}
+                  </span>
+                )}
+
+                {/* Hover Card for Collapsed State */}
+                {isCollapsed && hoveredItem === tab.id && (
+                  <SidebarHoverCard
+                    trigger={<span className="sr-only">{tab.name}</span>}
+                    content={
+                      <div className="flex flex-col gap-2">
+                        <p className="font-medium">{tab.name}</p>
+                        <p className="text-xs text-neutral-400">{tab.description}</p>
+                      </div>
+                    }
                   />
+                )}
 
-                {/* Active Indicator */}
-                {tab.isActive && (
-  <div className="absolute left-0 top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-custom-green" />
+                {/* Hover Glow Effect */}
+                <div 
+                  className={cn(
+                    "absolute inset-0 opacity-0 transition-opacity duration-300",
+                    "bg-gradient-to-r from-indigo-500/5 via-purple-500/5 to-pink-500/5",
+                    "group-hover:opacity-100"
+                  )}
+                  style={{ filter: "blur(20px)" }}
+                />
+
+              {/* Active Indicator */}
+              {tab.isActive && (
+<div className="absolute left-0 top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-custom-green" />
 )}
-              </Link>
-            ))}
-          </nav>
+            </Link>
+          ))}
+        </nav>
+      </div>
+
+     
+      {/* Pro Features Section */}
+      {!isCollapsed && (
+       <div className="relative mt-6 rounded-xl border border-custom-green/20 bg-gradient-to-br from-custom-green/10 to-custom-green-light/10 p-4">
+       <div className="absolute -top-3 right-4 rounded-full bg-custom-green px-2 py-0.5 text-xs font-medium text-white">
+         Pro
+       </div>
+
+          
+       <Sparkles className="mb-3 h-6 w-6 text-custom-green-light" />
+
+          <h4 className="mb-1 text-sm font-medium text-white">Upgrade to Pro</h4>
+          <p className="mb-3 text-xs text-neutral-400">
+            Get access to advanced features and priority support.
+          </p>
+          <button className="flex w-full items-center justify-center gap-2 rounded-lg bg-custom-green px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-custom-green-light">
+          <Plus className="h-4 w-4" />
+            Upgrade Now
+            <ArrowUpRight className="h-4 w-4" />
+          </button>
         </div>
-
-       
-        {/* Pro Features Section */}
-        {!isCollapsed && (
-         <div className="relative mt-6 rounded-xl border border-custom-green/20 bg-gradient-to-br from-custom-green/10 to-custom-green-light/10 p-4">
-         <div className="absolute -top-3 right-4 rounded-full bg-custom-green px-2 py-0.5 text-xs font-medium text-white">
-           Pro
-         </div>
-
-            
-         <Sparkles className="mb-3 h-6 w-6 text-custom-green-light" />
-
-            <h4 className="mb-1 text-sm font-medium text-white">Upgrade to Pro</h4>
-            <p className="mb-3 text-xs text-neutral-400">
-              Get access to advanced features and priority support.
-            </p>
-            <button className="flex w-full items-center justify-center gap-2 rounded-lg bg-custom-green px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-custom-green-light">
-            <Plus className="h-4 w-4" />
-              Upgrade Now
-              <ArrowUpRight className="h-4 w-4" />
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Account Section */}
-      <div className="mt-auto">
-        <SidebarAccount isCollapsed={isCollapsed} />
-      </div>
+      )}
     </div>
-  );
-}
 
+    {/* Account Section */}
+    <div className="mt-auto">
+      <SidebarAccount isCollapsed={isCollapsed} />
+    </div>
+  </div>
+);
+}
 // Sidebar Footer Component
 export function SidebarFooter({ children }: { children: React.ReactNode }) {
   const { isCollapsed } = useSidebar();

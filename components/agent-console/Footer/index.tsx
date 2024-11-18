@@ -1,15 +1,9 @@
-// Footer/index.tsx
+// components/agent-console/Footer/index.tsx
+
 import { FooterProps } from '../utils/types';
 import { ConversationControls } from './ConversationControls';
 import { AudioVisualizer } from './AudioVisualizer';
 import { WavRecorder, WavStreamPlayer } from '@/lib/wavtools';
-
-export interface ExtendedFooterProps extends FooterProps {
-  wavRecorder: WavRecorder;
-  wavStreamPlayer: WavStreamPlayer;
-  primaryColor?: string;
-  secondaryColor?: string;
-}
 
 export function Footer(props: FooterProps) {
   return (

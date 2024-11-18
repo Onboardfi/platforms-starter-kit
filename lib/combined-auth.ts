@@ -159,9 +159,3 @@ export async function withCombinedAuth(
     );
   }
 }
-
-export async function clearOnboardingAuth(req: NextRequest): Promise<NextResponse> {
-  const response = NextResponse.json({ success: true });
-  response.cookies.delete('onboarding_token');
-  return response;
-}

@@ -60,7 +60,7 @@ type RowData = Session & {
   };
 };
 
-export function SessionsTab({
+export default function SessionsTab({
   sessions: initialSessions,
   isLoadingSessions,
   onSessionCreated,

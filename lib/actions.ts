@@ -325,6 +325,10 @@ export const updateStepCompletionStatus = async (
     return { success: false, error: "Invalid step index." };
   }
 
+
+
+
+  
   const updatedSteps = agent.settings.steps.map((step, index) => 
     index === stepIndex ? { ...step, completed } : step
   );

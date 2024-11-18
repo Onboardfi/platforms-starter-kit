@@ -1,4 +1,5 @@
-// AudioVisualizer.tsx
+// components/agent-console/Footer/AudioVisualizer.tsx
+
 import { useRef, useEffect } from 'react';
 import { WavRecorder, WavStreamPlayer } from '@/lib/wavtools';
 import { WavRenderer } from '@/app/utils/wav_renderer';
@@ -6,8 +7,8 @@ import { WavRenderer } from '@/app/utils/wav_renderer';
 interface AudioVisualizerProps {
   clientCanvasRef: React.RefObject<HTMLCanvasElement>;
   serverCanvasRef: React.RefObject<HTMLCanvasElement>;
-  wavRecorder: InstanceType<typeof WavRecorder>;
-  wavStreamPlayer: InstanceType<typeof WavStreamPlayer>;
+  wavRecorder: WavRecorder;
+  wavStreamPlayer: WavStreamPlayer;
   primaryColor?: string;
   secondaryColor?: string;
 }
@@ -38,7 +39,7 @@ export function AudioVisualizer({
 
         if (ctx) {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
-          const result = wavRecorder.recording
+          const result = wavRecorder.isRecording
             ? wavRecorder.getFrequencies('voice')
             : { values: new Float32Array([0]) };
           

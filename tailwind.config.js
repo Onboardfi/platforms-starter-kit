@@ -249,21 +249,17 @@ module.exports = {
   },
   // Safelist for dynamic classes
   safelist: [
-    // Colors
+    // Colors with from and to prefixes
     {
-      pattern: /^(bg|text|border|ring)-(dream|dark-accent)-\w+$/,
+      pattern: /^(bg|text|border|ring|from|to)-(dream|dark-accent|custom-green)-\w+$/,
       variants: ['hover', 'focus', 'active', 'group-hover'],
     },
     // Animations
     {
       pattern: /^animate-dream-\w+$/,
-
-      
     },
-
     'md:pl-[80px]',
     'md:pl-[280px]',
-    
     // Shadows
     {
       pattern: /^shadow-dream-\w+$/,

@@ -24,7 +24,7 @@ interface WorkspaceTabProps {
   currentSessionId: string | null;
 }
 
-export function WorkspaceTab({
+export default function WorkspaceTab({
   draftNote,
   draftEmail,
   isEditingDraft,

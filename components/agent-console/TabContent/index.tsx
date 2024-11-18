@@ -1,9 +1,9 @@
 // components/agent-console/TabContent/index.tsx
 import { motion, AnimatePresence } from 'framer-motion';
 import { fadeAnimation } from '../utils/constants';
-import { WorkspaceTab } from './WorkspaceTab';
-import { ConversationTab } from './ConversationTab';
-import { SessionsTab } from './SessionsTab';
+import ConversationTab from './ConversationTab';
+import WorkspaceTab from './WorkspaceTab';
+import  SessionsTab  from './SessionsTab';
 import { IntegrationsTab } from './IntegrationsTab';
 import { DraftEmail } from '../utils/types';
 import { Session } from '@/lib/types';
@@ -12,6 +12,11 @@ import { toast } from 'sonner';
 import apiClient from '@/lib/api-client';
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+
+console.log('ConversationTab:', ConversationTab); // Should log the component function
+console.log('WorkspaceTab:', WorkspaceTab);       // Should log the component function
+console.log('SessionsTab:', SessionsTab);         // Should log the component function
+console.log('IntegrationsTab:', IntegrationsTab); // Should log the component function
 
 export interface TabContentProps {
   activeTab: string;

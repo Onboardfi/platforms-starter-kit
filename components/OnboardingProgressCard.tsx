@@ -84,27 +84,6 @@ export default function OnboardingProgressSidebar({
     }
   }, [currentSessionId, agentId, sessionSteps, onStepsUpdated]);
 
-  // Load session steps when session changes
-  useEffect(() => {
-    const loadSessionSteps = async () => {
-      if (!currentSessionId) {
-        setSessionSteps(steps.map(step => ({ ...step, completed: false })));
-        return;
-      }
-
-      try {
-        const response = await fetch(`/api/getSessionSteps?sessionId=${currentSessionId}`);
-        if (response.ok) {
-          const data = await response.json();
-          setSessionSteps(data.steps);
-        }
-      } catch (error) {
-        console.error('Failed to load session steps:', error);
-      }
-    };
-
-    loadSessionSteps();
-  }, [currentSessionId, steps]);
 
   // Track completion progress
   useEffect(() => {
