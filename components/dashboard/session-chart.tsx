@@ -1,5 +1,3 @@
-// components/dashboard/session-chart.tsx
-
 "use client";
 
 import * as React from "react";
@@ -9,30 +7,34 @@ import {
   Line, 
   LineChart, 
   XAxis,
+  YAxis,
   ResponsiveContainer,
   Tooltip,
   Legend
 } from "recharts";
-import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-// Import any additional necessary components or utilities
-import { DateRangeSelector, DateRange } from "@/components/ui/date-range-selector";
-
 import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-  } from "@/components/ui/card";
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+
+interface DateRange {
+  value: string;
+  label: string;
+  startDate: Date;
+  endDate: Date;
+}
 
 interface ChartDataPoint {
   date: string;
   sessions: number;
-  totalDuration: number; // in seconds
+  totalDuration: number;
 }
 
 interface ChartProps {
-  agentId: string; // Added agentId
+  agentId: string;
   chartData: ChartDataPoint[];
   className?: string;
 }
@@ -40,21 +42,45 @@ interface ChartProps {
 const chartConfig = {
   sessions: {
     label: "Sessions",
-    color: "#85B8FE", // Blueish color
+    color: "#85B8FE",
   },
   totalDuration: {
     label: "Usage Duration (Minutes)",
-    color: "#FFCAE2", // Pinkish color
+    color: "#FFCAE2",
   },
-} satisfies Record<string, { label: string; color: string }>;
+};
 
-export function Chart({ agentId, chartData: initialData, className }: ChartProps) {
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload || !payload.length) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-lg border bg-background p-2 shadow-md">
+      <p className="font-medium">
+        {new Date(label).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })}
+      </p>
+      {payload.map((entry: any, index: number) => (
+        <p key={index} className="text-sm" style={{ color: entry.color }}>
+          {entry.name}: {entry.value.toFixed(2)}
+          {entry.name.includes("Duration") ? " mins" : ""}
+        </p>
+      ))}
+    </div>
+  );
+};
+
+const ChartComponent = ({ agentId, chartData: initialData, className }: ChartProps) => {
   const [chartData, setChartData] = React.useState<ChartDataPoint[]>(initialData);
   const [isLoading, setIsLoading] = React.useState(false);
-  const [selectedRange, setSelectedRange] = React.useState<DateRange>({
+  const [selectedRange] = React.useState<DateRange>({
     value: '30d',
     label: 'Last 30 Days',
-    startDate: new Date(new Date().getTime() - 30 * 24 * 60 * 60 * 1000), // Corrected to prevent mutation
+    startDate: new Date(new Date().getTime() - 30 * 24 * 60 * 60 * 1000),
     endDate: new Date()
   });
 
@@ -62,152 +88,136 @@ export function Chart({ agentId, chartData: initialData, className }: ChartProps
     setChartData(initialData);
   }, [initialData]);
 
-  const handleRangeChange = async (range: DateRange) => {
-    try {
-      setIsLoading(true);
-      setSelectedRange(range);
-
-      // ✅ Use agentId from props, not from range
-      const response = await fetch(`/api/agent/${agentId}/analytics`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          startDate: range.startDate,
-          endDate: range.endDate
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch chart data');
-      }
-
-      const result = await response.json();
-      setChartData(result.data);
-    } catch (error) {
-      console.error('Error fetching chart data:', error);
-      // Optionally, set an error state to display in the UI
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Calculate total durations in minutes for display purposes
   const formattedChartData = React.useMemo(() => {
     return chartData.map(point => ({
       ...point,
-      totalDurationMinutes: point.totalDuration / 60, // Keep as number
+      totalDurationMinutes: (point.totalDuration || 0) / 60,
+      date: new Date(point.date).toISOString(),
     }));
   }, [chartData]);
 
+  // Calculate max values for better scaling
+  const maxSessions = Math.max(...formattedChartData.map(d => d.sessions));
+  const maxDuration = Math.max(...formattedChartData.map(d => d.totalDurationMinutes));
+
+  // Calculate nice round numbers for the Y-axis domains
+  const sessionsDomain = [0, Math.ceil(maxSessions * 1.1)]; // Add 10% padding
+  const durationDomain = [0, Math.ceil(maxDuration * 1.1)];
+
+  if (!formattedChartData?.length) {
+    return (
+      <Card className={cn("w-full", className)}>
+        <CardContent className="flex items-center justify-center h-[400px]">
+          <p className="text-muted-foreground">No data available</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
-    <Card className={cn("shadow-none", className)}>
-      <CardHeader className="flex flex-col items-stretch space-y-0 border-b p-0 sm:flex-row sm:h-[99px]">
-        <div className="flex flex-1 flex-col justify-center gap-1 px-6">
+    <Card className={cn("w-full", className)}>
+      <CardHeader className="flex flex-col items-stretch space-y-0 border-b p-4 sm:flex-row sm:items-center">
+        <div className="flex flex-1 flex-col justify-center gap-1">
           <div className="flex items-center justify-between">
             <CardTitle>Sessions and Usage Overview</CardTitle>
-            {/* Enable Date Range Selector */}
-            <DateRangeSelector 
-              onRangeChange={handleRangeChange} 
-              selectedRange={selectedRange.value} 
-            />
           </div>
           <CardDescription>
-            {/* Display selected date range */}
             {`${selectedRange.startDate.toLocaleDateString()} - ${selectedRange.endDate.toLocaleDateString()}`}
           </CardDescription>
         </div>
-        <div className="flex flex-wrap">
-          <div
-            data-active={true}
-            className="flex flex-1 flex-col justify-center gap-1 border-t px-4 py-2 text-left sm:border-l sm:border-t-0 sm:px-6 sm:py-5"
-          >
+        <div className="flex flex-wrap gap-4 sm:ml-4">
+          <div className="flex flex-col">
             <span className="text-xs text-muted-foreground">
               {chartConfig.sessions.label}
             </span>
-            <span className="text-lg font-bold leading-none sm:text-3xl">
-              {formattedChartData.reduce((acc, curr) => acc + curr.sessions, 0).toLocaleString()}
+            <span className="text-lg font-bold">
+              {formattedChartData.reduce((acc, curr) => acc + (curr.sessions || 0), 0).toLocaleString()}
             </span>
           </div>
-          <div
-            data-active={true}
-            className="flex flex-1 flex-col justify-center gap-1 border-l border-t px-4 py-2 text-left sm:border-t-0 sm:px-6 sm:py-5"
-          >
+          <div className="flex flex-col">
             <span className="text-xs text-muted-foreground">
               {chartConfig.totalDuration.label}
             </span>
-            <span className="text-lg font-bold leading-none sm:text-3xl">
-              {formattedChartData.reduce((acc, curr) => acc + curr.totalDurationMinutes, 0).toFixed(2)} mins
+            <span className="text-lg font-bold">
+              {formattedChartData.reduce((acc, curr) => acc + (curr.totalDurationMinutes || 0), 0).toFixed(2)} mins
             </span>
           </div>
         </div>
       </CardHeader>
-      <CardContent className={cn("px-2 sm:p-6", isLoading && "opacity-50")}>
-        <ChartContainer
-          config={chartConfig}
-          className="w-full h-full" // Ensure full height
-        >
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart
-              data={formattedChartData}
-              margin={{
-                left: 12,
-                right: 12,
+      <CardContent className={cn("p-4 h-[500px]", isLoading && "opacity-50")}>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart
+            data={formattedChartData}
+            margin={{
+              top: 20,
+              right: 50,
+              left: 20,
+              bottom: 20,
+            }}
+          >
+            <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
+            <XAxis
+              dataKey="date"
+              tickLine={false}
+              axisLine={true}
+              tickMargin={8}
+              minTickGap={32}
+              tickFormatter={(value) => {
+                const date = new Date(value);
+                return date.toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                });
               }}
-            >
-              <CartesianGrid vertical={false} strokeDasharray="3 3" />
-              <XAxis
-                dataKey="date"
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-                minTickGap={32}
-                tickFormatter={(value) => {
-                  const date = new Date(value);
-                  return date.toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                  });
-                }}
-              />
-              <Tooltip
-                content={
-                  <ChartTooltipContent
-                    className="w-[150px]"
-                    nameKey="name"
-                    labelFormatter={(value) => {
-                      return new Date(value).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                        timeZone: "UTC",
-                      });
-                    }}
-                  />
-                }
-              />
-   
-              <Line
-                dataKey="sessions"
-                name={chartConfig.sessions.label}
-                type="monotone"
-                stroke={chartConfig.sessions.color}
-                strokeWidth={2}
-                dot={false}
-              />
-              <Line
-                dataKey="totalDurationMinutes"
-                name={chartConfig.totalDuration.label}
-                type="monotone"
-                stroke={chartConfig.totalDuration.color}
-                strokeWidth={2}
-                dot={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </ChartContainer>
+              stroke="#666"
+            />
+            <YAxis 
+              yAxisId="left"
+              tickLine={false}
+              axisLine={true}
+              tickMargin={8}
+              stroke="#666"
+              domain={sessionsDomain}
+              allowDecimals={false}
+            />
+            <YAxis 
+              yAxisId="right"
+              orientation="right"
+              tickLine={false}
+              axisLine={true}
+              tickMargin={8}
+              stroke="#666"
+              domain={durationDomain}
+            />
+            <Tooltip content={<CustomTooltip />} />
+            <Legend verticalAlign="top" height={36} />
+            <Line
+              yAxisId="left"
+              dataKey="sessions"
+              name={chartConfig.sessions.label}
+              type="monotone"
+              stroke={chartConfig.sessions.color}
+              strokeWidth={2}
+              dot={false}
+            />
+            <Line
+              yAxisId="right"
+              dataKey="totalDurationMinutes"
+              name={chartConfig.totalDuration.label}
+              type="monotone"
+              stroke={chartConfig.totalDuration.color}
+              strokeWidth={2}
+              dot={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
       </CardContent>
     </Card>
   );
-}
+};
+
+// Create a named export for the client component
+export const Chart = ChartComponent;
+
+// Export the types
+export type { ChartProps, ChartDataPoint };

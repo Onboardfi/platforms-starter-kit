@@ -1,25 +1,37 @@
 // app/(dashboard)/agent/[id]/analytics/page.tsx
-
 import { Suspense } from 'react';
 import { getSession } from "@/lib/auth";
 import { notFound, redirect } from "next/navigation";
 import { getAgentById, getSessions } from "@/lib/actions";
-import { getSessionAndUsageCountsForAgent } from "@/lib/data/dashboard2"; // Updated function
+import { getSessionAndUsageCountsForAgent } from "@/lib/data/dashboard2";
 import { ExternalLink } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import dynamic from 'next/dynamic';
 import Link from "next/link";
 import { Session } from "@/lib/types";
-import { Chart } from "@/components/dashboard/session-chart"; // Import the Chart component
+
+// Dynamically import the Chart component with no SSR
+const Chart = dynamic(
+  () => import('@/components/dashboard/session-chart').then((mod) => mod.Chart),
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="h-64 w-full flex items-center justify-center">
+        <div className="text-sm text-muted-foreground">Loading chart...</div>
+      </div>
+    )
+  }
+);
 
 // Dynamically import SessionsTab with client-side rendering
 const SessionsTabWrapper = dynamic(
   () =>
     import('@/components/agent-console/TabContent/SessionsTab').then((mod) => {
-      const Component = mod.SessionsTab;
+      // 
+      const SessionsTabComponent = mod.default || mod;
       return function ClientWrapper({ sessions, agentId, ...props }: any) {
         return (
-          <Component
+          <SessionsTabComponent
             sessions={sessions}
             agentId={agentId}
             isLoadingSessions={false}
@@ -27,12 +39,21 @@ const SessionsTabWrapper = dynamic(
             primaryColor={props.primaryColor}
             secondaryColor={props.secondaryColor}
             allowMultipleSessions={props.allowMultipleSessions}
-            readonly={true} // Indicates analytics view
+            readonly={true}
           />
         );
       };
     }),
-  { ssr: false }
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="rounded-xl border border-white/[0.02] bg-neutral-900/50 backdrop-blur-md p-6 shine shadow-dream">
+        <div className="h-32 flex items-center justify-center">
+          <div className="text-sm text-muted-foreground">Loading sessions...</div>
+        </div>
+      </div>
+    )
+  }
 );
 
 export default async function AgentAnalytics({
@@ -80,7 +101,8 @@ export default async function AgentAnalytics({
     chartData = charts.data;
   } catch (error) {
     console.error("Error fetching session and usage counts for agent:", error);
-    notFound(); // Optionally handle errors more gracefully
+    // Handle error more gracefully instead of notFound()
+    chartData = null;
   }
 
   return (
@@ -117,22 +139,38 @@ export default async function AgentAnalytics({
         </div>
       </div>
 
-      {/* **New Chart Section** */}
-      {/* Insert the Chart component here */}
-      {chartData && (
-        <div className="rounded-xl border border-white/[0.02] bg-neutral-900/50 backdrop-blur-md p-6 shine shadow-dream">
-          <h2 className="text-xl font-cal text-white mb-6">Sessions and Usage Duration Over Time</h2>
-          <Chart
-            agentId={agent.id} // Pass agentId here
-            chartData={chartData}
-            className="w-full h-64" // Adjust height as needed
-          />
+{/* Chart Section */}
+<div className="rounded-xl border border-white/[0.02] bg-neutral-900/50 backdrop-blur-md p-6 shine shadow-dream">
+  <h2 className="text-xl font-cal text-white mb-6">Sessions and Usage Duration Over Time</h2>
+  {chartData ? (
+    <Suspense 
+      fallback={
+        <div className="h-[500px] w-full flex items-center justify-center">
+          <div className="text-sm text-muted-foreground">Loading chart...</div>
         </div>
-      )}
-
+      }
+    >
+      <Chart
+        agentId={agent.id}
+        chartData={chartData}
+        className="w-full"
+      />
+    </Suspense>
+  ) : (
+    <div className="h-[500px] w-full flex items-center justify-center">
+      <div className="text-sm text-muted-foreground">No data available</div>
+    </div>
+  )}
+</div>
       {/* Sessions Table */}
       <div className="relative">
-        <Suspense fallback={<div>Loading sessions...</div>}>
+        <Suspense fallback={
+          <div className="rounded-xl border border-white/[0.02] bg-neutral-900/50 backdrop-blur-md p-6 shine shadow-dream">
+            <div className="h-32 flex items-center justify-center">
+              <div className="text-sm text-muted-foreground">Loading sessions...</div>
+            </div>
+          </div>
+        }>
           <SessionsTabWrapper
             sessions={sessions}
             agentId={agent.id}
@@ -143,7 +181,7 @@ export default async function AgentAnalytics({
         </Suspense>
       </div>
 
-      {/* Additional Analytics Content */}
+      {/* Analytics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {/* Completion Rate Card */}
         <Card className="bg-neutral-800/50 backdrop-blur-md border-white/10">

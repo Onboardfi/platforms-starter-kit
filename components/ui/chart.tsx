@@ -1,3 +1,5 @@
+//Users/bobbygilbert/Documents/Github/platforms-starter-kit/components/ui/chart.tsx
+
 "use client"
 
 import * as React from "react"
