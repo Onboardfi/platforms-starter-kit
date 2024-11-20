@@ -162,10 +162,14 @@ export const usageLogs = pgTable(
       .references(() => conversations.id, { onDelete: 'set null' }),
     messageId: text('messageId')
       .references(() => messages.id, { onDelete: 'set null' }),
+    // Keep duration tracking
     durationSeconds: integer('durationSeconds').notNull(),
+    // Add token tracking
+    promptTokens: integer('promptTokens').default(0),
+    completionTokens: integer('completionTokens').default(0),
+    totalTokens: integer('totalTokens').default(0),
     messageRole: text('messageRole').$type<'assistant' | 'user'>().notNull(),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    // Fields for future Stripe integration
     stripeCustomerId: text('stripeCustomerId'),
     stripeEventId: text('stripeEventId'),
     reportingStatus: text('reportingStatus')
@@ -179,7 +183,6 @@ export const usageLogs = pgTable(
     createdAtIdx: index('usage_logs_createdAt_idx').on(table.createdAt),
   })
 );
-
 
 export const sites = pgTable(
   'sites',

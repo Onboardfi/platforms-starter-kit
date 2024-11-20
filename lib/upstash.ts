@@ -753,55 +753,98 @@ export async function addMessage(
       }
     }
 
-    // Log usage if this is an assistant message with audio duration
-    if (messageData.role === 'assistant' && finalMetadata.audioDurationSeconds) {
-      try {
-        console.log(`addMessage: Logging usage for message ${message.id}`);
-        const usageLog = {
-          userId: effectiveUserId,
-          sessionId: conversation.sessionId,
-          conversationId: conversation.id,
-          messageId: message.id,
-          durationSeconds: Math.round(finalMetadata.audioDurationSeconds),
-          messageRole: messageData.role,
-          stripeCustomerId: null,
-          reportingStatus: 'pending' as const
-        };
+// In your addMessage function, modify the logging section:
 
-        const [logResult] = await db
-          .insert(usageLogs)
-          .values(usageLog)
-          .returning();
+if (messageData.role === 'assistant' && 
+  (finalMetadata.audioDurationSeconds || finalMetadata.promptTokens || finalMetadata.completionTokens)) {
+try {
+  console.log(`addMessage: Logging usage for message ${message.id}`);
+  
+  const user = effectiveUserId ? await db.query.users.findFirst({
+    where: eq(users.id, effectiveUserId),
+  }) : null;
 
-        if (conversation.session?.userId && conversation.session.agent?.userId &&
-            conversation.session.userId !== conversation.session.agent.userId) {
-          console.log(`addMessage: Double logging usage for message ${message.id} with agent userId ${conversation.session.agent.userId}`);
-          await db
-            .insert(usageLogs)
-            .values({
-              ...usageLog,
-              id: createId(),
-              userId: conversation.session.agent.userId
-            })
-            .returning();
+  // Log both duration and tokens
+  const usageLog = {
+    userId: effectiveUserId,
+    sessionId: conversation.sessionId,
+    conversationId: conversation.id,
+    messageId: message.id,
+    durationSeconds: Math.round(finalMetadata.audioDurationSeconds || 0),
+    promptTokens: finalMetadata.promptTokens || 0,
+    completionTokens: finalMetadata.completionTokens || 0,
+    totalTokens: finalMetadata.totalTokens || 0,
+    messageRole: messageData.role,
+    stripeCustomerId: user?.stripeCustomerId || null,
+    reportingStatus: 'pending' as const
+  };
+
+  const [logResult] = await db
+    .insert(usageLogs)
+    .values(usageLog)
+    .returning();
+
+  // Send token-based billing events to Stripe (instead of duration-based)
+  if (user?.stripeCustomerId) {
+    // Bill for input tokens if present
+    if (finalMetadata.promptTokens) {
+      await stripe.billing.meterEvents.create({
+        event_name: 'input_tokens',
+        payload: {
+          stripe_customer_id: user.stripeCustomerId,
+          value: Math.ceil(finalMetadata.promptTokens / 1000).toString(), // Convert to thousands
+          timestamp: new Date().toISOString()
         }
-
-        console.log(`addMessage: Successfully logged usage for message ${message.id}:`, {
-          duration: finalMetadata.audioDurationSeconds,
-          userId: effectiveUserId,
-          logId: logResult.id
-        });
-      } catch (error) {
-        console.error('addMessage: Failed to log usage:', error);
-        console.error('addMessage: Usage logging context:', {
-          userId: effectiveUserId,
-          sessionId: conversation.sessionId,
-          messageId: message.id,
-          duration: finalMetadata.audioDurationSeconds
-        });
-      }
+      });
     }
 
+    // Bill for completion tokens if present
+    if (finalMetadata.completionTokens) {
+      await stripe.billing.meterEvents.create({
+        event_name: 'output_tokens',
+        payload: {
+          stripe_customer_id: user.stripeCustomerId,
+          value: Math.ceil(finalMetadata.completionTokens / 1000).toString(), // Convert to thousands
+          timestamp: new Date().toISOString()
+        }
+      });
+    }
+  }
+
+  // Double log for agent user if different from session user
+  if (conversation.session?.userId && conversation.session.agent?.userId &&
+      conversation.session.userId !== conversation.session.agent.userId) {
+    await db
+      .insert(usageLogs)
+      .values({
+        ...usageLog,
+        id: createId(),
+        userId: conversation.session.agent.userId
+      })
+      .returning();
+  }
+
+  console.log(`addMessage: Successfully logged usage for message ${message.id}:`, {
+    duration: finalMetadata.audioDurationSeconds,
+    promptTokens: finalMetadata.promptTokens,
+    completionTokens: finalMetadata.completionTokens,
+    userId: effectiveUserId,
+    logId: logResult.id
+  });
+} catch (error) {
+  console.error('addMessage: Failed to log usage:', error);
+  console.error('addMessage: Usage logging context:', {
+    userId: effectiveUserId,
+    sessionId: conversation.sessionId,
+    messageId: message.id,
+    duration: finalMetadata.audioDurationSeconds,
+    tokens: {
+      prompt: finalMetadata.promptTokens,
+      completion: finalMetadata.completionTokens
+    }
+  });
+}
+}
     // Update conversation
     await db
       .update(conversations)
