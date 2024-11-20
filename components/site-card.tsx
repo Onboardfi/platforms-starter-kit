@@ -81,21 +81,13 @@ export default function SiteCard({ data }: SiteCardProps) {
         </div>
 
         <div className="space-y-2 mb-6">
-          {/* Domain Status */}
-          <div className="p-3 rounded-xl bg-neutral-900/50 backdrop-blur-md shine">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-neutral-400">Domain Status</span>
-              <span className="text-xs px-2 py-1 rounded-lg bg-dream-cyan/20 text-dream-cyan border border-dream-cyan/20">
-                Active
-              </span>
-            </div>
-          </div>
+        
 
           {/* Agents Count */}
           <div className="p-3 rounded-xl bg-neutral-900/50 backdrop-blur-md shine">
             <div className="flex items-center justify-between">
               <span className="text-sm text-neutral-400">Total </span>
-              <span className="text-xs px-2 py-1 rounded-lg bg-dream-pink/20 text-dream-pink border border-dream-pink/20">
+              <span className="text-xs px-2 py-1 rounded-lg bg-dream-blue/20 text-dream-blue border border-dream-blue/20">
                 {data._count?.agents || 0} Onboards
               </span>
             </div>
@@ -109,13 +101,19 @@ export default function SiteCard({ data }: SiteCardProps) {
               {toDateString(data.createdAt)}
             </p>
           </div>
-          <div>
-            <p className="text-neutral-500 text-xs">Font</p>
-            <p className="text-sm mt-1 font-mono text-neutral-300">{data.font}</p>
-          </div>
+         
         </div>
 
         <div className="flex gap-3 mt-6">
+        <Link
+            href={`/site/${data.id}/settings`}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-900/50 text-neutral-300 text-sm hover:bg-neutral-800/50 transition-all duration-300 shine shadow-dream justify-center group"
+            >
+            <Settings className="h-4 w-4 transition-transform group-hover:scale-110" />
+           
+          </Link>
+
+
           <Link 
             href={`/site/${data.id}`}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-dream-pink/50 to-dream-cyan/50 text-white text-sm hover:brightness-110 transition-all duration-300 shine shadow-dream flex-1 justify-center group"
@@ -124,13 +122,7 @@ export default function SiteCard({ data }: SiteCardProps) {
             Onboards
           </Link>
           
-          <Link
-            href={`/site/${data.id}/settings`}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-900/50 text-neutral-300 text-sm hover:bg-neutral-800/50 transition-all duration-300 shine shadow-dream flex-1 justify-center group"
-          >
-            <Settings className="h-4 w-4 transition-transform group-hover:scale-110" />
-            Settings
-          </Link>
+        
         </div>
       </div>
     </div>

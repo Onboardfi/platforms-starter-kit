@@ -224,11 +224,30 @@ interface WorkspaceTabProps {
   secondaryColor: string;
 }
 
+interface ConversationMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: {
+    text?: string;
+    transcript?: string;
+    audioUrl?: string;
+  }[];
+  metadata?: {
+    audioDurationSeconds?: number;
+    audio?: {
+      sampleRate: number;
+      channels?: number;
+    };
+    stepTitle?: string;
+  };
+  status: 'completed' | 'pending';
+}
+
 interface ConversationTabProps {
-  items: any[];
+  items: ConversationMessage[];
   currentSessionId: string | null;
-  primaryColor: string;
-  secondaryColor: string;
+  primaryColor?: string;
+  secondaryColor?: string;
 }
 
 interface SessionsTabProps {

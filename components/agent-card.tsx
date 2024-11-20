@@ -20,6 +20,7 @@ export default function AgentCard({ data }: AgentCardProps) {
   const completionPercentage = totalSteps > 0 ? (completedSteps / totalSteps) * 100 : 0;
   const clampedValue = Math.min(Math.max(completionPercentage, 0), 100);
   const sessionCount = data._count?.sessions || 0;
+  const isOneToMany = data.settings.allowMultipleSessions;
 
   const renderLogo = () => {
     if (data.site?.logo) {
@@ -86,12 +87,13 @@ export default function AgentCard({ data }: AgentCardProps) {
           
           {/* Agent Configuration Badges */}
           <div className="flex flex-wrap gap-2">
+            
             {/* Agent Type Badge */}
             <span className={cn(
               "px-3 py-1 rounded-xl backdrop-blur-md text-xs border border-white/10 shine flex items-center gap-1",
               data.settings.onboardingType === "external"
-                ? "bg-dream-pink/20 border-dream-pink/20 text-dream-pink"
-                : "bg-dream-cyan/20 border-dream-cyan/20 text-dream-cyan"
+                ? "bg-dream-purple/20 border-dream-purple/20 text-dream-purple"
+                : "bg-dream-pink/20 border-dream-pink/20 text-dream-pink"
             )}>
               <Share2 className="h-3 w-3" />
               {data.settings.onboardingType === "external" ? "External" : "Internal"}
@@ -100,12 +102,12 @@ export default function AgentCard({ data }: AgentCardProps) {
             {/* Session Type Badge */}
             <span className={cn(
               "px-3 py-1 rounded-xl backdrop-blur-md text-xs border border-white/10 shine flex items-center gap-1",
-              data.settings.allowMultipleSessions
-                ? "bg-dream-pink/20 border-dream-pink/20 text-dream-pink"
+              isOneToMany
+                ? "bg-dream-orange/20 border-dream-orange/20 text-dream-orange"
                 : "bg-dream-cyan/20 border-dream-cyan/20 text-dream-cyan"
             )}>
               <User className="h-3 w-3" />
-              {data.settings.allowMultipleSessions ? "One-to-Many" : "One-to-One"}
+              {isOneToMany ? "One-to-Many" : "One-to-One"}
             </span>
           </div>
 
@@ -114,7 +116,8 @@ export default function AgentCard({ data }: AgentCardProps) {
           </p>
         </div>
 
-        {totalSteps > 0 && (
+        {/* Conditional Rendering Based on Session Type */}
+        {!isOneToMany && totalSteps > 0 && (
           <div className="space-y-2 mb-6 p-3 rounded-xl bg-neutral-900/50 backdrop-blur-md shine">
             <div className="flex justify-between text-sm">
               <span className="text-neutral-400">
@@ -133,19 +136,20 @@ export default function AgentCard({ data }: AgentCardProps) {
           </div>
         )}
 
-        {/* Session Count Display */}
-        <div className="space-y-2 mb-6 p-3 rounded-xl bg-neutral-900/50 backdrop-blur-md shine">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-neutral-400">Total Sessions</span>
-            <span className="text-xs px-2 py-1 rounded-lg bg-dream-pink/20 text-dream-pink border border-dream-pink/20 flex items-center gap-1">
-              <MessageCircle className="h-3 w-3" />
-              {sessionCount} Sessions
-            </span>
+        {isOneToMany && (
+          <div className="space-y-2 mb-6 p-3 rounded-xl bg-neutral-900/50 backdrop-blur-md shine">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-neutral-400">Total Sessions</span>
+              <span className="text-xs px-2 py-1 rounded-lg bg-dream-blue/20 text-dream-blue border border-dream-blue/20 flex items-center gap-1">
+                <MessageCircle className="h-3 w-3" />
+                {sessionCount} Sessions
+              </span>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="flex gap-3 mt-6">
-          {/* Settings Button - Remains Black */}
+          {/* Settings Button */}
           <Link
             href={`/agent/${data.id}/settings`}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-900/50 text-neutral-300 text-sm hover:bg-neutral-800/50 transition-all duration-300 shine shadow-dream justify-center group"
@@ -153,7 +157,7 @@ export default function AgentCard({ data }: AgentCardProps) {
             <Settings className="h-4 w-4 transition-transform group-hover:scale-110" />
           </Link>
 
-          {/* Edit Onboard Button - Changed to Dream Blue */}
+          {/* Edit Onboard Button */}
           <Link 
             href={`/agent/${data.id}`}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-dream-blue/50 to-dream-blue/70 text-white text-sm hover:brightness-110 transition-all duration-300 shine shadow-dream flex-1 justify-center group"
@@ -161,7 +165,7 @@ export default function AgentCard({ data }: AgentCardProps) {
             Edit Onboard
           </Link>
           
-          {/* View Live Button - Changed to Custom Green */}
+          {/* View Live Button */}
           {data.site?.subdomain ? (
             <Link
               href={`http://${data.site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}/${data.slug}`}

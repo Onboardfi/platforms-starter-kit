@@ -1,6 +1,6 @@
 // components/agent-console/utils/types.ts
 
-import { Agent, Step } from '@/lib/types';
+import { Agent, MessageMetadata, Step } from '@/lib/types';
 import { WavRecorder, WavStreamPlayer } from '@/lib/wavtools';
 
 /**
@@ -12,24 +12,42 @@ export interface Content {
   text?: string;
   transcript?: string;
   audio?: string;
+  audioUrl?: string; // Changed from string | null to string | undefined
   truncated?: boolean;
   audio_end_ms?: number;
-  // Add other properties as needed
 }
+
+
+
+export interface Tool {
+  type: string;
+  name: string;
+  description: string;
+  parameters: object;
+}
+
 
 /**
  * **ConversationItem Interface**
  */
-export interface ConversationItem {
+// Remove this duplicate interface since you're importing it
+export interface ConversationItem {  // Add 'export'
   id: string;
-  object: string;
+  object: 'realtime.item';
   type: string;
-  status: string;
   role: string;
-  content: Content[];
-  // Add other properties as needed
+  status: 'completed' | 'pending';
+  content: Array<{
+      type: string;
+      text?: string;
+      transcript?: string;
+      audioUrl?: string;
+  }>;
+  metadata?: Record<string, any>;
+  stepId?: string;
+  parentMessageId?: string;
+  orderIndex?: string;
 }
-
 /**
  * **WebSocketError Interface**
  */

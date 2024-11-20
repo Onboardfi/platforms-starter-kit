@@ -1,27 +1,53 @@
-//Users/bobbygilbert/Documents/Github/platforms-starter-kit/components/agent-console/index.tsx
+// Users/bobbygilbert/Documents/Github/platforms-starter-kit/components/agent-console/index.tsx
 
 'use client';
+import { addMessage, getConversationMessages } from '@/lib/actions';
+import { 
+  MessageType, 
+  MessageRole, 
+  MessageContent, 
+  MessageMetadata 
+} from '@/lib/types';
 
+// Core React imports
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+
+// Component imports
 import { Navbar } from './Navbar';
 import { TabContent } from './TabContent';
 import { Footer } from './Footer';
 import OnboardingProgressSidebar from '@/components/OnboardingProgressCard';
+import { EmailTemplate } from '@/components/email-template';
+
+// UI Component imports
+import { Badge } from "@/components/ui/badge";
 import { TooltipProvider } from "@/components/ui/tooltip";
+
+// Third-party imports
 import { toast } from 'sonner';
 import axios from 'axios';
+
+// Utility imports
 import { WavRecorder, WavStreamPlayer } from '@/lib/wavtools';
 import { WavRenderer } from '@/app/utils/wav_renderer';
 import apiClient from '@/lib/api-client';
 import PasswordAuthWrapper from '@/components/auth/PasswordAuthWrapper';
+
+
+
+// Type imports
 import { 
   AgentConsoleProps, 
   DraftEmail, 
   Session,
   WebSocketMessage,
-  ConversationItem
+  ConversationItem  
 } from './utils/types';
+
+// WebSocket Handler
 import EnhancedWebSocketHandler from '@/lib/websocket-handler';
+
+// Base64 Utilities
 import { 
   arrayBufferToBase64, 
   base64ToInt16Array,
@@ -29,7 +55,69 @@ import {
 } from '@/lib/utils/base64Utils';
 
 /**
- * AgentConsole Component
+ * **Helper Function**
+ * Convert agent tool names to WebSocket tool configurations
+ */
+const getToolConfigurations = (tools: string[]) => {
+  const toolConfigs = [];
+  
+  for (const tool of tools) {
+    switch (tool) {
+      case 'memory':
+        toolConfigs.push({
+          type: "function",
+          name: "store_memory",
+          description: "Store a value in memory with a given key",
+          parameters: {
+            type: "object",
+            properties: {
+              key: { type: "string" },
+              value: { type: "string" }
+            },
+            required: ["key", "value"]
+          }
+        });
+        break;
+        
+      case 'notion':
+        toolConfigs.push({
+          type: "function",
+          name: "add_to_notion",
+          description: "Add content to a Notion document",
+          parameters: {
+            type: "object",
+            properties: {
+              content: { type: "string" }
+            },
+            required: ["content"]
+          }
+        });
+        break;
+        
+      case 'email':
+        toolConfigs.push({
+          type: "function",
+          name: "send_email",
+          description: "Send an email",
+          parameters: {
+            type: "object",
+            properties: {
+              to: { type: "string" },
+              subject: { type: "string" },
+              body: { type: "string" }
+            },
+            required: ["to", "subject", "body"]
+          }
+        });
+        break;
+    }
+  }
+  
+  return toolConfigs;
+};
+
+/**
+ * **AgentConsole Component**
  */
 function AgentConsole({ agent }: AgentConsoleProps) {
     // UI State
@@ -63,6 +151,25 @@ function AgentConsole({ agent }: AgentConsoleProps) {
     // Conversation Items
     const [items, setItems] = useState<ConversationItem[]>([]);
 
+    // Current Conversation ID
+    const [conversationId, setConversationId] = useState<string | null>(null);
+
+    // Modify the setItems logic to prevent duplicates
+    const addUniqueItem = useCallback((newItem: ConversationItem) => {
+      setItems((prevItems) => {
+        // Check if item already exists
+        const exists = prevItems.some(item => item.id === newItem.id);
+        if (exists) {
+          // Update existing item instead of adding a duplicate
+          return prevItems.map(item => 
+            item.id === newItem.id ? { ...item, ...newItem } : item
+          );
+        }
+        // Add new item
+        return [...prevItems, newItem];
+      });
+    }, []);
+
     // Refs
     const wavRecorderRef = useRef<WavRecorder>(
         new WavRecorder({ sampleRate: 24000 }) // Ensure the constructor expects an options object
@@ -92,32 +199,31 @@ function AgentConsole({ agent }: AgentConsoleProps) {
      * **Fetch Messages for a Conversation**
      */
     const fetchMessages = useCallback(async (conversationId: string) => {
-        if (!conversationId || !agent.id) return;
+        if (!conversationId) {
+            console.log('Missing conversationId');
+            return;
+        }
         
         try {
-            const response = await apiClient.get('/api/getConversationMessages', {
-                params: { conversationId },
-                headers: {
-                    'x-agent-id': agent.id
-                }
-            });
+            const messages = await getConversationMessages(conversationId);
+            // Transform the messages to match ConversationItem type
+            const conversationItems = messages.map(msg => ({
+                ...msg,
+                object: 'realtime.item', // Add required property
+                status: msg.metadata?.isFinal ? 'completed' : 'pending', // Add required property
+                content: Array.isArray(msg.content) ? msg.content : [{
+                    type: msg.type,
+                    text: msg.content.text || '',
+                    transcript: msg.content.transcript
+                }]
+            })) as ConversationItem[];
             
-            if (response.data.messages) {
-                setItems(response.data.messages as ConversationItem[]);
-            } else {
-                // No messages yet is a valid state for a new conversation
-                setItems([]);
-            }
-        } catch (error: any) {
-            if (error.response?.status === 404) {
-                // This is expected for new conversations
-                setItems([]);
-            } else {
-                console.error('Failed to fetch messages:', error);
-                toast.error('Failed to load messages');
-            }
+            setItems(conversationItems);
+        } catch (error) {
+            console.error('Failed to fetch messages:', error);
+            toast.error('Failed to load messages');
         }
-    }, [agent.id]);
+    }, []);
 
     /**
      * **Handle Audio Playback Errors**
@@ -138,207 +244,271 @@ function AgentConsole({ agent }: AgentConsoleProps) {
      * **Send Message Function**
      * Sends a message through the WebSocket connection using EnhancedWebSocketHandler.
      */
- // Update the sendMessage function to handle null checks:
-const sendMessage = useCallback((message: any) => {
-    console.log('Attempting to send message:', message);
-    if (!wsHandler.current) {
+    const [isResponseActive, setIsResponseActive] = useState(false);
+    
+    const sendMessage = useCallback((message: any) => {
+      if (message.type === 'response.create' && isResponseActive) {
+        console.warn('Response already active. Skipping message:', message);
+        return;
+      }
+    
+      if (message.type === 'response.create') {
+        setIsResponseActive(true);
+      }
+    
+      console.log('Attempting to send message:', message);
+      if (!wsHandler.current) {
         console.warn('WebSocket handler not initialized');
         return;
-    }
-
-    if (wsHandler.current.isConnected()) {
+      }
+    
+      if (wsHandler.current.isConnected()) {
         wsHandler.current.sendMessage(message);
-    } else {
+      } else {
         console.warn('WebSocket is not connected. Queuing message:', message);
         wsHandler.current.sendMessage(message);
-    }
-}, []);
+      }
+    }, [isResponseActive]);
 
+    /**
+     * **Save Message to Database**
+     * Saves a conversation message to the database via the saveMessage API route.
+     */
+    const saveMessageToDatabase = useCallback(async (item: ConversationItem, conversationId: string) => {
+        try {
+            console.log('Attempting to save message:', {
+                messageId: item.id,
+                conversationId,
+                content: item.content
+            });
+
+            // Transform the content to match expected database structure
+            const content = {
+                text: item.content[0]?.text || item.content[0]?.transcript || '',  
+                transcript: item.content[0]?.transcript || undefined,  
+                audioUrl: item.content[0]?.audioUrl || undefined  
+            };
+
+            // Don't pass toolCalls separately as it should be part of metadata
+            const message = await addMessage({
+                id: item.id,
+                conversationId,
+                type: item.type as MessageType,
+                role: item.role as MessageRole,
+                content,
+                metadata: {
+                    ...item.metadata,
+                    toolCalls: item.metadata?.toolCalls || []
+                },
+                stepId: item.stepId,
+                parentMessageId: item.parentMessageId
+            });
+
+            console.log('Message saved to database:', message.id);
+            return message;
+        } catch (error) {
+            console.error('Failed to save message:', error);
+            console.error('Message data:', item);
+            toast.error('Failed to save message to database');
+            throw error;
+        }
+    }, []);
 
     /**
      * **Handle WebSocket Message**
-     * Processes incoming WebSocket messages.
+     * Processes incoming WebSocket messages, including function calls.
      */
     const handleWebSocketMessage = useCallback(async (data: WebSocketMessage) => {
         console.log('Received WebSocket message:', data);
         console.log('Current canPushToTalk:', canPushToTalkRef.current);
-    
+
         switch (data.type) {
             // Session Events
             case 'session.created':
+                console.log('Session created:', data.session);
+                break;
+
             case 'session.updated':
                 console.log('Session updated:', data.session);
                 break;
-    
+
             // Conversation Events
             case 'conversation.created':
-                if (data.conversation && data.conversation.id) {
-                    console.log('Conversation created:', data.conversation.id);
-                    fetchMessages(data.conversation.id);
+                if (data.conversation?.id && data.conversation.id !== conversationId) {
+                    console.log('New conversation created:', data.conversation.id);
+                    setConversationId(data.conversation.id);
+                    await fetchMessages(data.conversation.id);
                 }
                 break;
-    
+
             case 'conversation.item.created':
-                if (data.item) {
-                    console.log('User message created:', data.item.id);
-                    setItems((prevItems) => [...prevItems, data.item as ConversationItem]);
+                if (data.item && !items.some(item => item.id === data.item.id)) {
+                    console.log('Conversation item created:', data.item.id);
+                    addUniqueItem(data.item as ConversationItem);
                 }
                 break;
-    
-            case 'conversation.item.truncated':
-                if (data.item_id && data.audio_end_ms !== undefined) {
-                    console.log(`Conversation item truncated: ${data.item_id} at ${data.audio_end_ms}ms`);
-                    setItems((prevItems) =>
-                        prevItems.map((item: ConversationItem) =>
-                            item.id === data.item_id
-                                ? {
-                                    ...item,
-                                    content: item.content.map((contentPart: any, index: number) =>
-                                        index === data.content_index
-                                            ? { ...contentPart, truncated: true, audio_end_ms: data.audio_end_ms }
-                                            : contentPart
-                                    ),
-                                }
-                                : item
-                        )
-                    );
-                }
-                break;
-    
-            case 'conversation.item.deleted':
-                if (data.item_id) {
-                    console.log('Conversation item deleted:', data.item_id);
-                    setItems((prevItems) => prevItems.filter((item) => item.id !== data.item_id));
-                }
-                break;
-    
+
             // Input Audio Buffer Events
             case 'input_audio_buffer.speech_started':
                 if (!canPushToTalkRef.current) {
-                    console.log('Speech started in perpetual mode. Setting isListening to true.');
+                    console.log('Speech started in perpetual mode');
                     setIsListening(true);
-                } else {
-                    console.log('Speech started in manual mode. Ignoring isListening.');
                 }
                 break;
-    
+
             case 'input_audio_buffer.speech_stopped':
                 if (!canPushToTalkRef.current) {
-                    console.log('Speech stopped in perpetual mode. Setting isListening to false.');
+                    console.log('Speech stopped in perpetual mode');
                     setIsListening(false);
-                } else {
-                    console.log('Speech stopped in manual mode. Ignoring isListening.');
                 }
                 break;
-    
+
             case 'input_audio_buffer.committed':
-                if (data.item_id) {
+                if (data.item_id && conversationId && !isResponseActive) {
                     console.log('Audio buffer committed:', data.item_id);
-                    sendMessage({
-                        type: 'response.create'
-                    });
+                    setIsResponseActive(true); // Set active before sending
+                    sendMessage({ type: 'response.create' });
                 }
                 break;
-    
+
             case 'input_audio_buffer.cleared':
                 console.log('Audio buffer cleared');
                 break;
-    
+
             // Transcription Events
             case 'conversation.item.input_audio_transcription.completed':
-                if (data.transcript && data.item_id) {
+                if (data.transcript && data.item_id && conversationId) {
                     console.log(`Transcription completed for item ${data.item_id}: "${data.transcript.trim()}"`);
-                    setItems((prevItems) =>
-                        prevItems.map((item: ConversationItem) =>
-                            item.id === data.item_id
-                                ? {
-                                    ...item,
-                                    content: item.content.map((contentPart: any, index: number) =>
-                                        index === data.content_index
-                                            ? { ...contentPart, transcript: data.transcript.trim() }
-                                            : contentPart
-                                    ),
-                                }
-                                : item
-                        )
-                    );
+                    
+                    const messageItem = {
+                        id: data.item_id,
+                        role: 'user',
+                        type: 'message',
+                        status: 'completed',
+                        content: [{
+                            type: 'transcript',
+                            text: data.transcript.trim(),
+                            transcript: data.transcript.trim()
+                        }]
+                    } as ConversationItem;
+            
+                    // Use the action instead of direct API call
+                    await saveMessageToDatabase(messageItem, conversationId);
+                    addUniqueItem(messageItem);
                 }
                 break;
-    
+
+            // Response Events
             case 'response.created':
-                console.log('Response created:', data.response?.id);
-                break;
-    
-            case 'response.done':
-                if (data.response && data.response.output) {
-                    console.log('Response done. Output items:', data.response.output.map((item: ConversationItem) => item.id));
-                    setItems((prevItems) => [...prevItems, ...(data.response.output as ConversationItem[])]);
+                if (data.response?.id) {
+                    console.log('Response created:', data.response.id);
+                    setIsResponseActive(true);
                 }
                 break;
-    
+
             case 'response.output_item.added':
-                if (data.item) {
+                if (data.item && !items.some(item => item.id === data.item.id)) {
                     console.log('Response output item added:', data.item.id);
-                    setItems((prevItems) => [...prevItems, data.item as ConversationItem]);
+                    addUniqueItem(data.item as ConversationItem);
                 }
                 break;
-    
-            case 'response.output_item.done':
-                if (data.item) {
-                    console.log('Response output item done:', data.item.id);
-                    setItems((prevItems) =>
-                        prevItems.map((item: ConversationItem) =>
-                            item.id === data.item.id ? { ...data.item } : item
-                        )
+
+      // Update the function call handling in handleWebSocketMessage
+case 'response.output_item.done':
+    if (data.item && conversationId) {
+      console.log('Response output item done:', data.item.id);
+      
+                    // Handle function calls
+                   // Handle function calls
+    if (data.item.type === 'function_call') {
+        try {
+          const args = JSON.parse(data.item.arguments);
+          
+          switch (data.item.name) {
+            case 'send_email':
+              // Update email draft state with firstName
+              setDraftEmail({
+                to: args.to,
+                subject: args.subject,
+                body: args.body || '',
+                firstName: args.firstName || ''  // Add firstName field
+              });
+              setActiveTab('workspace'); // Switch to workspace tab
+              setIsEditingEmail(true);
+              break;
+
+              case 'add_to_notion':
+                case 'add_notion_message':
+                  // Update note draft state
+                  setDraftNote(args.content || args.messageContent);
+                  setActiveTab('workspace'); // Switch to workspace tab
+                  setIsEditingDraft(true);
+                  break;
+      
+                case 'store_memory':
+                  // Update memory state
+                  setMemoryKv(prev => ({
+                    ...prev,
+                    [args.key]: args.value
+                  }));
+                  break;
+              }
+                              // Save the function call as a message
+        const functionMessage = {
+            ...data.item,
+            role: 'assistant' as MessageRole,  // Add type assertion
+            status: 'completed',
+            content: [{
+              type: 'function_call' as MessageType,  // Add type assertion
+              text: JSON.stringify(args),
+              transcript: `Function ${data.item.name} called with ${JSON.stringify(args)}`
+            }],
+            metadata: {
+              ...data.item.metadata,
+              isFinal: true,
+              toolCalls: [{
+                tool: data.item.name,
+                input: args,
+                timestamp: new Date().toISOString()
+              }]
+            }
+          };
+  
+          await saveMessageToDatabase(functionMessage, conversationId);
+          addUniqueItem(functionMessage);
+
+
+                        } catch (error) {
+                            console.error('Error handling function call:', error);
+                            toast.error('Failed to process function call');
+                        }
+                    } else {
+                        // Handle regular assistant messages
+                        const assistantMessage = {
+                            ...data.item,
+                            role: 'assistant',
+                            status: 'completed'
+                        } as ConversationItem;
+
+                        await saveMessageToDatabase(assistantMessage, conversationId);
+                        addUniqueItem(assistantMessage);
+                    }
+                }
+                break;
+
+            case 'response.done':
+                if (data.response?.output) {
+                    console.log('Response complete:', 
+                        data.response.output.map((item: ConversationItem) => item.id)
                     );
+                    setIsResponseActive(false);
                 }
                 break;
-    
-            case 'response.text.delta':
-                if (data.delta && data.item_id) {
-                    console.log(`Response text delta for item ${data.item_id}: "${data.delta}"`);
-                    setItems((prevItems) =>
-                        prevItems.map((item: ConversationItem) =>
-                            item.id === data.item_id
-                                ? {
-                                    ...item,
-                                    content: item.content.map((contentPart: any, index: number) =>
-                                        index === data.content_index
-                                            ? { ...contentPart, text: (contentPart.text || '') + data.delta }
-                                            : contentPart
-                                    ),
-                                }
-                                : item
-                        )
-                    );
-                }
-                break;
-    
-            case 'response.text.done':
-                if (data.text && data.item_id) {
-                    console.log(`Response text done for item ${data.item_id}: "${data.text}"`);
-                    setItems((prevItems) =>
-                        prevItems.map((item: ConversationItem) =>
-                            item.id === data.item_id
-                                ? {
-                                    ...item,
-                                    content: item.content.map((contentPart: any, index: number) =>
-                                        index === data.content_index
-                                            ? { ...contentPart, text: data.text }
-                                            : contentPart
-                                    ),
-                                }
-                                : item
-                        )
-                    );
-                }
-                break;
-    
-            // Audio Events
+
+            // Audio Processing Events
             case 'response.audio.delta':
                 try {
                     if (data.delta && data.item_id && wavStreamPlayerRef.current) {
-                        console.log(`Response audio delta for item ${data.item_id}: Received audio chunk.`);
                         const audioData = base64ToInt16Array(data.delta);
                         wavStreamPlayerRef.current.add16BitPCM(audioData, data.item_id);
                     }
@@ -347,35 +517,69 @@ const sendMessage = useCallback((message: any) => {
                     handleAudioError(error);
                 }
                 break;
-    
+
             case 'response.audio.done':
                 if (data.item_id) {
-                    console.log('Audio track complete:', data.item_id);
+                    console.log('Audio playback completed:', data.item_id);
                 }
                 break;
-    
-            // Additional Response Events
+
             case 'response.audio_transcript.delta':
-            case 'response.audio_transcript.done':
-            case 'response.content_part.done':
-                console.log(`${data.type} received for item ${data.item_id}`);
+                if (data.item_id) {
+                    // Only log transcript deltas, no special handling needed
+                    console.log('Audio transcript delta received for:', data.item_id);
+                }
                 break;
-    
-            // Error Events
+
+            case 'response.audio_transcript.done':
+                if (data.transcript && data.item_id) {
+                    console.log(`Audio transcript completed for ${data.item_id}:`, data.transcript);
+                }
+                break;
+
+            // Error Handling
             case 'error':
                 const errorMessage = data.error?.message || 'Unknown error';
-                console.error('WebSocket error message:', errorMessage);
-                if (!errorMessage.includes("Cannot update a conversation's voice") && 
-                    errorMessage !== 'RealtimeAPI is not connected') {
+                console.error('WebSocket error:', errorMessage);
+                
+                if (errorMessage === 'Conversation already has an active response') {
+                    console.log('Ignoring duplicate response request');
+                    setIsResponseActive(false); // Reset state on duplicate
+                } else if (!errorMessage.includes("Cannot update a conversation's voice") && 
+                          errorMessage !== 'RealtimeAPI is not connected') {
                     toast.error(`WebSocket Error: ${errorMessage}`);
                 }
                 break;
-    
-            default:
-                console.log('Received message of type:', data.type);
+
+            // Rate Limits
+            case 'rate_limits.updated':
+                console.log('Rate limits updated:', data.rate_limits);
                 break;
+
+            default:
+                console.log('Unhandled message type:', data.type);
         }
-    }, [fetchMessages, sendMessage, handleAudioError]);
+    }, [
+        items,
+        conversationId,
+        sendMessage,
+        addUniqueItem,
+        saveMessageToDatabase,
+        handleAudioError,
+        fetchMessages,
+        setConversationId,
+        wavStreamPlayerRef,
+        setIsResponseActive,
+        canPushToTalkRef,
+        setIsListening,
+        isResponseActive,
+        setDraftEmail,
+        setIsEditingEmail,
+        setDraftNote,
+        setIsEditingDraft,
+        setMemoryKv,
+        toast
+    ]);
 
     /**
      * **InitializeAudio Function**
@@ -387,22 +591,74 @@ const sendMessage = useCallback((message: any) => {
               await wavRecorderRef.current.end();
               setIsRecording(false);
           }
-  
+
           // Initialize stream player first for AI audio playback
           await wavStreamPlayerRef.current.interrupt(); // Ensure previous sessions are cleared
           await wavStreamPlayerRef.current.connect();
-  
+
           // Then initialize recorder
           await wavRecorderRef.current.begin();
-  
+
           return true;
       } catch (error) {
           console.error('Failed to initialize audio:', error);
           toast.error('Audio initialization failed');
           return false;
       }
-  }, [isRecording]);
-
+    }, [isRecording]);
+// Add recording functions:
+const stopRecording = useCallback(async () => {
+    if (!isRecording) return;
+    
+    try {
+      await wavRecorderRef.current.pause();
+      setIsRecording(false);
+      
+      sendMessage({
+        type: 'input_audio_buffer.commit'
+      });
+      
+    } catch (error) {
+      console.error('Failed to stop recording:', error);
+      toast.error('Failed to stop recording');
+      await initializeAudio();
+    }
+  }, [isRecording, initializeAudio, sendMessage]);
+  
+  const startRecording = useCallback(async () => {
+    try {
+      if (isRecording) {
+        console.warn('Already recording, stopping first...');
+        await stopRecording();
+        return;
+      }
+  
+      if (!wavRecorderRef.current.processor) {
+        const audioInitialized = await initializeAudio();
+        if (!audioInitialized) return;
+      }
+      
+      setIsRecording(true);
+      await wavRecorderRef.current.record((data: { mono: Int16Array; raw: Int16Array; }) => {
+        if (!data?.mono) {
+          console.warn('Invalid audio data received');
+          return;
+        }
+    
+        if (wsHandler.current?.isConnected()) {
+          wsHandler.current.sendMessage({
+            type: 'input_audio_buffer.append',
+            audio: data.mono
+          });
+        }
+      });
+      
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      toast.error('Failed to start recording');
+      setIsRecording(false);
+    }
+  }, [isRecording, stopRecording, initializeAudio]);
     /**
      * **Fetch Conversation History via REST API**
      */
@@ -547,6 +803,9 @@ const sendMessage = useCallback((message: any) => {
 
           const conversationId = conversationResponse.data.conversationId;
           
+          // Set the conversation ID
+          setConversationId(conversationId);
+
           // Reset states and save session ID
           setCurrentSessionId(sessionId);
           localStorage.setItem('lastSessionId', sessionId);
@@ -568,7 +827,7 @@ const sendMessage = useCallback((message: any) => {
                   type: 'session.update',
                   session: {
                       modalities: ['text', 'audio'],
-                      instructions: "Your knowledge cutoff is 2023-10. You are a helpful assistant.",
+                      instructions: data.settings?.initialMessage || "I am a helpful assistant.",
                       voice: "alloy",
                       input_audio_format: "pcm16",
                       output_audio_format: "pcm16",
@@ -581,23 +840,10 @@ const sendMessage = useCallback((message: any) => {
                           prefix_padding_ms: 300,
                           silence_duration_ms: 800
                       },
-                      tools: [
-                          {
-                              type: "function",
-                              name: "get_weather",
-                              description: "Get the current weather for a location.",
-                              parameters: {
-                                  type: "object",
-                                  properties: {
-                                      location: { type: "string" }
-                                  },
-                                  required: ["location"]
-                              }
-                          }
-                      ],
+                      tools: getToolConfigurations(data.settings?.tools || []),
                       tool_choice: "auto",
                       temperature: 0.8,
-                      max_response_output_tokens: 4000 // Changed from "inf" to 4000
+                      max_response_output_tokens: 4000
                   }
               });
           }
@@ -614,114 +860,102 @@ const sendMessage = useCallback((message: any) => {
           toast.error('Failed to create session');
           return null;
       }
-    }, [agent.id, data.settings?.onboardingType, fetchSessions, initializeAudio, fetchMessages]);
+    }, [agent.id, data.settings?.onboardingType, data.settings?.initialMessage, data.settings?.tools, fetchSessions, initializeAudio, fetchMessages]);
 
     /**
      * **Load Session State**
      * Loads the state of a selected session and fetches its messages.
      */
     const loadSessionState = useCallback(async (sessionId: string) => {
-      const session = sessions.find(s => s.id === sessionId);
-      if (!session) return;
-    
-      try {
-          // Clean up existing audio state
-          if (wavStreamPlayerRef.current) {
-              await wavStreamPlayerRef.current.interrupt();
-          }
-          if (wsHandler.current) {
-              await wsHandler.current.cleanupAudio();
-          }
-  
-          // Get or create conversation for this session
-          const conversationResponse = await apiClient.post('/api/getOrCreateConversation', {
-              sessionId,
-              agentId: agent.id
-          }, {
-              headers: {
-                  'x-agent-id': agent.id
-              }
-          });
+        const session = sessions.find(s => s.id === sessionId);
+        if (!session) return;
+      
+        try {
+            // Clean up existing audio state
+            if (wavStreamPlayerRef.current) {
+                await wavStreamPlayerRef.current.interrupt();
+            }
+            if (wsHandler.current) {
+                await wsHandler.current.cleanupAudio();
+            }
 
-          if (conversationResponse.data.error) {
-              throw new Error(conversationResponse.data.error);
-          }
+            // Get or create conversation for this session
+            const conversationResponse = await apiClient.post('/api/getOrCreateConversation', {
+                sessionId,
+                agentId: agent.id
+            }, {
+                headers: {
+                    'x-agent-id': agent.id
+                }
+            });
 
-          const conversationId = conversationResponse.data.conversationId;
+            if (conversationResponse.data.error) {
+                throw new Error(conversationResponse.data.error);
+            }
 
-          // Only send voice settings if this is a new conversation
-          if (!conversationResponse.data.existingConversation) {
-              // Send session config...
-              if (wsHandler.current?.isConnected()) {
-                  await wsHandler.current.sendMessage({
-                      type: 'session.update',
-                      session: {
-                          modalities: ['text', 'audio'],
-                          instructions: "Your knowledge cutoff is 2023-10. You are a helpful assistant.",
-                          voice: "alloy",
-                          input_audio_format: "pcm16",
-                          output_audio_format: "pcm16",
-                          input_audio_transcription: {
-                              model: "whisper-1"
-                          },
-                          turn_detection: {
-                              type: 'server_vad',
-                              threshold: 0.8,
-                              prefix_padding_ms: 300,
-                              silence_duration_ms: 800
-                          },
-                          tools: [
-                              {
-                                  type: "function",
-                                  name: "get_weather",
-                                  description: "Get the current weather for a location.",
-                                  parameters: {
-                                      type: "object",
-                                      properties: {
-                                          location: { type: "string" }
-                                      },
-                                      required: ["location"]
-                                  }
-                              }
-                          ],
-                          tool_choice: "auto",
-                          temperature: 0.8,
-                          max_response_output_tokens: 4000 // Changed from "inf" to 4000
-                      }
-                  });
-              }
-          }
+            const conversationId = conversationResponse.data.conversationId;
+            setConversationId(conversationId); // Set the conversation ID
+            console.log('Active conversation ID:', conversationId);
+            // Only send voice settings if this is a new conversation
+            if (!conversationResponse.data.existingConversation) {
+                // Send session config...
+                if (wsHandler.current?.isConnected()) {
+                    await wsHandler.current.sendMessage({
+                        type: 'session.update',
+                        session: {
+                            modalities: ['text', 'audio'],
+                            instructions: data.settings?.initialMessage || "I am a helpful assistant.",
+                            voice: "alloy",
+                            input_audio_format: "pcm16",
+                            output_audio_format: "pcm16",
+                            input_audio_transcription: {
+                                model: "whisper-1"
+                            },
+                            turn_detection: {
+                                type: 'server_vad',
+                                threshold: 0.8,
+                                prefix_padding_ms: 300,
+                                silence_duration_ms: 800
+                            },
+                            tools: getToolConfigurations(data.settings?.tools || []),
+                            tool_choice: "auto",
+                            temperature: 0.8,
+                            max_response_output_tokens: 4000
+                        }
+                    });
+                }
+            }
 
-          // Reset states
-          setEmailSent(false);
-          setNotesTaken(false);
-          setNotionMessageSent(false);
-          setMemoryKv({});
+            // Reset states
+            setEmailSent(false);
+            setNotesTaken(false);
+            setNotionMessageSent(false);
+            setMemoryKv({});
 
-          // Update based on session progress
-          session.stepProgress?.steps?.forEach(step => {
-              if (step.completed) {
-                  switch (step.completionTool) {
-                      case 'email':
-                          setEmailSent(true);
-                          break;
-                      case 'notesTaken':
-                          setNotesTaken(true);
-                          break;
-                      case 'notion':
-                          setNotionMessageSent(true);
-                          break;
-                  }
-              }
-          });
+            // Update based on session progress
+            session.stepProgress?.steps?.forEach(step => {
+                if (step.completed) {
+                    switch (step.completionTool) {
+                        case 'email':
+                            setEmailSent(true);
+                            break;
+                        case 'notesTaken':
+                            setNotesTaken(true);
+                            break;
+                        case 'notion':
+                            setNotionMessageSent(true);
+                            break;
+                    }
+                }
+            });
 
-          // Fetch messages for this conversation
-          await fetchMessages(conversationId);
-      } catch (error) {
-          console.error('Failed to load session state:', error);
-          toast.error('Failed to load session state');
-      }
-    }, [sessions, agent.id, fetchMessages]);
+            // Fetch messages for this conversation
+            await fetchMessages(conversationId);
+        } catch (error) {
+            console.error('Failed to load session state:', error);
+            toast.error('Failed to load session state');
+        }
+    }, [sessions, agent.id, data.settings?.initialMessage, data.settings?.tools, fetchMessages]);
 
     /**
      * **Handle Session Selection**
@@ -747,7 +981,7 @@ const sendMessage = useCallback((message: any) => {
             console.warn('No active session for step update');
             return;
         }
-
+    
         try {
             await axios.post('/api/updateSessionSteps', {
                 agentId: agent.id,
@@ -777,182 +1011,124 @@ const sendMessage = useCallback((message: any) => {
     }, [currentSessionId, agent.id, fetchSessions]);
 
     /**
-     * **Recording Handlers**
-     * Handles the start and stop of audio recording.
+     * **Handle WebSocket Message Updates for Function Calls**
+     * Enhances the WebSocket message handler to process function calls and trigger UI components.
      */
-    const stopRecording = useCallback(async () => {
-      if (!isRecording) return;
-      
-      try {
-          // Only stop the recording
-          await wavRecorderRef.current.pause();
-          setIsRecording(false);
-          
-          // Just commit the audio buffer
-          sendMessage({
-              type: 'input_audio_buffer.commit'
-          });
-          
-      } catch (error) {
-          console.error('Failed to stop recording:', error);
-          toast.error('Failed to stop recording');
-          await initializeAudio();
-      }
-  }, [isRecording, initializeAudio, sendMessage]);
+    // Already implemented above in handleWebSocketMessage
 
-    const startRecording = useCallback(async () => {
-        try {
-            if (isRecording) {
-                console.warn('Already recording, stopping first...');
-                await stopRecording();
-                return;
-            }
-
-            if (!wavRecorderRef.current.processor) {
-                const audioInitialized = await initializeAudio();
-                if (!audioInitialized) return;
-            }
-            
-            setIsRecording(true);
-            await wavRecorderRef.current.record((data: { mono: Int16Array; raw: Int16Array; }) => {
-              if (!data?.mono) {
-                  console.warn('Invalid audio data received');
-                  return;
-              }
-          
-              if (wsHandler.current?.isConnected()) {
-                  wsHandler.current.sendMessage({
-                      type: 'input_audio_buffer.append',
-                      audio: data.mono // Already an Int16Array, no need to convert
-                  });
-              }
-          });
-          
-        } catch (error) {
-            console.error('Failed to start recording:', error);
-            toast.error('Failed to start recording');
-            setIsRecording(false);
-        }
-    }, [initializeAudio, isRecording, stopRecording]);
+    /**
+     * **InitializeAudio Function**
+     * Initializes audio recording and playback components.
+     */
+  
 
     /**
      * **Connect Conversation Function**
      * Connects the conversation by establishing WebSocket and audio connections.
      */
- // In connectConversation function:
-const connectConversation = useCallback(async () => {
-    try {
-        // Clean up any existing connections first
-        await cleanupAudioAndWebSocket();
+    const connectConversation = useCallback(async () => {
+        try {
+            // Clean up any existing connections first
+            await cleanupAudioAndWebSocket();
 
-        // Create new WebSocket handler using getInstance
-        wsHandler.current = EnhancedWebSocketHandler.getInstance(
-            'ws://localhost:8081', // Use secure WebSocket (wss://) in production
-            agent.id,
-            handleWebSocketMessage,
-            setIsConnected
-        );
+            // Create new WebSocket handler using getInstance
+            wsHandler.current = EnhancedWebSocketHandler.getInstance(
+                'ws://localhost:8081', // Use secure WebSocket (wss://) in production
+                agent.id,
+                handleWebSocketMessage,
+                setIsConnected
+            );
 
-        // Safely connect using optional chaining and null checks
-        if (!wsHandler.current) {
-            throw new Error('Failed to initialize WebSocket handler');
-        }
-
-        // Await the WebSocket connection
-        await wsHandler.current.connect();
-
-        // Initialize stream player first for AI audio playback
-        await wavStreamPlayerRef.current?.interrupt(); // Ensure previous sessions are cleared
-        await wavStreamPlayerRef.current.connect();
-
-        // Then initialize recorder
-        await wavRecorderRef.current.begin();
-
-        if (currentSessionId && wsHandler.current) {
-            // Get or create conversation for this session
-            const conversationResponse = await apiClient.post('/api/getOrCreateConversation', {
-                sessionId: currentSessionId,
-                agentId: agent.id
-            }, {
-                headers: {
-                    'x-agent-id': agent.id
-                }
-            });
-
-            if (conversationResponse.data.error) {
-                throw new Error(conversationResponse.data.error);
+            // Safely connect using optional chaining and null checks
+            if (!wsHandler.current) {
+                throw new Error('Failed to initialize WebSocket handler');
             }
 
-            const conversationId = conversationResponse.data.conversationId;
+            // Await the WebSocket connection
+            await wsHandler.current.connect();
 
-            // Only send voice settings if this is a new conversation
-            if (!conversationResponse.data.existingConversation) {
-                // Use type assertion to ensure wsHandler.current is not null
-                const ws = wsHandler.current;
-                await ws.sendMessage({
-                    type: 'session.update',
-                    session: {
-                        modalities: ['text', 'audio'],
-                        instructions: "Your knowledge cutoff is 2023-10. You are a helpful assistant.",
-                        voice: "alloy",
-                        input_audio_format: "pcm16",
-                        output_audio_format: "pcm16",
-                        input_audio_transcription: {
-                            model: "whisper-1"
-                        },
-                        turn_detection: {
-                            type: 'server_vad',
-                            threshold: 0.8,
-                            prefix_padding_ms: 300,
-                            silence_duration_ms: 800
-                        },
-                        tools: [
-                            {
-                                type: "function",
-                                name: "get_weather",
-                                description: "Get the current weather for a location.",
-                                parameters: {
-                                    type: "object",
-                                    properties: {
-                                        location: { type: "string" }
-                                    },
-                                    required: ["location"]
-                                }
-                            }
-                        ],
-                        tool_choice: "auto",
-                        temperature: 0.8,
-                        max_response_output_tokens: 4000
+            // Initialize stream player first for AI audio playback
+            await wavStreamPlayerRef.current?.interrupt(); // Ensure previous sessions are cleared
+            await wavStreamPlayerRef.current.connect();
+
+            // Then initialize recorder
+            await wavRecorderRef.current.begin();
+
+            if (conversationId && wsHandler.current) {
+                // Get or create conversation for this session
+                const conversationResponse = await apiClient.post('/api/getOrCreateConversation', {
+                    sessionId: currentSessionId,
+                    agentId: agent.id
+                }, {
+                    headers: {
+                        'x-agent-id': agent.id
                     }
                 });
+
+                if (conversationResponse.data.error) {
+                    throw new Error(conversationResponse.data.error);
+                }
+
+                const newConversationId = conversationResponse.data.conversationId;
+                setConversationId(newConversationId);
+
+                // Only send voice settings if this is a new conversation
+                if (!conversationResponse.data.existingConversation) {
+                    // Use type assertion to ensure wsHandler.current is not null
+                    const ws = wsHandler.current;
+                    await ws.sendMessage({
+                        type: 'session.update',
+                        session: {
+                            modalities: ['text', 'audio'],
+                            instructions: data.settings?.initialMessage || "I am a helpful assistant.",
+                            voice: "alloy",
+                            input_audio_format: "pcm16",
+                            output_audio_format: "pcm16",
+                            input_audio_transcription: {
+                                model: "whisper-1"
+                            },
+                            turn_detection: {
+                                type: 'server_vad',
+                                threshold: 0.8,
+                                prefix_padding_ms: 300,
+                                silence_duration_ms: 800
+                            },
+                            tools: getToolConfigurations(data.settings?.tools || []),
+                            tool_choice: "auto",
+                            temperature: 0.8,
+                            max_response_output_tokens: 4000
+                        }
+                    });
+                }
+
+                // Fetch any existing messages
+                await fetchMessages(newConversationId);
             }
 
-            // Fetch any existing messages
-            await fetchMessages(conversationId);
+            toast.success('Connected successfully');
+        } catch (error) {
+            console.error('Connection failed:', error);
+            toast.error('Failed to connect conversation');
+            // Clean up on error
+            await cleanupAudioAndWebSocket();
         }
-
-        toast.success('Connected successfully');
-    } catch (error) {
-        console.error('Connection failed:', error);
-        toast.error('Failed to connect conversation');
-        // Clean up on error
-        await cleanupAudioAndWebSocket();
-    }
-}, [
-    agent.id, 
-    currentSessionId, 
-    cleanupAudioAndWebSocket, 
-    handleWebSocketMessage,
-    fetchMessages
-]);
-
+    }, [
+        agent.id, 
+        conversationId, 
+        currentSessionId, 
+        cleanupAudioAndWebSocket, 
+        handleWebSocketMessage,
+        fetchMessages,
+        data.settings?.initialMessage,
+        data.settings?.tools
+    ]);
 
     /**
      * **Draft Handlers**
      * Handles sending notes and emails.
      */
     const handleSendNote = useCallback(async () => {
-        if (!draftNote || !currentSessionId) return;
+        if (!draftNote || !currentSessionId || !conversationId) return;
         
         try {
             await axios.post('/api/addMessageToNotion', { 
@@ -970,10 +1146,10 @@ const connectConversation = useCallback(async () => {
             console.error('Error in add_notion_message:', err);
             toast.error('Failed to add note to Notion.');
         }
-    }, [draftNote, currentSessionId, updateStepStatus]);
+    }, [draftNote, currentSessionId, conversationId, updateStepStatus]);
 
     const handleSendEmail = useCallback(async () => {
-        if (!draftEmail || !currentSessionId) return;
+        if (!draftEmail || !currentSessionId || !conversationId) return;
         
         try {
             await axios.post('/api/send_email', { 
@@ -990,7 +1166,7 @@ const connectConversation = useCallback(async () => {
             console.error('Error in send_email:', err);
             toast.error('Failed to send email.');
         }
-    }, [draftEmail, currentSessionId, updateStepStatus]);
+    }, [draftEmail, currentSessionId, conversationId, updateStepStatus]);
 
     /**
      * **Audio Visualization Effect**
@@ -1179,29 +1355,28 @@ const connectConversation = useCallback(async () => {
                             secondaryColor={data.settings?.secondaryColor || '#FF0080'}
                         />
 
-                        <Footer
-                            isConnected={isConnected}
-                            isRecording={isRecording}
-                            canPushToTalk={canPushToTalk}
-                            connectConversation={connectConversation}
-                            disconnectConversation={disconnectConversation}
-                            startRecording={startRecording}
-                            stopRecording={stopRecording}
-                            changeTurnEndType={(value: string) => setCanPushToTalk(value === 'none')}
-                            clientCanvasRef={clientCanvasRef}
-                            serverCanvasRef={serverCanvasRef}
-                            wavRecorder={wavRecorderRef.current!}
-                            wavStreamPlayer={wavStreamPlayerRef.current!}
-                            primaryColor={data.settings?.primaryColor}
-                            secondaryColor={data.settings?.secondaryColor}
-                            isListening={isListening} // Pass the listening state
-                        />
+<Footer
+  isConnected={isConnected}
+  isRecording={isRecording}
+  canPushToTalk={canPushToTalk}
+  connectConversation={connectConversation}
+  disconnectConversation={disconnectConversation}
+  startRecording={startRecording}
+  stopRecording={stopRecording}
+  changeTurnEndType={(value: string) => setCanPushToTalk(value === 'none')}
+  clientCanvasRef={clientCanvasRef}
+  serverCanvasRef={serverCanvasRef}
+  wavRecorder={wavRecorderRef.current!}
+  wavStreamPlayer={wavStreamPlayerRef.current!}
+  primaryColor={data.settings?.primaryColor}
+  secondaryColor={data.settings?.secondaryColor}
+  isListening={isListening}
+/>
                     </div>
                 </div>
             </TooltipProvider>
         </PasswordAuthWrapper>
     );
-
 }
 
 export default AgentConsole;

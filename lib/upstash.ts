@@ -619,20 +619,35 @@ export async function cleanupCompletedConversations(
  * Message Management
  */
 export async function addMessage(
-  conversationId: string,
-  type: MessageType,
-  role: MessageRole,
-  content: MessageContent,
-  metadata: Partial<MessageMetadata> = {},
-  parentMessageId?: string,
-  stepId?: string
+  messageData: {
+    id: string;  // Accept the WebSocket message ID
+    conversationId: string;
+    type: MessageType;
+    role: MessageRole;
+    content: MessageContent;
+    metadata?: Partial<MessageMetadata>;
+    parentMessageId?: string;
+    stepId?: string;
+  }
 ): Promise<SelectMessage> {
   try {
-    const finalMetadata = ensureMetadata(metadata, defaultMessageMetadata);
+    console.log('addMessage called with parameters:', {
+      id: messageData.id,
+      conversationId: messageData.conversationId,
+      type: messageData.type,
+      role: messageData.role,
+      content: messageData.content,
+      metadata: messageData.metadata,
+      parentMessageId: messageData.parentMessageId,
+      stepId: messageData.stepId
+    });
+
+    const finalMetadata = ensureMetadata(messageData.metadata || {}, defaultMessageMetadata);
+    console.log('addMessage: Prepared finalMetadata:', finalMetadata);
 
     // Get conversation with complete session and user details
     const conversation = await db.query.conversations.findFirst({
-      where: eq(conversations.id, conversationId),
+      where: eq(conversations.id, messageData.conversationId),
       with: {
         session: {
           with: {
@@ -648,38 +663,63 @@ export async function addMessage(
     });
 
     if (!conversation) {
+      console.error('addMessage: Conversation not found for ID:', messageData.conversationId);
       throw new Error('Conversation not found');
     }
 
-    // Get actual user ID either from the session or the agent owner
     const effectiveUserId = conversation.session?.userId || 
                           conversation.session?.agent?.userId || 
                           conversation.session?.agent?.user?.id;
 
+    console.log('addMessage: Retrieved conversation:', {
+      conversationId: conversation.id,
+      effectiveUserId
+    });
+
     if (!effectiveUserId) {
-      console.warn('No user ID found for conversation:', conversationId);
+      console.warn('addMessage: No user ID found for conversation:', messageData.conversationId);
     }
 
     const orderIndex = (
-      await redis.incr(`${CONVERSATION_PREFIX}${conversationId}:message_count`)
+      await redis.incr(`${CONVERSATION_PREFIX}${messageData.conversationId}:message_count`)
     ).toString();
 
-    // Create message
+    console.log(`addMessage: Retrieved orderIndex ${orderIndex} for conversation ${messageData.conversationId}`);
+
+    // First check if message already exists
+    const existingMessage = await db.query.messages.findFirst({
+      where: eq(messages.id, messageData.id)
+    });
+
+    if (existingMessage) {
+      console.log('addMessage: Message already exists:', messageData.id);
+      return {
+        ...existingMessage,
+        metadata: ensureMetadata(existingMessage.metadata, defaultMessageMetadata),
+        toolCalls: (existingMessage.toolCalls || []) as ToolCall[],
+        stepId: existingMessage.stepId || undefined,
+        parentMessageId: existingMessage.parentMessageId || undefined
+      };
+    }
+
+    // Create message with provided ID
     const [dbMessage] = await db
       .insert(messages)
       .values({
-        id: createId(),
-        conversationId,
-        type,
-        role,
-        content,
+        id: messageData.id,
+        conversationId: messageData.conversationId,
+        type: messageData.type,
+        role: messageData.role,
+        content: messageData.content,
         metadata: finalMetadata,
-        stepId,
-        parentMessageId,
+        stepId: messageData.stepId,
+        parentMessageId: messageData.parentMessageId,
         orderIndex,
         toolCalls: finalMetadata.toolCalls || [],
       })
       .returning();
+
+    console.log('addMessage: Successfully inserted message:', dbMessage);
 
     const message: SelectMessage = {
       ...dbMessage,
@@ -689,52 +729,53 @@ export async function addMessage(
       parentMessageId: dbMessage.parentMessageId || undefined,
     };
 
-
-// After logging usage in your database, send a meter event to Stripe
-if (role === 'assistant' && finalMetadata.audioDurationSeconds && effectiveUserId) {
-  try {
-    const user = await db.query.users.findFirst({
-      where: eq(users.id, effectiveUserId),
-    });
-    if (user?.stripeCustomerId) {
-      await stripe.billing.meterEvents.create({
-        event_name: 'api_requests',
-        payload: {
-          stripe_customer_id: user.stripeCustomerId,
-          value: Math.round(finalMetadata.audioDurationSeconds).toString(), // Round to nearest integer
-        },
-      });
-    
-      console.log(`Sent meter event to Stripe for user ${effectiveUserId}`);
+    // After logging usage in your database, send a meter event to Stripe
+    if (messageData.role === 'assistant' && finalMetadata.audioDurationSeconds && effectiveUserId) {
+      try {
+        console.log(`addMessage: Sending meter event to Stripe for user ${effectiveUserId}`);
+        const user = await db.query.users.findFirst({
+          where: eq(users.id, effectiveUserId),
+        });
+        if (user?.stripeCustomerId) {
+          await stripe.billing.meterEvents.create({
+            event_name: 'api_requests',
+            payload: {
+              stripe_customer_id: user.stripeCustomerId,
+              value: Math.round(finalMetadata.audioDurationSeconds).toString(),
+            },
+          });
+          console.log(`addMessage: Successfully sent meter event to Stripe for user ${effectiveUserId}`);
+        } else {
+          console.warn(`addMessage: User ${effectiveUserId} does not have a stripeCustomerId`);
+        }
+      } catch (error) {
+        console.error('addMessage: Failed to send meter event to Stripe:', error);
+      }
     }
-  } catch (error) {
-    console.error('Failed to send meter event to Stripe:', error);
-  }
-}
 
+    // Log usage if this is an assistant message with audio duration
+    if (messageData.role === 'assistant' && finalMetadata.audioDurationSeconds) {
+      try {
+        console.log(`addMessage: Logging usage for message ${message.id}`);
+        const usageLog = {
+          userId: effectiveUserId,
+          sessionId: conversation.sessionId,
+          conversationId: conversation.id,
+          messageId: message.id,
+          durationSeconds: Math.round(finalMetadata.audioDurationSeconds),
+          messageRole: messageData.role,
+          stripeCustomerId: null,
+          reportingStatus: 'pending' as const
+        };
 
-   // Log usage if this is an assistant message with audio duration
-   if (role === 'assistant' && finalMetadata.audioDurationSeconds) {
-    try {
-      const usageLog = {
-        userId: effectiveUserId,
-        sessionId: conversation.sessionId,
-        conversationId: conversation.id,
-        messageId: message.id,
-        durationSeconds: Math.round(finalMetadata.audioDurationSeconds),
-        messageRole: role,
-        stripeCustomerId: null,
-        reportingStatus: 'pending' as const
-      };
+        const [logResult] = await db
+          .insert(usageLogs)
+          .values(usageLog)
+          .returning();
 
-      const [logResult] = await db
-        .insert(usageLogs)
-        .values(usageLog)
-        .returning();
-
-        // Double log for redundancy - one with user ID from session, one with user ID from agent
         if (conversation.session?.userId && conversation.session.agent?.userId &&
             conversation.session.userId !== conversation.session.agent.userId) {
+          console.log(`addMessage: Double logging usage for message ${message.id} with agent userId ${conversation.session.agent.userId}`);
           await db
             .insert(usageLogs)
             .values({
@@ -745,16 +786,14 @@ if (role === 'assistant' && finalMetadata.audioDurationSeconds && effectiveUserI
             .returning();
         }
 
-        console.log(`Usage logged for message ${message.id}:`, {
+        console.log(`addMessage: Successfully logged usage for message ${message.id}:`, {
           duration: finalMetadata.audioDurationSeconds,
           userId: effectiveUserId,
           logId: logResult.id
         });
       } catch (error) {
-        console.error('Failed to log usage:', error);
-        // Don't fail the message creation if usage logging fails
-        // But do log the full context for debugging
-        console.error('Usage logging context:', {
+        console.error('addMessage: Failed to log usage:', error);
+        console.error('addMessage: Usage logging context:', {
           userId: effectiveUserId,
           sessionId: conversation.sessionId,
           messageId: message.id,
@@ -768,41 +807,43 @@ if (role === 'assistant' && finalMetadata.audioDurationSeconds && effectiveUserI
       .update(conversations)
       .set({
         lastMessageAt: new Date(),
-        messageCount: parseInt(message.orderIndex),
+        messageCount: parseInt(orderIndex),
         metadata: {
           ...conversation.metadata,
           lastMessageId: message.id,
         },
       })
-      .where(eq(conversations.id, conversationId));
+      .where(eq(conversations.id, messageData.conversationId));
 
     // Update Redis state
     const messageKey = `${MESSAGE_PREFIX}${message.id}`;
-    const conversationKey = `${CONVERSATION_PREFIX}${conversationId}`;
+    const conversationKey = `${CONVERSATION_PREFIX}${messageData.conversationId}`;
 
     await Promise.all([
       redis.set(messageKey, message, { ex: DEFAULT_EXPIRY }),
       redis.zadd(`${conversationKey}:messages`, {
-        score: parseInt(message.orderIndex),
+        score: parseInt(orderIndex),
         member: message.id,
       }),
       redis.set(
         conversationKey,
         {
           lastMessageId: message.id,
-          messageCount: parseInt(message.orderIndex),
+          messageCount: parseInt(orderIndex),
           lastActive: Date.now(),
         },
         { ex: DEFAULT_EXPIRY }
       ),
     ]);
 
+    console.log('addMessage: Function completed successfully with message:', message);
     return message;
   } catch (error) {
-    console.error('Failed to add message:', error);
+    console.error('addMessage: Failed to add message:', error);
     throw error instanceof Error ? error : new Error('Failed to add message');
   }
 }
+
 export async function updateMessage(
   messageId: string,
   updates: Partial<{

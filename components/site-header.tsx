@@ -32,7 +32,7 @@ export default function SiteHeader({ site, url }: SiteHeaderProps) {
             Sites
           </a>
           <span className="text-neutral-600">/</span>
-          <span className="px-3 py-1 rounded-xl bg-dream-purple/20 text-white border border-dream-purple/20 shine">
+          <span className="px-3 py-1 rounded-xl bg-dream-cyan/20 text-white border border-dream-cyan/20 shine">
             {site.name}
           </span>
         </div>

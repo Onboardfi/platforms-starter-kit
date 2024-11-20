@@ -15,7 +15,7 @@ import { AgentsDataTable } from "@/components/groups/agents/data-table";
 import { SitesDataTable } from "@/components/groups/sites/data-table";
 import { SelectAgent, SelectSite } from "@/lib/schema";
 import { Links } from "@/components/parts/links";
-import WebSocketClient from '@/components/WebSocketClient';
+
 
 const pageData = {
   name: "Dashboard",
@@ -101,7 +101,7 @@ export default async function Page() {
               backdrop-blur-md p-6 shine shadow-dream">
               <h2 className="text-xl font-cal text-white mb-6">Recent Onboards</h2>
               <AgentsDataTable data={recentAgents} />
-              <WebSocketClient />
+        
             </div>
             
             

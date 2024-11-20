@@ -42,6 +42,12 @@ export interface ToolCall {
   duration?: number;
 }
 
+export interface Tool {
+  type: string;
+  name: string;
+  description: string;
+  parameters: object;
+}
 export interface MessageMetadata {
   clientId?: string;
   deviceInfo?: Record<string, any>;
@@ -53,9 +59,28 @@ export interface MessageMetadata {
   stepId?: string;
   stepTitle?: string;
   isFinal?: boolean;
-  audioDurationSeconds?: number;  // Add this
-}
 
+
+  audioDurationSeconds?: number;
+  audio?: {
+    sampleRate: number;
+    channels?: number;
+  };
+
+
+ 
+  [key: string]: any; // For any additional metadata
+
+}
+export interface Content {
+  type: string;
+  text?: string;
+  transcript?: string;
+  audio?: string;
+  audioUrl?: string; // Changed from string | null to string | undefined
+  truncated?: boolean;
+  audio_end_ms?: number;
+}
 export interface ConversationMetadata {
   agentVersion?: string;
   clientType?: string;

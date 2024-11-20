@@ -7,8 +7,27 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { MessageCircle, User, Clock } from "lucide-react";
 
+interface ConversationMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: {
+    text?: string;
+    transcript?: string;
+    audioUrl?: string;
+  }[];
+  metadata?: {
+    audioDurationSeconds?: number;
+    audio?: {
+      sampleRate: number;
+      channels?: number;
+    };
+    stepTitle?: string;
+  };
+  status: 'completed' | 'pending';
+}
+
 interface ConversationTabProps {
-  items: any[];
+  items: ConversationMessage[];
   currentSessionId: string | null;
   primaryColor?: string;
   secondaryColor?: string;
@@ -20,26 +39,46 @@ export default function ConversationTab({
   primaryColor = '#7928CA',
   secondaryColor = '#FF0080',
 }: ConversationTabProps) {
-  const [messages, setMessages] = useState<any[]>(items);
+  const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Single useEffect to handle message updates and deduplication
   useEffect(() => {
-    setMessages(items);
+    // Create a map to store unique messages by ID
+    const messageMap = new Map<string, ConversationMessage>();
+    
+    // Process items in order, keeping only the latest version of each message
+    items.forEach(item => {
+      messageMap.set(item.id, item);
+    });
+    
+    // Convert map values back to array to maintain order
+    const uniqueMessages = Array.from(messageMap.values());
+    
+    console.log('Processed messages:', uniqueMessages);
+    setMessages(uniqueMessages);
   }, [items]);
 
+  // Keep scroll at bottom when messages update
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
-
-  const formatMessageContent = (item: any) => {
-    if (item.formatted) {
-      return item.formatted.transcript || item.formatted.text || "(Truncated)";
+  const formatMessageContent = (item: ConversationMessage) => {
+    // Handle array of content
+    if (Array.isArray(item.content) && item.content.length > 0) {
+      const content = item.content[0]; // Get first content item
+      return (
+        content.text || // Try text first
+        content.transcript || // Then transcript
+        "(No content)" // Fallback
+      );
     }
-    return item.content?.text || item.content?.transcript || "(No content)";
+    
+    // Fallback for unexpected content structure
+    return "(No content)";
   };
-
   const formatDuration = (seconds: number): string => {
     if (!seconds) return '';
     if (seconds < 60) {
@@ -68,16 +107,16 @@ export default function ConversationTab({
         </div>
 
         {/* Messages Area */}
-        <ScrollArea className="h-[600px] px-2" ref={scrollRef}>
+     <ScrollArea className="h-[600px] px-2" ref={scrollRef}>
           {!currentSessionId ? (
             <EmptyState message="No active session selected" />
           ) : !messages.length ? (
             <EmptyState message="No messages in this conversation" />
           ) : (
             <div className="space-y-6 py-4">
-              {messages.map((item, i) => (
+              {messages.map((item) => (
                 <div
-                  key={item.id || i}
+                  key={`${item.id}-${item.role}`} // Use combination of id and role for unique key
                   className={cn(
                     "flex w-full",
                     item.role === "assistant" ? "justify-start" : "justify-end"

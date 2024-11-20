@@ -1,4 +1,4 @@
-// ConversationControls.tsx
+// /Users/bobbygilbert/Documents/GitHub/platforms-starter-kit/components/agent-console/Footer/ConversationControls.tsx
 
 import { Button } from '@/components/ui/button';
 import { FooterProps } from '../utils/types';

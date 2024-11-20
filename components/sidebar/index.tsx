@@ -8,11 +8,10 @@ import Image from "next/image";
 import {
     ArrowLeft,
     BarChart3,
-    Edit3,
     Globe,
     LayoutDashboard,
     Menu,
-    Database, // Add this line
+    Database,
     Newspaper,
     Settings,
     ChevronLeft,
@@ -21,9 +20,9 @@ import {
     Plus,
     ArrowUpRight,
     Users,
-    Network,
     Boxes
-  } from "lucide-react";
+} from "lucide-react";
+import { FaFacebook, FaTwitter, FaLinkedin } from "react-icons/fa"; // Import social media icons
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { SidebarHoverCard } from "@/components/sidebar/hover-card";
@@ -105,11 +104,11 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
       
       {/* Sidebar Container */}
       <motion.div
-  initial={{ x: -320 }}
-  animate={{
-    x: isOpen || window.innerWidth >= 768 ? 0 : -320,
-    width: isCollapsed ? 80 : 280, // Sidebar width
-  }}
+        initial={{ x: -320 }}
+        animate={{
+          x: isOpen || window.innerWidth >= 768 ? 0 : -320,
+          width: isCollapsed ? 80 : 280, // Sidebar width
+        }}
         transition={{ type: "spring", damping: 20, stiffness: 300 }}
         className={cn(
           "fixed z-30 flex h-full flex-col",
@@ -137,10 +136,10 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* Content Area */}
-        <div className="relative flex-1 overflow-hidden">
+        <div className="relative flex-1 overflow-hidden flex flex-col">
           {children}
           
-          {/* Collapse Toggle - Moved outside main container width */}
+          {/* Collapse Toggle */}
           <motion.button
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -173,11 +172,19 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
               </motion.div>
             </AnimatePresence>
           </motion.button>
+
+          {/* Footer Divider */}
+          <div className="border-t border-white/[0.02] mt-4"></div>
+
+          {/* Footer Section */}
+          <SidebarFooter />
         </div>
       </motion.div>
     </>
   );
-}// Sidebar Content Component
+}
+
+// Sidebar Content Component
 export function SidebarContent() {
   const { isCollapsed, hoveredItem, setHoveredItem } = useSidebar();
   const segments = useSelectedLayoutSegments();
@@ -330,7 +337,7 @@ export function SidebarContent() {
                   tab.isActive
                   ? "from-custom-green/20 to-custom-green-light/20 text-custom-green-light"
                   : "from-neutral-800/50 to-neutral-900/50 group-hover:from-neutral-800/70 group-hover:to-neutral-900/70"
-              )}>
+                )}>
                   {tab.icon}
                 </div>
 
@@ -364,58 +371,66 @@ export function SidebarContent() {
                   style={{ filter: "blur(20px)" }}
                 />
 
-              {/* Active Indicator */}
-              {tab.isActive && (
-<div className="absolute left-0 top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-custom-green" />
-)}
-            </Link>
-          ))}
-        </nav>
+                {/* Active Indicator */}
+                {tab.isActive && (
+                  <div className="absolute left-0 top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-custom-green" />
+                )}
+              </Link>
+            ))}
+          </nav>
+        </div>
       </div>
+    </div>
+  );
+}
 
-     
-      {/* Pro Features Section */}
+// Sidebar Footer Component
+export function SidebarFooter() {
+  const { isCollapsed } = useSidebar();
+  
+  return (
+    <div className={cn(
+      "flex flex-col items-start space-y-4 p-4",
+      isCollapsed ? "items-center justify-center" : "space-y-4"
+    )}>
+      {/* Upgrade to Pro Component */}
       {!isCollapsed && (
-       <div className="relative mt-6 rounded-xl border border-custom-green/20 bg-gradient-to-br from-custom-green/10 to-custom-green-light/10 p-4">
-       <div className="absolute -top-3 right-4 rounded-full bg-custom-green px-2 py-0.5 text-xs font-medium text-white">
-         Pro
-       </div>
+        <div className="relative rounded-xl border border-custom-green/20 bg-gradient-to-br from-custom-green/10 to-custom-green-light/10 p-4 w-full">
+          <div className="absolute -top-3 right-4 rounded-full bg-custom-green px-2 py-0.5 text-xs font-medium text-white">
+            Pro
+          </div>
 
-          
-       <Sparkles className="mb-3 h-6 w-6 text-custom-green-light" />
+          <Sparkles className="mb-3 h-6 w-6 text-custom-green-light" />
 
           <h4 className="mb-1 text-sm font-medium text-white">Upgrade to Pro</h4>
           <p className="mb-3 text-xs text-neutral-400">
             Get access to advanced features and priority support.
           </p>
           <button className="flex w-full items-center justify-center gap-2 rounded-lg bg-custom-green px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-custom-green-light">
-          <Plus className="h-4 w-4" />
+            <Plus className="h-4 w-4" />
             Upgrade Now
             <ArrowUpRight className="h-4 w-4" />
           </button>
         </div>
       )}
-    </div>
 
-    {/* Account Section */}
-    <div className="mt-auto">
+      {/* Profile Component */}
       <SidebarAccount isCollapsed={isCollapsed} />
-    </div>
-  </div>
-);
-}
-// Sidebar Footer Component
-export function SidebarFooter({ children }: { children: React.ReactNode }) {
-  const { isCollapsed } = useSidebar();
-  
-  return (
-    <div className={cn(
-      "border-t border-white/[0.02]",
-      "bg-neutral-900/50 backdrop-blur-md",
-      "p-4 transition-all duration-300",
-      isCollapsed ? "items-center justify-center" : "space-y-4"
-    )}>
-      {children}
+
+      {/* Social Media Icons */}
+      {!isCollapsed && (
+        <div className="flex space-x-3 mt-2">
+          <Link href="https://facebook.com" target="_blank" aria-label="Facebook">
+            <FaFacebook className="h-5 w-5 text-neutral-400 hover:text-white transition-colors" />
+          </Link>
+          <Link href="https://twitter.com" target="_blank" aria-label="Twitter">
+            <FaTwitter className="h-5 w-5 text-neutral-400 hover:text-white transition-colors" />
+          </Link>
+          <Link href="https://linkedin.com" target="_blank" aria-label="LinkedIn">
+            <FaLinkedin className="h-5 w-5 text-neutral-400 hover:text-white transition-colors" />
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

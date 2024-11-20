@@ -1,99 +1,194 @@
-// app/api/saveMessage/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { withCombinedAuth } from '@/lib/combined-auth';
-import { addMessage } from '@/lib/upstash'; // Ensure correct import path
+import { addMessage } from '@/lib/upstash';
+import { createId } from '@paralleldrive/cuid2';
 import { and, eq, sql } from 'drizzle-orm';
 import db from '@/lib/db';
 import { stripe } from '@/lib/stripe';
-import { users, conversations, usageLogs } from '@/lib/schema'; // Add 'users' to imports
-import { MessageType, MessageRole, MessageContent, MessageMetadata } from '@/lib/types';
+import { users, conversations, usageLogs } from '@/lib/schema';
+import {
+  MessageType,
+  MessageRole,
+  MessageContent,
+  MessageMetadata,
+  SelectMessage
+} from '@/lib/types';
+
+interface WebSocketMessageContent {
+  type?: string;
+  text?: string;
+  transcript?: string;
+  audioUrl?: string;
+}
+
+/**
+ * Convert WebSocket message content to expected format
+ */
+function normalizeMessageContent(content: WebSocketMessageContent[] | WebSocketMessageContent): MessageContent {
+  // Handle array-style content from WebSocket
+  if (Array.isArray(content)) {
+    const firstContent = content[0] || {};
+    return {
+      text: firstContent.text || undefined,
+      transcript: firstContent.transcript || undefined,
+      audioUrl: firstContent.audioUrl || undefined
+    };
+  }
+  
+  // Handle direct object format
+  return {
+    text: content.text || undefined,
+    transcript: content.transcript || undefined,
+    audioUrl: content.audioUrl || undefined
+  };
+}
 
 export async function POST(req: NextRequest) {
-  return withCombinedAuth(req, async (userId, agentId) => {
+  return withCombinedAuth(req, async (userId, agentId, authState) => {
     try {
-      // Add type guard for userId
-      if (!userId) {
-        throw new Error('User ID is required');
+      // Allow anonymous users if they have a valid auth state
+      const effectiveUserId = userId || (authState?.isAnonymous ? 'anonymous' : undefined);
+      
+      if (!effectiveUserId) {
+        console.error('POST /api/saveMessage: Missing userId and not anonymous');
+        return NextResponse.json(
+          { error: 'Unauthorized - User ID required' },
+          { status: 401 }
+        );
       }
 
-      const body = await req.json();
-      const { conversationId, message } = body;
+      const { message } = await req.json();
 
-      if (!conversationId) {
+      console.log('POST /api/saveMessage: Processing request:', {
+        messageId: message.id,
+        conversationId: message.conversationId,
+        type: message.type,
+        role: message.role,
+        effectiveUserId
+      });
+
+      if (!message.conversationId) {
+        console.warn('POST /api/saveMessage: Missing conversationId');
         return NextResponse.json(
           { error: 'Conversation ID required' },
           { status: 400 }
         );
       }
 
-      // Verify conversation and get session info
+      // First verify conversation with complete session details
       const conversation = await db.query.conversations.findFirst({
-        where: eq(conversations.id, conversationId),
+        where: eq(conversations.id, message.conversationId),
         with: {
-          session: true,
-        },
+          session: {
+            with: {
+              user: true,
+              agent: {
+                with: {
+                  user: true
+                }
+              }
+            }
+          }
+        }
       });
 
       if (!conversation) {
+        console.warn(`POST /api/saveMessage: Conversation not found: ${message.conversationId}`);
         return NextResponse.json(
           { error: 'Conversation not found' },
           { status: 404 }
         );
       }
 
-      // Save message
-      try {
-        const savedMessage = await addMessage(
-          conversationId,
-          message.content.transcript
-            ? ('transcript' as MessageType)
-            : ('text' as MessageType),
-          message.role as MessageRole,
-          {
-            text: message.content.text,
-            transcript: message.content.transcript,
-            audioUrl: message.content.audioUrl,
-          } as MessageContent,
-          message.metadata as MessageMetadata,
-          message.parentMessageId,
-          message.stepId
-        );
+      // Use conversation session user ID if available, otherwise use effective user ID
+      const dbUserId = conversation.session?.userId || effectiveUserId;
 
-        // After saving the message, send the meter event to Stripe
+      // Normalize the message content to expected format
+      const normalizedContent = normalizeMessageContent(message.content);
+      
+      try {
+        console.log('POST /api/saveMessage: Attempting to save message with data:', {
+          id: message.id,
+          conversationId: message.conversationId,
+          content: normalizedContent,
+          effectiveUserId: dbUserId
+        });
+
+        const savedMessage = await addMessage({
+          id: message.id || createId(),
+          conversationId: message.conversationId,
+          type: message.type || (normalizedContent.transcript ? 'transcript' : 'text'),
+          role: message.role,
+          content: normalizedContent,
+          metadata: {
+            ...message.metadata || {},
+            effectiveUserId: dbUserId // Add user ID to metadata for tracking
+          },
+          parentMessageId: message.parentMessageId,
+          stepId: message.stepId
+        });
+
+        // Handle usage tracking for assistant audio messages
         if (message.role === 'assistant' && message.metadata?.audioDurationSeconds) {
           try {
-            const user = await db.query.users.findFirst({
-              where: eq(users.id, userId),
-            });
-
-            if (user?.stripeCustomerId) {
-              await stripe.billing.meterEvents.create({
-                event_name: 'api_requests',
-                payload: {
-                  stripe_customer_id: user.stripeCustomerId,
-                  value: message.metadata.audioDurationSeconds.toString(), // Convert to string
-                },
+            // Only attempt Stripe tracking for non-anonymous users
+            if (dbUserId !== 'anonymous') {
+              const user = await db.query.users.findFirst({
+                where: eq(users.id, dbUserId),
               });
 
-              console.log(`Sent meter event to Stripe for user ${userId}`);
+              if (user?.stripeCustomerId) {
+                await stripe.billing.meterEvents.create({
+                  event_name: 'api_requests',
+                  payload: {
+                    stripe_customer_id: user.stripeCustomerId,
+                    value: Math.round(message.metadata.audioDurationSeconds).toString()
+                  }
+                });
+
+                console.log('POST /api/saveMessage: Stripe meter event sent:', {
+                  userId: dbUserId,
+                  duration: message.metadata.audioDurationSeconds
+                });
+              }
             }
+
+            // Log usage for all users, including anonymous
+            await db.insert(usageLogs).values({
+              id: createId(),
+              userId: dbUserId,
+              sessionId: conversation.sessionId,
+              conversationId: conversation.id,
+              messageId: savedMessage.id,
+              durationSeconds: Math.round(message.metadata.audioDurationSeconds),
+              messageRole: message.role,
+              stripeCustomerId: null, // Don't store Stripe info for anonymous users
+              reportingStatus: 'pending'
+            });
           } catch (error) {
-            console.error('Failed to send meter event to Stripe:', error);
+            console.error('POST /api/saveMessage: Error tracking usage:', error);
+            // Continue despite usage tracking error
           }
         }
 
+        console.log('POST /api/saveMessage: Successfully saved message:', {
+          messageId: savedMessage.id,
+          conversationId: savedMessage.conversationId
+        });
+
         return NextResponse.json({
           success: true,
-          message: savedMessage,
+          message: savedMessage
         });
+
       } catch (error) {
-        console.error('Failed to save message:', error);
+        console.error('POST /api/saveMessage: Error saving message:', error);
         throw error;
       }
     } catch (error) {
-      console.error('Error in saveMessage handler:', error);
+      console.error('POST /api/saveMessage: Unhandled error:', error);
       return NextResponse.json(
-        { error: 'Failed to save message' },
+        { error: 'Internal server error' },
         { status: 500 }
       );
     }
@@ -101,54 +196,52 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  return withCombinedAuth(req, async (userId, agentId) => {
+  return withCombinedAuth(req, async (userId, agentId, authState) => {
     try {
-      // Add type guard for userId
-      if (!userId) {
-        throw new Error('User ID is required');
+      const effectiveUserId = userId || (authState?.isAnonymous ? 'anonymous' : undefined);
+      
+      if (!effectiveUserId) {
+        console.error('GET /api/saveMessage: Missing userId and not anonymous');
+        return NextResponse.json(
+          { error: 'Unauthorized - User ID required' },
+          { status: 401 }
+        );
       }
 
       const sessionId = req.nextUrl.searchParams.get('sessionId');
+      const whereClause = sessionId
+        ? and(eq(usageLogs.userId, effectiveUserId), eq(usageLogs.sessionId, sessionId))
+        : eq(usageLogs.userId, effectiveUserId);
 
-      let whereClause;
+      console.log('GET /api/saveMessage: Fetching usage stats:', {
+        userId: effectiveUserId,
+        sessionId: sessionId || 'all'
+      });
 
-      if (sessionId) {
-        whereClause = and(
-          eq(usageLogs.userId, userId),
-          eq(usageLogs.sessionId, sessionId)
-        );
-      } else {
-        whereClause = eq(usageLogs.userId, userId);
-      }
-
-      const query = db
+      const usageStats = await db
         .select({
-          totalDuration: sql<number>`COALESCE(SUM(${usageLogs.durationSeconds}), 0)::int`,
-          messageCount: sql<number>`COALESCE(COUNT(*), 0)::int`,
+          totalMessages: sql<number>`CAST(COUNT(${usageLogs.id}) AS INTEGER)`,
+          totalDuration: sql<number>`COALESCE(SUM(${usageLogs.durationSeconds}), 0)::INTEGER`
         })
         .from(usageLogs)
         .where(whereClause);
 
-      const results = await query;
-      const usage = results[0];
-
-      if (!usage) {
-        return NextResponse.json({
-          totalDurationSeconds: 0,
-          messageCount: 0,
-        });
-      }
-
-      return NextResponse.json({
-        totalDurationSeconds: usage.totalDuration,
-        messageCount: usage.messageCount,
+      const stats = usageStats[0];
+      
+      const response = {
+        totalDurationSeconds: stats.totalDuration || 0,
+        messageCount: stats.totalMessages || 0,
         sessionId: sessionId || null,
-        userId,
-      });
+        userId: effectiveUserId
+      };
+
+      console.log('GET /api/saveMessage: Retrieved usage stats:', response);
+      return NextResponse.json(response);
+
     } catch (error) {
-      console.error('Error fetching usage stats:', error);
+      console.error('GET /api/saveMessage: Error fetching usage stats:', error);
       return NextResponse.json(
-        { error: 'Failed to fetch usage stats' },
+        { error: 'Failed to fetch usage statistics' },
         { status: 500 }
       );
     }
