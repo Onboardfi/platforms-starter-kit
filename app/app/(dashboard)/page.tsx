@@ -84,7 +84,7 @@ export default async function Page() {
             <Suspense fallback={<div>Loading usage data...</div>}>
             <Usage 
   plan={userPlan}
-  limit={usageLimit}
+
 
 />
             </Suspense>
