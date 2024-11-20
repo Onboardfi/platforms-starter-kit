@@ -296,22 +296,20 @@ export interface NavbarProps {
 export interface AgentConsoleProps {
   agent: {
     id: string;
-    name?: string;
+    name?: string | null; // Change this line to allow null
     settings?: {
       onboardingType?: string;
       primaryColor?: string;
       secondaryColor?: string;
       steps?: Step[];
-      tools?: string[]; // Assuming tools are strings
+      tools?: string[];
       authentication?: {
         message?: string;
-        // Add other authentication-related properties
       };
       [key: string]: any;
     };
     site?: {
       logo?: string | null;
-      // Add other site-related properties as needed
     };
     [key: string]: any;
   };

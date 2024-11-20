@@ -13,16 +13,16 @@ interface Site {
 
 interface Agent {
   id: string;
-  name: string | null;
-  description: string | null;
-  slug: string;
-  userId: string | null;
-  siteId: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-  published: boolean;
-  settings: AgentSettings;
-  site: Site;
+  name?: string | null;  // Make name optional
+  description?: string | null;
+  slug?: string;
+  userId?: string | null;
+  siteId?: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+  published?: boolean;
+  settings?: AgentSettings;
+  site?: Site;
 }
 
 export default async function SiteAgentPage({
