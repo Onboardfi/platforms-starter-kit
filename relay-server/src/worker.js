@@ -1,4 +1,3 @@
-// src/worker.js
 import { RealtimeClient } from '@openai/realtime-api-beta';
 
 export class CloudflareRelay {
@@ -11,21 +10,22 @@ export class CloudflareRelay {
       return new Response('OpenAI API key not configured', { status: 500 });
     }
 
-    // Handle CORS preflight
     if (request.method === 'OPTIONS') {
       return new Response(null, {
         headers: {
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'OPTIONS, POST, GET',
-          'Access-Control-Allow-Headers': 'Content-Type',
-          'Access-Control-Max-Age': '2592000'
-        },
-        status: 204
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Max-Age': '86400',
+        }
       });
     }
 
     if (request.headers.get('Upgrade') !== 'websocket') {
-      return new Response('Expected websocket', { status: 426 });
+      return new Response('Expected WebSocket', {
+        status: 426,
+        headers: { 'Access-Control-Allow-Origin': '*' }
+      });
     }
 
     const [client, server] = Object.values(new WebSocketPair());
@@ -59,12 +59,31 @@ export class CloudflareRelay {
       realtimeClient.disconnect();
     });
 
-    await realtimeClient.connect();
-    console.log('Connected to OpenAI Realtime API');
+    server.addEventListener('error', (error) => {
+      console.error('WebSocket error:', error);
+      realtimeClient.disconnect();
+    });
+
+    try {
+      await realtimeClient.connect();
+      console.log('Connected to OpenAI Realtime API');
+    } catch (error) {
+      console.error('Failed to connect to OpenAI:', error);
+      server.send(JSON.stringify({ 
+        type: 'error', 
+        message: 'Failed to connect to OpenAI Realtime API'
+      }));
+      server.close();
+      return new Response('Failed to initialize OpenAI connection', { status: 500 });
+    }
 
     return new Response(null, {
       status: 101,
-      webSocket: client
+      webSocket: client,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      }
     });
   }
 }
