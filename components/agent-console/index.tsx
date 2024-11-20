@@ -1090,7 +1090,7 @@ const stopRecording = useCallback(async () => {
 
             // Create new WebSocket handler using getInstance
             wsHandler.current = EnhancedWebSocketHandler.getInstance(
-                'ws://localhost:8081', // Use secure WebSocket (wss://) in production
+               'wss://openai-relay.onboardfi.workers.dev', // Updated WebSocket URL
                 agent.id,
                 handleWebSocketMessage,
                 setIsConnected
