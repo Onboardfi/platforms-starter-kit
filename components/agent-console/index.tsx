@@ -32,7 +32,7 @@ import { WavRecorder, WavStreamPlayer } from '@/lib/wavtools';
 import { WavRenderer } from '@/app/utils/wav_renderer';
 import apiClient from '@/lib/api-client';
 import PasswordAuthWrapper from '@/components/auth/PasswordAuthWrapper';
-
+import { createId } from '@paralleldrive/cuid2';
 
 
 // Type imports
@@ -496,14 +496,71 @@ case 'response.output_item.done':
                 }
                 break;
 
-            case 'response.done':
-                if (data.response?.output) {
-                    console.log('Response complete:', 
-                        data.response.output.map((item: ConversationItem) => item.id)
-                    );
-                    setIsResponseActive(false);
-                }
-                break;
+                case 'response.done':
+                    if (data.response?.usage && conversationId && currentSessionId) {
+                        const usage = data.response.usage;
+                        const lastItem = data.response.output?.[data.response.output?.length - 1];
+                        
+                        if (lastItem) {
+                            // Save message with metadata
+                            const messageMetadata = {
+                                ...lastItem.metadata,
+                                promptTokens: usage.input_tokens,
+                                completionTokens: usage.output_tokens,
+                                totalTokens: usage.total_tokens,
+                                audioDurationSeconds: lastItem.metadata?.audioDurationSeconds || 0,
+                                input_token_details: usage.input_token_details,
+                                output_token_details: usage.output_token_details,
+                                isFinal: true
+                            };
+                
+                            await saveMessageToDatabase({
+                                ...lastItem,
+                                role: 'assistant',
+                                status: 'completed',
+                                metadata: messageMetadata
+                            }, conversationId);
+                
+                            // Get conversation details for user ID
+                            const conversation = await apiClient.get('/api/getConversation', {
+                                params: { conversationId }
+                            });
+                
+                            // Log usage with all available data
+                            await apiClient.post('/api/logUsage', {
+                                id: createId(),
+                                messageId: lastItem.id,
+                                sessionId: currentSessionId,
+                                conversationId,
+                                userId: conversation.data?.session?.userId,
+                                messageRole: 'assistant',
+                                durationSeconds: Math.round(messageMetadata.audioDurationSeconds),
+                                promptTokens: usage.input_tokens,
+                                completionTokens: usage.output_tokens,
+                                totalTokens: usage.total_tokens,
+                                reportingStatus: 'pending',
+                                stripeCustomerId: conversation.data?.session?.user?.stripeCustomerId,
+                                createdAt: new Date().toISOString(),
+                                // Include detailed token information
+                                metadata: {
+                                    input_token_details: usage.input_token_details,
+                                    output_token_details: usage.output_token_details
+                                }
+                            });
+                
+                            console.log('Usage logged:', {
+                                messageId: lastItem.id,
+                                duration: messageMetadata.audioDurationSeconds,
+                                tokens: {
+                                    prompt: usage.input_tokens,
+                                    completion: usage.output_tokens,
+                                    total: usage.total_tokens
+                                }
+                            });
+                        }
+                        setIsResponseActive(false);
+                    }
+                    break;
 
             // Audio Processing Events
             case 'response.audio.delta':

@@ -1,4 +1,4 @@
-//Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/api/usage/route.ts
+//Users/bobbygilbert/Documents/GitHub/platforms-starter-kit/app/api/usage/route.ts
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
@@ -11,10 +11,18 @@ interface UsageStats {
   totalSeconds: number;
   totalMessages: number;
   sessions: number;
+  tokens: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
   dailyUsage: Array<{
     date: string;
     seconds: number;
     messages: number;
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
   }>;
 }
 
@@ -22,31 +30,30 @@ export async function GET(req: NextRequest) {
   try {
     const session = await getSession();
     if (!session?.user.id) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userId = session.user.id;
-
-    // Simple query to get total usage - no date filtering
     const [totalStats] = await db.select({
       totalDuration: sql<number>`COALESCE(SUM(${usageLogs.durationSeconds}), 0)::int`,
       messageCount: sql<number>`COUNT(*)::int`,
-      uniqueSessions: sql<number>`COUNT(DISTINCT ${usageLogs.sessionId})::int`
+      uniqueSessions: sql<number>`COUNT(DISTINCT ${usageLogs.sessionId})::int`,
+      promptTokens: sql<number>`COALESCE(SUM(${usageLogs.promptTokens}), 0)::int`,
+      completionTokens: sql<number>`COALESCE(SUM(${usageLogs.completionTokens}), 0)::int`,
+      totalTokens: sql<number>`COALESCE(SUM(${usageLogs.totalTokens}), 0)::int`
     })
     .from(usageLogs)
-    .where(eq(usageLogs.userId, userId));
+    .where(eq(usageLogs.userId, session.user.id));
 
-    // Simple daily breakdown - no date filtering
     const dailyUsage = await db.select({
       date: sql<string>`DATE(${usageLogs.createdAt})::text`,
       seconds: sql<number>`COALESCE(SUM(${usageLogs.durationSeconds}), 0)::int`,
-      messages: sql<number>`COUNT(*)::int`
+      messages: sql<number>`COUNT(*)::int`,
+      promptTokens: sql<number>`COALESCE(SUM(${usageLogs.promptTokens}), 0)::int`,
+      completionTokens: sql<number>`COALESCE(SUM(${usageLogs.completionTokens}), 0)::int`,
+      totalTokens: sql<number>`COALESCE(SUM(${usageLogs.totalTokens}), 0)::int`
     })
     .from(usageLogs)
-    .where(eq(usageLogs.userId, userId))
+    .where(eq(usageLogs.userId, session.user.id))
     .groupBy(sql`DATE(${usageLogs.createdAt})`);
 
     const usageStats: UsageStats = {
@@ -54,13 +61,15 @@ export async function GET(req: NextRequest) {
       totalSeconds: totalStats.totalDuration,
       totalMessages: totalStats.messageCount,
       sessions: totalStats.uniqueSessions,
-      dailyUsage: dailyUsage
+      tokens: {
+        promptTokens: totalStats.promptTokens,
+        completionTokens: totalStats.completionTokens,
+        totalTokens: totalStats.totalTokens
+      },
+      dailyUsage
     };
 
-    return NextResponse.json({
-      success: true,
-      usage: usageStats
-    });
+    return NextResponse.json({ success: true, usage: usageStats });
 
   } catch (error) {
     console.error('Error fetching usage stats:', error);
@@ -70,3 +79,5 @@ export async function GET(req: NextRequest) {
     );
   }
 }
+
+export const runtime = 'nodejs';

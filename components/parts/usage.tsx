@@ -1,4 +1,5 @@
-'use client';
+"use client"
+
 import React, { useEffect, useState } from 'react';
 import { cn } from "@/lib/utils";
 import { 
@@ -14,31 +15,35 @@ import {
   Loader2
 } from "lucide-react";
 import Link from "next/link";
-import { motion } from "framer-motion";
 
-interface TokenUsage {
-  duration: {
-    totalSeconds: number;
-    formattedDuration: string;
-  };
-  tokens: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-    estimatedCost: number;
-  };
+interface MeterEventSummary {
+  id: string;
+  aggregated_value: number;
+  start_time: number;
+  end_time: number;
+  meter: string;
 }
 
 interface BillingData {
-  totalAmountDue: number;
-  currentUsage: TokenUsage;
-  rateCard: {
-    inputTokens: number;
-    outputTokens: number;
+  inputTokens: {
+    total: number;
+    summaries: MeterEventSummary[];
+    ratePerThousand: number;
   };
-  billingPeriodStart: string;
-  billingPeriodEnd: string;
-  subscriptionStatus: string;
+  outputTokens: {
+    total: number;
+    summaries: MeterEventSummary[];
+    ratePerThousand: number;
+  };
+  subscription: {
+    status: string;
+    currentPeriodStart: string;
+    currentPeriodEnd: string;
+  };
+  invoice: {
+    amountDue: number;
+    estimatedTotal: number;
+  };
 }
 
 export const Usage = ({
@@ -61,22 +66,44 @@ export const Usage = ({
         setRefreshing(true);
       }
 
+      // Get meter summaries and subscription data
       const response = await fetch('/api/stripe/usage');
-      
       if (!response.ok) {
-        throw new Error('Failed to fetch data');
+        throw new Error('Failed to fetch billing data');
       }
 
-      const json = await response.json();
-
-      if (json.success && json.usage) {
-        setBillingData(json.usage);
+      const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(data.error);
       }
+
+      setBillingData({
+        inputTokens: {
+          total: data.usage.input_tokens.total || 0,
+          summaries: data.usage.input_tokens.summaries || [],
+          ratePerThousand: data.usage.input_tokens.ratePerThousand || 0.015
+        },
+        outputTokens: {
+          total: data.usage.output_tokens.total || 0,
+          summaries: data.usage.output_tokens.summaries || [],
+          ratePerThousand: data.usage.output_tokens.ratePerThousand || 0.020
+        },
+        subscription: {
+          status: data.usage.subscription?.status || 'inactive',
+          currentPeriodStart: data.usage.subscription?.current_period_start || new Date().toISOString(),
+          currentPeriodEnd: data.usage.subscription?.current_period_end || new Date().toISOString()
+        },
+        invoice: {
+          amountDue: data.usage.invoice?.amount_due || 0,
+          estimatedTotal: data.usage.invoice?.estimated_total || 0
+        }
+      });
 
       setError(null);
     } catch (err) {
-      console.error('Error fetching data:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load data');
+      console.error('Error fetching billing data:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load billing data');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -107,13 +134,20 @@ export const Usage = ({
     return tokens.toString();
   };
 
+  const calculateEstimatedCost = (inputTokens: number, outputTokens: number) => {
+    if (!billingData) return 0;
+    
+    const inputCost = (inputTokens / 1000) * billingData.inputTokens.ratePerThousand;
+    const outputCost = (outputTokens / 1000) * billingData.outputTokens.ratePerThousand;
+    
+    return inputCost + outputCost;
+  };
+
   if (loading) {
     return (
       <div className={cn(
-        "relative",
-        "border border-white/[0.02] rounded-xl",
-        "bg-neutral-900/50 backdrop-blur-md",
-        "p-6",
+        "relative border border-white/[0.02] rounded-xl",
+        "bg-neutral-900/50 backdrop-blur-md p-6",
         className
       )}>
         <Loader2 className="w-6 h-6 animate-spin text-custom-green mx-auto" />
@@ -124,10 +158,8 @@ export const Usage = ({
   if (error) {
     return (
       <div className={cn(
-        "relative",
-        "border border-red-500/20 rounded-xl",
-        "bg-neutral-900/50 backdrop-blur-md",
-        "p-6",
+        "relative border border-red-500/20 rounded-xl",
+        "bg-neutral-900/50 backdrop-blur-md p-6",
         className
       )}>
         <div className="flex items-center gap-2 text-red-400">
@@ -138,6 +170,14 @@ export const Usage = ({
     );
   }
 
+  if (!billingData) return null;
+
+  const totalTokens = billingData.inputTokens.total + billingData.outputTokens.total;
+  const estimatedCost = calculateEstimatedCost(
+    billingData.inputTokens.total,
+    billingData.outputTokens.total
+  );
+
   return (
     <div className={cn(
       "relative group overflow-hidden",
@@ -147,14 +187,12 @@ export const Usage = ({
       "shine shadow-dream",
       className
     )}>
-      {/* Gradient Background */}
       <div 
         className="absolute inset-0 bg-gradient-to-br from-custom-green/5 via-custom-green-light/5 to-custom-green-light/5
           opacity-0 group-hover:opacity-100 transition-opacity duration-500"
         style={{ filter: "blur(40px)" }}
       />
 
-      {/* Header */}
       <div className="relative space-y-2 mb-6 pb-6 border-b border-white/[0.02]">
         <div className="flex items-center justify-between">
           <h3 className="text-xl font-cal text-white">Usage & Billing</h3>
@@ -162,21 +200,18 @@ export const Usage = ({
             {refreshing && (
               <Loader2 className="w-4 h-4 animate-spin text-custom-green" />
             )}
-            {billingData?.subscriptionStatus && (
-              <span className={cn(
-                "px-2 py-1 rounded-full text-xs font-medium",
-                billingData.subscriptionStatus === 'active' 
-                  ? "bg-custom-green/10 text-custom-green" 
-                  : "bg-yellow-500/10 text-yellow-400"
-              )}>
-                {billingData.subscriptionStatus}
-              </span>
-            )}
+            <span className={cn(
+              "px-2 py-1 rounded-full text-xs font-medium",
+              billingData.subscription.status === 'active' 
+                ? "bg-custom-green/10 text-custom-green" 
+                : "bg-yellow-500/10 text-yellow-400"
+            )}>
+              {billingData.subscription.status}
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Billing Overview */}
       <div className="grid grid-cols-2 gap-4 mb-6">
         <div className="p-4 rounded-lg border border-white/[0.02] bg-white/[0.02]">
           <div className="flex items-center gap-2 mb-2">
@@ -184,10 +219,10 @@ export const Usage = ({
             <span className="text-sm text-neutral-400">Current Bill</span>
           </div>
           <p className="text-2xl font-medium text-white">
-            ${billingData?.totalAmountDue ? (billingData.totalAmountDue / 100).toFixed(2) : '0.00'}
+            ${(billingData.invoice.amountDue / 100).toFixed(2)}
           </p>
           <p className="text-xs text-neutral-400 mt-1">
-            Estimate: ${billingData?.currentUsage.tokens.estimatedCost.toFixed(2) || '0.00'}
+            Estimate: ${estimatedCost.toFixed(2)}
           </p>
         </div>
 
@@ -196,30 +231,27 @@ export const Usage = ({
             <Calendar className="w-4 h-4 text-custom-green" />
             <span className="text-sm text-neutral-400">Billing Period</span>
           </div>
-          {billingData && (
-            <p className="text-sm text-white">
-              {formatDate(billingData.billingPeriodStart)} - {formatDate(billingData.billingPeriodEnd)}
-            </p>
-          )}
+          <p className="text-sm text-white">
+            {formatDate(billingData.subscription.currentPeriodStart)} - 
+            {formatDate(billingData.subscription.currentPeriodEnd)}
+          </p>
           <p className="text-xs text-neutral-400 mt-1">
             Auto-renews monthly
           </p>
         </div>
       </div>
 
-      {/* Token Usage */}
       <div className="space-y-4 p-4 rounded-lg border border-white/[0.02] bg-white/[0.02] mb-6">
         <div className="flex justify-between items-center">
           <div className="space-y-1">
             <p className="text-2xl font-medium text-white">
-              {formatTokens(billingData?.currentUsage.tokens.totalTokens || 0)} <span className="text-neutral-500">tokens</span>
+              {formatTokens(totalTokens)} <span className="text-neutral-500">tokens</span>
             </p>
             <p className="text-sm text-neutral-400">Total Usage</p>
           </div>
           <Coins className="w-5 h-5 text-custom-green" />
         </div>
 
-        {/* Token Breakdown */}
         <div className="grid grid-cols-2 gap-4 pt-4 border-t border-white/[0.02]">
           <div>
             <div className="flex items-center gap-2 mb-2">
@@ -227,10 +259,10 @@ export const Usage = ({
               <span className="text-sm text-neutral-400">Input Tokens</span>
             </div>
             <p className="text-sm text-white">
-              {formatTokens(billingData?.currentUsage.tokens.promptTokens || 0)}
+              {formatTokens(billingData.inputTokens.total)}
             </p>
             <p className="text-xs text-neutral-400 mt-1">
-              ${((billingData?.rateCard.inputTokens || 0) / 100).toFixed(3)}/1K tokens
+              ${billingData.inputTokens.ratePerThousand.toFixed(3)}/1K tokens
             </p>
           </div>
 
@@ -240,16 +272,15 @@ export const Usage = ({
               <span className="text-sm text-neutral-400">Output Tokens</span>
             </div>
             <p className="text-sm text-white">
-              {formatTokens(billingData?.currentUsage.tokens.completionTokens || 0)}
+              {formatTokens(billingData.outputTokens.total)}
             </p>
             <p className="text-xs text-neutral-400 mt-1">
-              ${((billingData?.rateCard.outputTokens || 0) / 100).toFixed(3)}/1K tokens
+              ${billingData.outputTokens.ratePerThousand.toFixed(3)}/1K tokens
             </p>
           </div>
         </div>
       </div>
 
-      {/* Upgrade Section */}
       {plan !== "Pro" && (
         <div className="relative mt-6 rounded-xl border border-custom-green/20 bg-gradient-to-br from-custom-green/10 to-custom-green-light/10 p-4">
           <div className="absolute -top-3 right-4 rounded-full bg-custom-green px-2 py-0.5 text-xs font-medium text-white">

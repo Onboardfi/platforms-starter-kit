@@ -8,8 +8,8 @@ import { users } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
 
 // Get these from your Stripe Dashboard
-const INPUT_TOKENS_PRICE_ID = 'price_xxx'; // Price ID for $0.000015 per token
-const OUTPUT_TOKENS_PRICE_ID = 'price_xxx'; // Price ID for $0.000020 per token
+const INPUT_TOKENS_PRICE_ID = 'price_1QNCt3AvXC0YI9f3iwhykoq2'; // Price ID for $0.000015 per token
+const OUTPUT_TOKENS_PRICE_ID = 'price_1QND7AAvXC0YI9f3VlOttETG'; // Price ID for $0.000020 per token
 
 const handler = NextAuth({
   ...authOptions,
