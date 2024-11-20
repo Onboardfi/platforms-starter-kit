@@ -1,13 +1,26 @@
 import globals from "globals";
 import pluginJs from "@eslint/js";
 import tseslint from "typescript-eslint";
+import nextPlugin from "@next/eslint-plugin-next";
 
-
-/** @type {import('eslint').Linter.Config[]} */
 export default [
-  {files: ["**/*.{js,mjs,cjs,ts}"]},
-  {files: ["**/*.js"], languageOptions: {sourceType: "script"}},
-  {languageOptions: { globals: globals.browser }},
-  pluginJs.configs.recommended,
+  {
+    files: ["**/*.{js,mjs,cjs,jsx,ts,tsx}"],
+    plugins: {
+      "@typescript-eslint": tseslint.plugin,
+      next: nextPlugin
+    },
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.node
+      },
+      parser: tseslint.parser,
+      parserOptions: {
+        project: true
+      }
+    }
+  },
   ...tseslint.configs.recommended,
+  ...tseslint.configs.recommendedTypeChecked
 ];
