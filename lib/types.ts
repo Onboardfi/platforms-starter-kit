@@ -41,7 +41,37 @@ export interface ToolCall {
   timestamp: string;
   duration?: number;
 }
+export interface ConversationWithSession {
+  id: string;
+  sessionId: string;
+  session: {
+    id: string;
+    organizationId: string;
+    userId: string | null;
+    agent: {
+      id: string;
+      userId: string | null;
+      user?: {
+        id: string;
+      } | null;
+    } | null;
+    user?: {
+      id: string;
+    } | null;
+  } | null;
+}
 
+export interface SelectConversationWithRelations extends SelectConversation {
+  session?: {
+    id: string;
+    organizationId: string;
+  };
+}
+
+// Update your ConversationMetadata interface
+export interface ConversationMetadataWithOrg extends ConversationMetadata {
+  organizationId: string;
+}
 export interface Tool {
   type: string;
   name: string;

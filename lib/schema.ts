@@ -21,48 +21,9 @@ export type MessageRole = 'user' | 'assistant' | 'system';
 export type ConversationStatus = 'active' | 'completed' | 'archived';
 
 
-/**
- * Steps Table Definition
- */
-export const steps = pgTable(
-  'steps',
-  {
-    id: text('id').primaryKey().$defaultFn(() => createId()),
-    agentId: text('agentId')
-      .notNull()
-      .references(() => agents.id, { onDelete: 'cascade' }),
-    title: text('title').notNull(),
-    description: text('description'),
-    orderIndex: text('orderIndex').notNull(),
-    completionTool: text('completionTool').$type<'email' | 'memory' | 'notesTaken' | 'notion' | null>(),
-    completed: boolean('completed').default(false).notNull(),
-    completedAt: timestamp('completedAt', { mode: 'date' }),
-    metadata: jsonb('metadata').$type<Record<string, any>>().default({}),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
-  },
-  (table) => ({
-    agentIdIdx: index('steps_agentId_idx').on(table.agentId),
-    orderIdx: index('steps_order_idx').on(table.orderIndex),
-    completedIdx: index('steps_completed_idx').on(table.completed),
-  })
-);
 
 
 
-
-/**
- * Steps Relations
- */
-export const stepsRelations = relations(steps, ({ one, many }) => ({
-  agent: one(agents, {
-    fields: [steps.agentId],
-    references: [agents.id],
-  }),
-  messages: many(messages),
-}));
-
-export type SelectStep = typeof steps.$inferSelect;
 
 
 
@@ -148,7 +109,289 @@ export const accounts = pgTable(
   })
 );
 
+export const organizations = pgTable(
+  'organizations',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId()),
+    name: text('name').notNull(),
+    slug: text('slug').notNull(),
+    createdBy: text('createdBy')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    logo: text('logo'),
+    stripeCustomerId: text('stripeCustomerId'),
+    stripeSubscriptionId: text('stripeSubscriptionId'),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => ({
+    slugIdx: uniqueIndex('organizations_slug_idx').on(table.slug),
+    createdByIdx: index('organizations_createdBy_idx').on(table.createdBy),
+  })
+);
 
+export const organizationMemberships = pgTable(
+  'organization_memberships',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId()),
+    organizationId: text('organizationId')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    userId: text('userId')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role').$type<'owner' | 'admin' | 'member'>().notNull().default('member'),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => ({
+    orgUserIdx: uniqueIndex('org_memberships_org_user_idx').on(
+      table.organizationId,
+      table.userId
+    ),
+    userIdx: index('org_memberships_user_idx').on(table.userId),
+  })
+);
+
+
+
+// Modify the sites table to reference organization instead of user
+export const sites = pgTable(
+  'sites',
+  {
+    id: text('id').primaryKey(),
+    name: text('name'),
+    description: text('description'),
+    logo: text('logo'),
+    font: text('font').default('font-cal').notNull(),
+    image: text('image'),
+    imageBlurhash: text('imageBlurhash'),
+    subdomain: text('subdomain').unique(),
+    customDomain: text('customDomain').unique(),
+    message404: text('message404').default(sql`'Blimey! This page does not exist.'`),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+    organizationId: text('organizationId')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    createdBy: text('createdBy')
+      .notNull()
+      .references(() => users.id, { onDelete: 'set null' }),
+  },
+  (table) => ({
+    organizationIdx: index('sites_organization_idx').on(table.organizationId),
+    createdByIdx: index('sites_createdBy_idx').on(table.createdBy),
+    subdomainIdx: index('sites_subdomain_idx').on(table.subdomain),
+  })
+);
+export const agents = pgTable(
+  'agents',
+  {
+    id: text('id').primaryKey(),
+    name: text('name'),
+    description: text('description'),
+    slug: text('slug').notNull(),
+    image: text('image'),
+    imageBlurhash: text('imageBlurhash'),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+    published: boolean('published').default(false).notNull(),
+    siteId: text('siteId').references(() => sites.id, {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
+    }),
+    createdBy: text('createdBy').references(() => users.id, {  // Changed from userId
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
+    }),
+    settings: jsonb('settings').$type<AgentSettings>().default(sql`'{}'::jsonb`).notNull(),
+  },
+  (table) => ({
+    siteIdIdx: index('agents_siteId_idx').on(table.siteId),
+    createdByIdx: index('agents_createdBy_idx').on(table.createdBy),  // Updated index name
+    slugSiteIdKey: uniqueIndex('agents_slug_siteId_key').on(table.slug, table.siteId),
+    sitePublishedIdx: index('agents_site_published_idx').on(table.siteId, table.published),
+    settingsIdx: sql`CREATE INDEX IF NOT EXISTS agents_settings_idx ON agents USING gin (settings)`,
+  })
+);
+
+export const posts = pgTable(
+  'posts',
+  {
+    id: text('id').primaryKey(),
+    title: text('title'),
+    description: text('description'),
+    content: text('content'),
+    slug: text('slug').notNull(),
+    image: text('image'),
+    imageBlurhash: text('imageBlurhash'),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+    published: boolean('published').default(false).notNull(),
+    siteId: text('siteId').references(() => sites.id, {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
+    }),
+    createdBy: text('createdBy').references(() => users.id, {  // Changed from userId
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
+    }),
+    organizationId: text('organizationId')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+  },
+  (table) => ({
+    siteIdIdx: index('posts_siteId_idx').on(table.siteId),
+    createdByIdx: index('posts_createdBy_idx').on(table.createdBy),
+    organizationIdx: index('posts_organization_idx').on(table.organizationId),
+    slugSiteIdKey: uniqueIndex('posts_slug_siteId_key').on(table.slug, table.siteId),
+  })
+);
+
+
+/**
+ * Steps Table Definition
+ */
+export const steps = pgTable(
+  'steps',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId()),
+    agentId: text('agentId')
+      .notNull()
+      .references(() => agents.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    description: text('description'),
+    orderIndex: text('orderIndex').notNull(),
+    completionTool: text('completionTool').$type<'email' | 'memory' | 'notesTaken' | 'notion' | null>(),
+    completed: boolean('completed').default(false).notNull(),
+    completedAt: timestamp('completedAt', { mode: 'date' }),
+    metadata: jsonb('metadata').$type<Record<string, any>>().default({}),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => ({
+    agentIdIdx: index('steps_agentId_idx').on(table.agentId),
+    orderIdx: index('steps_order_idx').on(table.orderIndex),
+    completedIdx: index('steps_completed_idx').on(table.completed),
+  })
+);
+
+/**
+ * Steps Relations
+ */
+export const stepsRelations = relations(steps, ({ one, many }) => ({
+  agent: one(agents, {
+    fields: [steps.agentId],
+    references: [agents.id],
+  }),
+  messages: many(messages),
+}));
+
+export type SelectStep = typeof steps.$inferSelect;
+
+
+// Add organizationId to onboardingSessions table
+export const onboardingSessions = pgTable(
+  'onboarding_sessions',
+  {
+    id: text('id').primaryKey(),
+    agentId: text('agentId').references(() => agents.id, {
+      onDelete: 'cascade'
+    }),
+    userId: text('userId').references(() => users.id, {
+      onDelete: 'set null'
+    }),
+    organizationId: text('organizationId')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    name: text('name'),
+    clientIdentifier: text('clientIdentifier'),
+    type: text('type').notNull(),
+    status: text('status').notNull(),
+    stepProgress: jsonb('stepProgress').$type<StepProgress>(),
+    metadata: jsonb('metadata').$type<Record<string, any>>(),
+    lastInteractionAt: timestamp('lastInteractionAt', { mode: 'date' }),
+    startedAt: timestamp('startedAt', { mode: 'date' }).defaultNow(),
+    completedAt: timestamp('completedAt', { mode: 'date' }),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => ({
+    agentIdIdx: index('onboarding_sessions_agentId_idx').on(table.agentId),
+    userIdIdx: index('onboarding_sessions_userId_idx').on(table.userId),
+    organizationIdx: index('onboarding_sessions_organization_idx').on(table.organizationId),
+    clientIdentifierIdx: index('onboarding_sessions_clientIdentifier_idx').on(table.clientIdentifier),
+    statusIdx: index('onboarding_sessions_status_idx').on(table.status),
+    agentUserStatusIdx: index('onboarding_sessions_agent_user_status_idx').on(
+      table.agentId,
+      table.userId,
+      table.status
+    ),
+  })
+);
+
+export const conversations = pgTable(
+  'conversations',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId()),
+    sessionId: text('sessionId').references(() => onboardingSessions.id, {
+      onDelete: 'cascade',
+    }),
+    status: text('status').$type<ConversationStatus>().notNull().default('active'),
+    metadata: jsonb('metadata').$type<Record<string, any>>().default({}),
+    startedAt: timestamp('startedAt', { mode: 'date' }).defaultNow().notNull(),
+    endedAt: timestamp('endedAt', { mode: 'date' }),
+    lastMessageAt: timestamp('lastMessageAt', { mode: 'date' }),
+    messageCount: integer('messageCount').default(0),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => ({
+    sessionIdx: index('conversations_session_idx').on(table.sessionId),
+    statusIdx: index('conversations_status_idx').on(table.status),
+    timeframeIdx: index('conversations_timeframe_idx').on(table.startedAt, table.endedAt),
+  })
+);
+/**
+ * Messages Table with Step Reference
+ */
+export const messages = pgTable(
+  'messages',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId()),
+    conversationId: text('conversationId')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    type: text('type').$type<MessageType>().notNull(),
+    role: text('role').$type<MessageRole>().notNull(),
+    content: jsonb('content').$type<{
+      text?: string;
+      audioUrl?: string;
+      transcript?: string;
+    }>().notNull(),
+    metadata: jsonb('metadata').$type<Record<string, any>>().default({}),
+    toolCalls: jsonb('toolCalls').$type<Array<{
+      tool: string;
+      input: Record<string, any>;
+      result?: Record<string, any>;
+      error?: string;
+    }>>().default([]),
+    stepId: text('stepId').references(() => steps.id, { 
+      onDelete: 'set null' 
+    }),
+    orderIndex: text('orderIndex').notNull(),
+    parentMessageId: text('parentMessageId').references((): any => messages.id),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => ({
+    conversationIdx: index('messages_conversation_idx').on(table.conversationId),
+    typeRoleIdx: index('messages_type_role_idx').on(table.type, table.role),
+    orderIdx: index('messages_order_idx').on(table.orderIndex),
+    stepIdx: index('messages_step_idx').on(table.stepId),
+    parentIdx: index('messages_parent_idx').on(table.parentMessageId),
+    createdAtIdx: index('messages_created_at_idx').on(table.createdAt),
+  })
+);
 
 export const usageLogs = pgTable(
   'usage_logs',
@@ -183,34 +426,6 @@ export const usageLogs = pgTable(
     createdAtIdx: index('usage_logs_createdAt_idx').on(table.createdAt),
   })
 );
-
-export const sites = pgTable(
-  'sites',
-  {
-    id: text('id').primaryKey(),
-    name: text('name'),
-    description: text('description'),
-    logo: text('logo'),
-    font: text('font').default('font-cal').notNull(),
-    image: text('image'),
-    imageBlurhash: text('imageBlurhash'),
-    subdomain: text('subdomain').unique(),
-    customDomain: text('customDomain').unique(),
-    message404: text('message404').default(sql`'Blimey! This page does not exist.'`),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
-    userId: text('userId').references(() => users.id, {
-      onDelete: 'cascade',
-      onUpdate: 'cascade',
-    }),
-  },
-  (table) => ({
-    userIdIdx: index('sites_userId_idx').on(table.userId),
-    subdomainIdx: index('sites_subdomain_idx').on(table.subdomain),
-    subdomainUserIdx: index('sites_subdomain_user_idx').on(table.subdomain, table.userId),
-  })
-);
-
 export const systemLogs = pgTable(
   'system_logs',
   {
@@ -262,180 +477,39 @@ export interface AgentSettings {
   };
 }
 
-export const agents = pgTable(
-  'agents',
-  {
-    id: text('id').primaryKey(),
-    name: text('name'),
-    description: text('description'),
-    slug: text('slug').notNull(),
-    image: text('image'),
-    imageBlurhash: text('imageBlurhash'),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
-    published: boolean('published').default(false).notNull(),
-    siteId: text('siteId').references(() => sites.id, {
-      onDelete: 'cascade',
-      onUpdate: 'cascade',
-    }),
-    userId: text('userId').references(() => users.id, {
-      onDelete: 'cascade',
-      onUpdate: 'cascade',
-    }),
-    settings: jsonb('settings').$type<AgentSettings>().default(sql`'{}'::jsonb`).notNull(),
-  },
-  (table) => ({
-    siteIdIdx: index('agents_siteId_idx').on(table.siteId),
-    userIdIdx: index('agents_userId_idx').on(table.userId),
-    slugSiteIdKey: uniqueIndex('agents_slug_siteId_key').on(table.slug, table.siteId),
-    sitePublishedIdx: index('agents_site_published_idx').on(table.siteId, table.published),
-    settingsIdx: sql`CREATE INDEX IF NOT EXISTS agents_settings_idx ON agents USING gin (settings)`,
-  })
-);
-
-export const posts = pgTable(
-  'posts',
-  {
-    id: text('id').primaryKey(),
-    title: text('title'),
-    description: text('description'),
-    content: text('content'),
-    slug: text('slug').notNull(),
-    image: text('image'),
-    imageBlurhash: text('imageBlurhash'),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
-    published: boolean('published').default(false).notNull(),
-    siteId: text('siteId').references(() => sites.id, {
-      onDelete: 'cascade',
-      onUpdate: 'cascade',
-    }),
-    userId: text('userId').references(() => users.id, {
-      onDelete: 'cascade',
-      onUpdate: 'cascade',
-    }),
-  },
-  (table) => ({
-    siteIdIdx: index('posts_siteId_idx').on(table.siteId),
-    userIdIdx: index('posts_userId_idx').on(table.userId),
-    slugSiteIdKey: uniqueIndex('posts_slug_siteId_key').on(table.slug, table.siteId),
-  })
-);
-
-export const onboardingSessions = pgTable(
-  'onboarding_sessions',
-  {
-    id: text('id').primaryKey(),
-    agentId: text('agentId').references(() => agents.id, {
-      onDelete: 'cascade'
-    }),
-    userId: text('userId').references(() => users.id, {
-      onDelete: 'set null'
-    }),
-    name: text('name'),
-    clientIdentifier: text('clientIdentifier'),
-    type: text('type').notNull(),
-    status: text('status').notNull(),
-    stepProgress: jsonb('stepProgress').$type<StepProgress>(),
-    metadata: jsonb('metadata').$type<Record<string, any>>(),
-    lastInteractionAt: timestamp('lastInteractionAt', { mode: 'date' }),
-    startedAt: timestamp('startedAt', { mode: 'date' }).defaultNow(),
-    completedAt: timestamp('completedAt', { mode: 'date' }),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
-  },
-  (table) => ({
-    agentIdIdx: index('onboarding_sessions_agentId_idx').on(table.agentId),
-    userIdIdx: index('onboarding_sessions_userId_idx').on(table.userId),
-    clientIdentifierIdx: index('onboarding_sessions_clientIdentifier_idx').on(table.clientIdentifier),
-    statusIdx: index('onboarding_sessions_status_idx').on(table.status),
-    agentUserStatusIdx: index('onboarding_sessions_agent_user_status_idx').on(
-      table.agentId,
-      table.userId,
-      table.status
-    ),
-  })
-);
-
-export const conversations = pgTable(
-  'conversations',
-  {
-    id: text('id').primaryKey().$defaultFn(() => createId()),
-    sessionId: text('sessionId').references(() => onboardingSessions.id, {
-      onDelete: 'cascade',
-    }),
-    status: text('status').$type<ConversationStatus>().notNull().default('active'),
-    metadata: jsonb('metadata').$type<Record<string, any>>().default({}),
-    startedAt: timestamp('startedAt', { mode: 'date' }).defaultNow().notNull(),
-    endedAt: timestamp('endedAt', { mode: 'date' }),
-    lastMessageAt: timestamp('lastMessageAt', { mode: 'date' }),
-    messageCount: integer('messageCount').default(0),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
-  },
-  (table) => ({
-    sessionIdx: index('conversations_session_idx').on(table.sessionId),
-    statusIdx: index('conversations_status_idx').on(table.status),
-    timeframeIdx: index('conversations_timeframe_idx').on(table.startedAt, table.endedAt),
-  })
-);
 
 
-/**
- * Messages Table with Step Reference
- */
-export const messages = pgTable(
-  'messages',
-  {
-    id: text('id').primaryKey().$defaultFn(() => createId()),
-    conversationId: text('conversationId')
-      .notNull()
-      .references(() => conversations.id, { onDelete: 'cascade' }),
-    type: text('type').$type<MessageType>().notNull(),
-    role: text('role').$type<MessageRole>().notNull(),
-    content: jsonb('content').$type<{
-      text?: string;
-      audioUrl?: string;
-      transcript?: string;
-    }>().notNull(),
-    metadata: jsonb('metadata').$type<Record<string, any>>().default({}),
-    toolCalls: jsonb('toolCalls').$type<Array<{
-      tool: string;
-      input: Record<string, any>;
-      result?: Record<string, any>;
-      error?: string;
-    }>>().default([]),
-    stepId: text('stepId').references(() => steps.id, { 
-      onDelete: 'set null' 
-    }),
-    orderIndex: text('orderIndex').notNull(),
-    parentMessageId: text('parentMessageId').references((): any => messages.id),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-  },
-  (table) => ({
-    conversationIdx: index('messages_conversation_idx').on(table.conversationId),
-    typeRoleIdx: index('messages_type_role_idx').on(table.type, table.role),
-    orderIdx: index('messages_order_idx').on(table.orderIndex),
-    stepIdx: index('messages_step_idx').on(table.stepId),
-    parentIdx: index('messages_parent_idx').on(table.parentMessageId),
-    createdAtIdx: index('messages_created_at_idx').on(table.createdAt),
-  })
-);
 
+
+
+
+
+// Update the agents relations
 export const agentsRelations = relations(agents, ({ one }) => ({
   site: one(sites, { references: [sites.id], fields: [agents.siteId] }),
-  user: one(users, { references: [users.id], fields: [agents.userId] }),
+  creator: one(users, { references: [users.id], fields: [agents.createdBy] }),
 }));
 
+
+// Update posts relations
 export const postsRelations = relations(posts, ({ one }) => ({
   site: one(sites, { references: [sites.id], fields: [posts.siteId] }),
-  user: one(users, { references: [users.id], fields: [posts.userId] }),
+  creator: one(users, { references: [users.id], fields: [posts.createdBy] }), // Updated from userId
+  organization: one(organizations, {
+    fields: [posts.organizationId],
+    references: [organizations.id],
+  }),
 }));
 
+// Update sites relations to use createdBy and add organization
 export const sitesRelations = relations(sites, ({ one, many }) => ({
   posts: many(posts),
   agents: many(agents),
-  user: one(users, { references: [users.id], fields: [sites.userId] }),
+  creator: one(users, { references: [users.id], fields: [sites.createdBy] }),
+  organization: one(organizations, {
+    fields: [sites.organizationId],
+    references: [organizations.id],
+  }),
 }));
 
 export const sessionsRelations = relations(sessions, ({ one }) => ({
@@ -446,12 +520,42 @@ export const accountsRelations = relations(accounts, ({ one }) => ({
   user: one(users, { references: [users.id], fields: [accounts.userId] }),
 }));
 
+
+// Ensure organization relations are complete
+export const organizationsRelations = relations(organizations, ({ many, one }) => ({
+  memberships: many(organizationMemberships),
+  sites: many(sites),
+  creator: one(users, {
+    fields: [organizations.createdBy],
+    references: [users.id],
+  }),
+}));
+
+
+export const organizationMembershipsRelations = relations(
+  organizationMemberships,
+  ({ one }) => ({
+    organization: one(organizations, {
+      fields: [organizationMemberships.organizationId],
+      references: [organizations.id],
+    }),
+    user: one(users, {
+      fields: [organizationMemberships.userId],
+      references: [users.id],
+    }),
+  })
+);
+
+
+// Update user relations to include all relationships
 export const usersRelations = relations(users, ({ many }) => ({
   accounts: many(accounts),
   sessions: many(sessions),
-  sites: many(sites),
-  posts: many(posts),
-  agents: many(agents),
+  organizationMemberships: many(organizationMemberships),
+  createdOrganizations: many(organizations, { relationName: 'creator' }),
+  createdSites: many(sites, { relationName: 'creator' }),
+  createdAgents: many(agents), // Consider updating relationName for consistency
+  createdPosts: many(posts), // Consider updating relationName for consistency
 }));
 
 export const conversationsRelations = relations(conversations, ({ one, many }) => ({
@@ -501,27 +605,68 @@ export type SelectConversation = typeof conversations.$inferSelect & {
   session?: SelectOnboardingSession;
 };
 
+
+export type AgentWithSite = typeof agents.$inferSelect & {
+  site: SelectSite;
+  creator: typeof users.$inferSelect;
+};
+
+export type AgentWithRelations = typeof agents.$inferSelect & {
+  site: SelectSite & {
+    organization: SelectOrganization;
+    creator: typeof users.$inferSelect;
+  };
+  creator: typeof users.$inferSelect;
+};
+
+
+// Update the existing SelectAgent type
 export type SelectAgent = typeof agents.$inferSelect & {
-  site: typeof sites.$inferSelect | null;
+  site?: SelectSite & {
+    organization?: SelectOrganization;
+    creator?: typeof users.$inferSelect;
+  };
+  creator: typeof users.$inferSelect;
   siteName?: string | null;
-  userName?: string | null;
   settings: AgentSettings;
   _count?: {
     sessions: number;
   };
 };
 
+// Add organization-related types
+export type SelectOrganizationWithRelations = SelectOrganization & {
+  memberships?: SelectOrganizationMembership[];
+  sites?: SelectSite[];
+  creator?: typeof users.$inferSelect;
+};
+
+
+export type SelectOrganizationMembershipWithRelations = SelectOrganizationMembership & {
+  organization?: SelectOrganization;
+  user?: typeof users.$inferSelect;
+};
+
+// Update SelectSite type to include organization
 export type SelectSite = typeof sites.$inferSelect & {
+  organization: SelectOrganization;
+  creator: typeof users.$inferSelect;
   _count?: {
     agents: number;
   };
 };
 
-export type SelectPost = typeof posts.$inferSelect;
+// Update the type definitions to match the new schema
+export type SelectPost = typeof posts.$inferSelect & {
+  site?: SelectSite;
+  creator?: typeof users.$inferSelect;
+  organization?: SelectOrganization;
+};
 
 export type SelectExample = typeof examples.$inferSelect;
 
 export type SelectOnboardingSession = typeof onboardingSessions.$inferSelect & {
+  organizationId: string;
   conversations?: SelectConversation[];
   agent?: SelectAgent;
   user?: typeof users.$inferSelect;
@@ -583,7 +728,9 @@ export type ConversationMetadata = {
 };
 
 export type SelectUsageLog = typeof usageLogs.$inferSelect;
-
+// Add types for organization queries
+export type SelectOrganization = typeof organizations.$inferSelect;
+export type SelectOrganizationMembership = typeof organizationMemberships.$inferSelect;
 // Export Redis key generation utilities
 export const getConversationKey = (conversationId: string) => 
   `${CONVERSATION_KEY_PREFIX}${conversationId}`;
@@ -593,3 +740,4 @@ export const getMessageKey = (messageId: string) =>
 
 export const getMessageOrderKey = (conversationId: string) => 
   `${MESSAGE_ORDER_PREFIX}${conversationId}`;
+

@@ -1,26 +1,91 @@
-// actions.ts
+//Users/bobbygilbert/Documents/GitHub/platforms-starter-kit/lib/actions.ts
+
 "use server";
 
 import { getSession } from "@/lib/auth";
 import { addDomainToVercel, removeDomainFromVercelProject, validDomainRegex } from "@/lib/domains";
 import { getBlurDataURL } from "@/lib/utils";
 import { put } from "@vercel/blob";
-import { eq, InferModel, desc, asc, and, lt } from "drizzle-orm";
+import { eq, InferModel, desc, asc, and } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 import { revalidateTag } from "next/cache";
 import { withPostAuth, withSiteAuth, withAgentAuth } from "./auth";
 import db from "./db";
 import { Agent, Site } from '@/types/agent';
-
-
 import { redirect } from "next/navigation";
 import { createId } from "@paralleldrive/cuid2";
-import { conversations, messages, agents, SelectAgent, SelectPost, SelectSite, posts, sites, users, onboardingSessions, SelectOnboardingSession } from './schema';
-import { AgentState, SessionState, UpdateAgentMetadataResponse, Step, AgentSettings, MessageType, MessageRole, MessageContent, MessageMetadata, ConversationMetadata, ConversationStatus, ToolCall, SelectMessage, SelectConversation } from './types';
-import { redis, setAgentState, createSession, getSessionState, updateSessionState } from './upstash';
-import { addMessage, getConversationMessages, createConversation, getSessionConversations } from './upstash';
+import { 
+  conversations, 
+  messages, 
+  agents, 
+  SelectAgent, 
+  SelectPost, 
+  SelectSite, 
+  posts, 
+  sites, 
+  users, 
+  onboardingSessions, 
+  SelectOnboardingSession,
+  
+} from './schema';
+import { 
+  AgentState, 
+  SessionState, 
+  UpdateAgentMetadataResponse, 
+  Step, 
+  AgentSettings, 
+  MessageType, 
+  MessageRole, 
+  MessageContent, 
+  MessageMetadata, 
+  ConversationMetadata, 
+  ConversationStatus, 
+  ToolCall, 
+  SelectMessage, 
+  SelectConversation 
+} from './types';
+import { 
+  redis, 
+  setAgentState, 
+  createSession, 
+  getSessionState, 
+  updateSessionState 
+} from './upstash';
+import { 
+  addMessage, 
+  getConversationMessages, 
+  createConversation, 
+  getSessionConversations 
+} from './upstash';
 import { sql } from "drizzle-orm";
 
+// Import new tables for organization context
+// Update the organization-related imports
+import { 
+  organizations, 
+  organizationMemberships, 
+  SelectOrganization,
+  SelectOrganizationMembership,
+  SelectOrganizationWithRelations
+} from './schema';
+
+// Define the ExtendedSession type properly
+type ExtendedSession = {
+  user: {
+    id: string;
+    name: string;
+    username: string;
+    email: string;
+    image: string;
+  };
+  organizationId: string;
+};
+
+// Add module augmentation
+declare module "@/lib/auth" {
+  export function getSession(): Promise<ExtendedSession | null>;
+}
+// Interfaces for responses
 interface CreateSiteResponse {
   error?: string;
   id?: string;
@@ -31,23 +96,51 @@ interface CreateAgentResponse {
   id?: string;
 }
 
+// Nanoid configuration for unique ID generation
 const nanoid = customAlphabet(
   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
   7
 );
 
-type PostWithSite = InferModel<typeof posts, "select"> & {
+// Types for relational data
+type PostWithSite = typeof posts.$inferSelect & {
   site: SelectSite;
+  creator: typeof users.$inferSelect;
+  organization: SelectOrganization;
 };
 
-type AgentWithSite = InferModel<typeof agents, "select"> & {
-  site: SelectSite;
-};
 
+// Update AgentWithSite type
+type AgentWithSite = typeof agents.$inferSelect & {
+  site: SelectSite;
+  creator: typeof users.$inferSelect;
+};
+// Update related types
+type AgentWithRelations = typeof agents.$inferSelect & {
+  site: SelectSite & {
+    organization: SelectOrganization;
+    creator: typeof users.$inferSelect;
+  };
+  creator: typeof users.$inferSelect;
+};
+// Helper function to verify organization membership
+async function verifyOrganizationAccess(userId: string, organizationId: string): Promise<boolean> {
+  const membership = await db.query.organizationMemberships.findFirst({
+    where: and(
+      eq(organizationMemberships.userId, userId),
+      eq(organizationMemberships.organizationId, organizationId)
+    )
+  });
+  return !!membership;
+}
+
+// ===== Site Management Functions =====
+
+// Create a new site within an organization
 export const createSite = async (formData: FormData): Promise<CreateSiteResponse> => {
   const session = await getSession();
-  if (!session?.user.id) {
-    return { error: "Unauthorized" };
+  if (!session?.user.id || !session.organizationId) {
+    return { error: "Unauthorized or no organization context" };
   }
 
   const name = formData.get("name") as string;
@@ -55,6 +148,12 @@ export const createSite = async (formData: FormData): Promise<CreateSiteResponse
   const subdomain = formData.get("subdomain") as string;
 
   try {
+    // Verify organization access
+    const hasAccess = await verifyOrganizationAccess(session.user.id, session.organizationId);
+    if (!hasAccess) {
+      return { error: "Not a member of this organization" };
+    }
+
     const result = await db
       .insert(sites)
       .values({
@@ -62,7 +161,8 @@ export const createSite = async (formData: FormData): Promise<CreateSiteResponse
         name,
         description,
         subdomain,
-        userId: session.user.id,
+        organizationId: session.organizationId,
+        createdBy: session.user.id,
       })
       .returning();
 
@@ -81,18 +181,15 @@ export const createSite = async (formData: FormData): Promise<CreateSiteResponse
   }
 };
 
-
-
-// lib/actions.ts
+// Retrieve sites with agent counts, scoped to the user's organization
 export async function getSitesWithAgentCount() {
   const session = await getSession();
-  if (!session?.user.id) {
+  if (!session?.user.id || !session.organizationId) {
     redirect("/login");
     return [];
   }
 
   return await db.select({
-    // Site fields
     id: sites.id,
     name: sites.name,
     description: sites.description,
@@ -105,160 +202,254 @@ export async function getSitesWithAgentCount() {
     message404: sites.message404,
     createdAt: sites.createdAt,
     updatedAt: sites.updatedAt,
-    userId: sites.userId,
-    // Count of agents
+    organizationId: sites.organizationId,
+    createdBy: sites.createdBy,
     _count: {
       agents: sql<number>`count(${agents.id})::int`
     }
   })
   .from(sites)
   .leftJoin(agents, eq(sites.id, agents.siteId))
-  .where(eq(sites.userId, session.user.id))
+  .where(eq(sites.organizationId, session.organizationId))
   .groupBy(sites.id)
   .orderBy(desc(sites.createdAt));
 }
 
-
-
-
-
-// lib/actions.ts
-
-export async function getAgentWithSessionCount(agentId: string) {
-  return await db.select({
-    id: agents.id,
-    name: agents.name,
-    description: agents.description,
-    slug: agents.slug,
-    image: agents.image,
-    imageBlurhash: agents.imageBlurhash,
-    published: agents.published,
-    settings: agents.settings,
-    createdAt: agents.createdAt,
-    updatedAt: agents.updatedAt,
-    siteId: agents.siteId,
-    userId: agents.userId,
-    site: sql`json_build_object(
-      'id', ${sites.id},
-      'name', ${sites.name},
-      'description', ${sites.description},
-      'logo', ${sites.logo},
-      'font', ${sites.font},
-      'image', ${sites.image},
-      'imageBlurhash', ${sites.imageBlurhash},
-      'subdomain', ${sites.subdomain},
-      'customDomain', ${sites.customDomain},
-      'message404', ${sites.message404},
-      'createdAt', ${sites.createdAt},
-      'updatedAt', ${sites.updatedAt},
-      'userId', ${sites.userId}
-    )`,
-    _count: {
-      sessions: sql<number>`count(${onboardingSessions.id})::int`
+// Update site properties, ensuring it belongs to the user's organization
+export const updateSite = withSiteAuth(
+  async (
+    formData: FormData,
+    site: SelectSite,
+    key: string
+  ): Promise<void> => {
+    const session = await getSession();
+    if (!session?.organizationId || site.organizationId !== session.organizationId) {
+      redirect("/login");
+      return;
     }
-  })
-  .from(agents)
-  .leftJoin(sites, eq(agents.siteId, sites.id))
-  .leftJoin(onboardingSessions, eq(agents.id, onboardingSessions.agentId))
-  .where(eq(agents.id, agentId))
-  .groupBy(agents.id, sites.id)
-  .then(rows => rows[0]);
+
+    const value = formData.get(key) as string;
+
+    try {
+      let response;
+
+      if (key === "customDomain") {
+        if (value.includes("vercel.pub")) {
+          redirect(
+            `/sites/${site.id}/settings?error=Cannot+use+vercel.pub+subdomain+as+your+custom+domain`
+          );
+          return;
+        } else if (validDomainRegex.test(value)) {
+          response = await db
+            .update(sites)
+            .set({
+              customDomain: value,
+            })
+            .where(and(
+              eq(sites.id, site.id),
+              eq(sites.organizationId, session.organizationId)
+            ))
+            .returning()
+            .then((res) => res[0]);
+
+          await addDomainToVercel(value);
+        } else if (value === "") {
+          response = await db
+            .update(sites)
+            .set({
+              customDomain: null,
+            })
+            .where(and(
+              eq(sites.id, site.id),
+              eq(sites.organizationId, session.organizationId)
+            ))
+            .returning()
+            .then((res) => res[0]);
+        }
+
+        if (site.customDomain && site.customDomain !== value) {
+          await removeDomainFromVercelProject(site.customDomain);
+        }
+      } else if (key === "image" || key === "logo") {
+        if (!process.env.BLOB_READ_WRITE_TOKEN) {
+          redirect(
+            `/sites/${site.id}/settings?error=Missing+BLOB_READ_WRITE_TOKEN+token`
+          );
+          return;
+        }
+
+        const file = formData.get(key) as File;
+        const filename = `${nanoid()}.${file.type.split("/")[1]}`;
+
+        const { url } = await put(filename, file, {
+          access: "public",
+        });
+
+        const blurhash = key === "image" ? await getBlurDataURL(url) : null;
+
+        response = await db
+          .update(sites)
+          .set({
+            [key]: url,
+            ...(blurhash && { imageBlurhash: blurhash }),
+          })
+          .where(and(
+            eq(sites.id, site.id),
+            eq(sites.organizationId, session.organizationId)
+          ))
+          .returning()
+          .then((res) => res[0]);
+      } else {
+        response = await db
+          .update(sites)
+          .set({
+            [key]: value,
+          })
+          .where(and(
+            eq(sites.id, site.id),
+            eq(sites.organizationId, session.organizationId)
+          ))
+          .returning()
+          .then((res) => res[0]);
+      }
+
+      revalidateTag(
+        `${site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-metadata`
+      );
+      site.customDomain && revalidateTag(`${site.customDomain}-metadata`);
+    } catch (error: any) {
+      if (error.code === "P2002") {
+        redirect(
+          `/sites/${site.id}/settings?error=This+${key}+is+already+taken`
+        );
+      } else {
+        redirect(
+          `/sites/${site.id}/settings?error=${encodeURIComponent(
+            error.message
+          )}`
+        );
+      }
+      return;
+    }
+  }
+);
+
+// Delete a site, ensuring it belongs to the user's organization
+export const deleteSite = withSiteAuth(
+  async (_: FormData, site: SelectSite): Promise<void> => {
+    const session = await getSession();
+    if (!session?.organizationId || site.organizationId !== session.organizationId) {
+      redirect("/login");
+      return;
+    }
+
+    try {
+      await db.delete(sites)
+        .where(and(
+          eq(sites.id, site.id),
+          eq(sites.organizationId, session.organizationId)
+        ))
+        .returning();
+
+      revalidateTag(
+        `${site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-metadata`
+      );
+      site.customDomain && revalidateTag(`${site.customDomain}-metadata`);
+    } catch (error: any) {
+      redirect(
+        `/sites/${site.id}/settings?error=${encodeURIComponent(
+          error.message
+        )}`
+      );
+      return;
+    }
+  }
+);
+
+// ===== Agent Management Functions =====
+
+
+async function getAgentWithRelations(agentId: string, organizationId: string) {
+  return await db.query.agents.findFirst({
+    where: and(
+      eq(agents.id, agentId),
+      eq(sites.organizationId, organizationId)
+    ),
+    with: {
+      site: {
+        with: {
+          organization: true,
+          creator: true
+        }
+      },
+      creator: true
+    }
+  }) as AgentWithRelations;
 }
-// /lib/actions.ts
-export async function getAgentsWithSessionCount(siteId: string): Promise<Agent[]> {
-  const results = await db.select({
-    id: agents.id,
-    name: agents.name,
-    description: agents.description,
-    slug: agents.slug,
-    image: agents.image,
-    imageBlurhash: agents.imageBlurhash,
-    published: agents.published,
-    settings: agents.settings,
-    createdAt: agents.createdAt,
-    updatedAt: agents.updatedAt,
-    siteId: agents.siteId,
-    userId: agents.userId,
-    site: sql<Site>`json_build_object(
-      'id', ${sites.id},
-      'name', ${sites.name},
-      'description', ${sites.description},
-      'logo', ${sites.logo},
-      'font', ${sites.font},
-      'image', ${sites.image},
-      'imageBlurhash', ${sites.imageBlurhash},
-      'subdomain', ${sites.subdomain},
-      'customDomain', ${sites.customDomain},
-      'message404', ${sites.message404},
-      'createdAt', ${sites.createdAt},
-      'updatedAt', ${sites.updatedAt},
-      'userId', ${sites.userId}
-    )`,
-    _count: {
-      sessions: sql<number>`COUNT(DISTINCT ${onboardingSessions.id})::int`
-    }
-  })
-  .from(agents)
-  .leftJoin(sites, eq(agents.siteId, sites.id))
-  .leftJoin(onboardingSessions, eq(agents.id, onboardingSessions.agentId))
-  .where(eq(agents.siteId, siteId))
-  .groupBy(
-    agents.id,
-    agents.name,
-    agents.description,
-    agents.slug,
-    agents.image,
-    agents.imageBlurhash,
-    agents.published,
-    agents.settings,
-    agents.createdAt,
-    agents.updatedAt,
-    agents.siteId,
-    agents.userId,
-    sites.id,
-    sites.name,
-    sites.description,
-    sites.logo,
-    sites.font,
-    sites.image,
-    sites.imageBlurhash,
-    sites.subdomain,
-    sites.customDomain,
-    sites.message404,
-    sites.createdAt,
-    sites.updatedAt,
-    sites.userId
-  )
-  .orderBy(desc(agents.createdAt));
 
-  // Transform the database results to match the Agent type exactly
-  return results.map(result => ({
-    id: result.id,
-    name: result.name,
-    description: result.description,
-    slug: result.slug,
-    image: result.image,
-    imageBlurhash: result.imageBlurhash,
-    createdAt: result.createdAt,
-    updatedAt: result.updatedAt,
-    published: result.published,
-    siteId: result.siteId,
-    userId: result.userId,
-    settings: result.settings,
-    site: result.site as Site,
-    _count: {
-      sessions: result._count.sessions
+function formatAgentResponse(
+  agent: AgentWithRelations,
+  fallbackOrganizationId: string,
+  fallbackUserId: string
+): SelectAgent {
+  return {
+    ...agent,
+    site: agent.site || {
+      id: '',
+      name: null,
+      description: null,
+      logo: null,
+      font: 'font-cal',
+      image: null,
+      imageBlurhash: null,
+      subdomain: null,
+      customDomain: null,
+      message404: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      organizationId: fallbackOrganizationId,
+      createdBy: fallbackUserId,
+      organization: null,
+      creator: null
+    },
+    siteName: agent.site?.name ?? null,
+    settings: agent.settings as AgentSettings,
+    creator: agent.creator || {
+      id: fallbackUserId,
+      name: null,
+      email: '',
+      emailVerified: null,
+      image: null,
+      createdAt: new Date(),
+      updatedAt: new Date()
     }
-  }));
+  };
 }
 
+// Replace your existing getAgentById with this version
+export const getAgentById = async (agentId: string): Promise<SelectAgent | null> => {
+  const session = await getSession();
+  if (!session?.user.id || !session.organizationId) {
+    return null;
+  }
 
+  const agent = await getAgentWithRelations(agentId, session.organizationId);
+  if (!agent) return null;
 
+  return formatAgentResponse(agent, session.organizationId, session.user.id);
+};
+// Create a new agent within a site, ensuring the site belongs to the user's organization
 export const createAgent = withSiteAuth(
   async (_: FormData, site: SelectSite): Promise<CreateAgentResponse> => {
+
     const session = await getSession();
-    if (!session?.user.id) {
-      return { error: "Unauthorized" };
+    if (!session?.user.id || !session.organizationId) {
+      return { error: "Unauthorized or no organization context" };
+    }
+
+    // Verify the site belongs to the organization
+    if (site.organizationId !== session.organizationId) {
+      return { error: "Site does not belong to your organization" };
     }
 
     try {
@@ -267,10 +458,10 @@ export const createAgent = withSiteAuth(
         .values({
           id: createId(),
           siteId: site.id,
-          userId: session.user.id,
+          createdBy: session.user.id,
           name: "New Onboard",
           description: "",
-          slug: createId(),
+          slug: nanoid(),
           settings: {
             onboardingType: "external",
             allowMultipleSessions: false,
@@ -291,7 +482,8 @@ export const createAgent = withSiteAuth(
         agentId: agent.id,
         onboardingType: "external",
         lastActive: Date.now(),
-        context: {}
+        context: {},
+        organizationId: site.organizationId // Add this line to fix the AgentStateWithOrg error
       });
 
       revalidateTag(
@@ -306,99 +498,7 @@ export const createAgent = withSiteAuth(
   }
 );
 
-
-
-export const updateStepCompletionStatus = async (
-  agentId: string,
-  stepIndex: number,
-  completed: boolean
-): Promise<UpdateAgentMetadataResponse> => {
-  const agent = await getAgentById(agentId);
-
-  if (!agent) {
-    console.error(`Agent with ID ${agentId} not found.`);
-    return { success: false, error: "Agent not found." };
-  }
-
-  if (!agent.settings.steps || stepIndex < 0 || stepIndex >= agent.settings.steps.length) {
-    console.error(`Invalid step index ${stepIndex} for agent ${agentId}.`);
-    return { success: false, error: "Invalid step index." };
-  }
-
-
-
-
-  
-  const updatedSteps = agent.settings.steps.map((step, index) => 
-    index === stepIndex ? { ...step, completed } : step
-  );
-
-  try {
-    await db
-      .update(agents)
-      .set({
-        settings: {
-          ...agent.settings,
-          steps: updatedSteps,
-        },
-        updatedAt: new Date(),
-      })
-      .where(eq(agents.id, agentId))
-      .returning();
-
-    return { success: true };
-  } catch (error: any) {
-    console.error(`Failed to update agent steps: ${error.message}`);
-    return { success: false, error: error.message };
-  }
-};
-
-// Update updateAgentStepsWithoutAuth function
-export const updateAgentStepsWithoutAuth = async (
-  agentId: string,
-  steps: Step[]
-): Promise<UpdateAgentMetadataResponse> => {
-  try {
-    const agent = await db.query.agents.findFirst({
-      where: eq(agents.id, agentId),
-      with: { site: true },
-    }) as AgentWithSite | undefined;
-
-    if (!agent) {
-      return { success: false, error: "Agent not found." };
-    }
-
-    const newSettings: AgentSettings = {
-      ...agent.settings,
-      steps,
-      authentication: {
-        ...agent.settings.authentication,
-      }
-    };
-
-    await db
-      .update(agents)
-      .set({
-        settings: newSettings,
-        updatedAt: new Date(),
-      })
-      .where(eq(agents.id, agentId))
-      .returning();
-
-    revalidateTag(
-      `${agent.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-agents`
-    );
-    if (agent.site?.customDomain) {
-      revalidateTag(`${agent.site.customDomain}-agents`);
-    }
-
-    return { success: true };
-  } catch (error: any) {
-    console.error("Error updating agent steps:", error);
-    return { success: false, error: error.message || "Failed to update agent steps." };
-  }
-};
-// Update the updateAgentMetadata function to handle authentication
+// Update agent metadata, including handling authentication settings
 export const updateAgentMetadata = withAgentAuth(
   async (
     formData: FormData,
@@ -407,6 +507,14 @@ export const updateAgentMetadata = withAgentAuth(
     },
     key: string
   ): Promise<UpdateAgentMetadataResponse> => {
+    const session = await getSession();
+    if (!session?.organizationId || agent.site.organizationId !== session.organizationId) {
+      return {
+        success: false,
+        error: "Unauthorized or invalid organization context"
+      };
+    }
+
     try {
       let updatedData: Record<string, any> = {};
 
@@ -441,7 +549,8 @@ export const updateAgentMetadata = withAgentAuth(
               onboardingType: newSettings.onboardingType,
               lastActive: Date.now(),
               context: {},
-              settings: updatedData.settings
+              settings: updatedData.settings,
+              organizationId: session.organizationId
             }, { ex: 24 * 60 * 60 });
           }
         } catch (e) {
@@ -463,14 +572,20 @@ export const updateAgentMetadata = withAgentAuth(
           ...updatedData,
           updatedAt: new Date(),
         })
-        .where(eq(agents.id, agent.id))
+        .where(and(
+          eq(agents.id, agent.id),
+          eq(sites.organizationId, session.organizationId)
+        ))
         .returning()
         .then(res => res[0]);
 
       // Cache the updated agent
       await redis.set(
         `agent:${agent.id}:metadata`,
-        updatedAgent,
+        {
+          ...updatedAgent,
+          organizationId: session.organizationId
+        },
         { ex: 3600 }
       );
 
@@ -524,23 +639,27 @@ export const updateAgentMetadata = withAgentAuth(
   }
 );
 
-
-
-
-
-
+// Update agent via API, ensuring it belongs to the user's organization
 export const updateAgentAPI = async (
   data: Partial<SelectAgent> & { id: string },
   userId: string
 ): Promise<{ success: boolean; error?: string }> => {
+  const session = await getSession();
+  if (!session?.organizationId) {
+    return { success: false, error: "Organization context required" };
+  }
+
   const agent = await db.query.agents.findFirst({
-    where: eq(agents.id, data.id),
+    where: and(
+      eq(agents.id, data.id),
+      eq(sites.organizationId, session.organizationId)
+    ),
     with: {
       site: true,
     },
   }) as AgentWithSite | undefined;
 
-  if (!agent || agent.userId !== userId) {
+  if (!agent || agent.createdBy !== userId) {
     return { success: false, error: "Agent not found or unauthorized" };
   }
 
@@ -551,7 +670,10 @@ export const updateAgentAPI = async (
         ...data,
         updatedAt: new Date(),
       })
-      .where(eq(agents.id, data.id))
+      .where(and(
+        eq(agents.id, data.id),
+        eq(sites.organizationId, session.organizationId)
+      ))
       .returning();
 
     revalidateTag(
@@ -572,24 +694,28 @@ export const updateAgentAPI = async (
   }
 };
 
+// Delete an agent, ensuring it belongs to the user's organization
 export const deleteAgent = async (
   formData: FormData,
   agentId: string
 ): Promise<void> => {
   const session = await getSession();
-  if (!session?.user.id) {
+  if (!session?.user.id || !session.organizationId) {
     redirect("/login");
     return;
   }
 
   const agent = await db.query.agents.findFirst({
-    where: eq(agents.id, agentId),
+    where: and(
+      eq(agents.id, agentId),
+      eq(sites.organizationId, session.organizationId)
+    ),
     with: {
       site: true,
     },
   }) as AgentWithSite | undefined;
 
-  if (!agent || agent.userId !== session.user.id) {
+  if (!agent || agent.createdBy !== session.user.id) {
     redirect("/not-found");
     return;
   }
@@ -603,7 +729,12 @@ export const deleteAgent = async (
   }
 
   try {
-    await db.delete(agents).where(eq(agents.id, agentId)).returning();
+    await db.delete(agents)
+      .where(and(
+        eq(agents.id, agentId),
+        eq(sites.organizationId, session.organizationId)
+      ))
+      .returning();
 
     revalidateTag(
       `${agent.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-agents`
@@ -626,244 +757,20 @@ export const deleteAgent = async (
   }
 };
 
+// ===== Post Management Functions =====
 
-// Add this new function to handle session deletion
-export const deleteSession = async (sessionId: string): Promise<void> => {
-  try {
-    // First validate the session exists
-    const session = await db.query.onboardingSessions.findFirst({
-      where: eq(onboardingSessions.id, sessionId),
-    });
-
-    if (!session) {
-      throw new Error('Session not found');
-    }
-
-    // Delete all related conversations and messages first
-    await db.delete(conversations)
-      .where(eq(conversations.sessionId, sessionId));
-
-    // Delete the session from PostgreSQL
-    await db.delete(onboardingSessions)
-      .where(eq(onboardingSessions.id, sessionId));
-
-    // Clean up Redis state
-    const redisKey = `session:${sessionId}:state`;
-    await redis.del(redisKey);
-
-    console.log(`Successfully deleted session: ${sessionId}`);
-  } catch (error) {
-    console.error('Failed to delete session:', error);
-    throw error;
-  }
-};
-
-
-
-export const getAgentById = async (agentId: string): Promise<SelectAgent | null> => {
-  const agent = await db.query.agents.findFirst({
-    where: eq(agents.id, agentId),
-    columns: {
-      id: true,
-      name: true,
-      description: true,
-      slug: true,
-      userId: true,
-      siteId: true,
-      createdAt: true,
-      updatedAt: true,
-      published: true,
-      settings: true,
-      image: true,
-      imageBlurhash: true,
-    },
-    with: {
-      site: {
-        columns: {
-          id: true,
-          name: true,
-          description: true,
-          logo: true,  
-          font: true,
-          image: true,  // Added image
-          imageBlurhash: true,  // Added imageBlurhash
-          subdomain: true,
-          customDomain: true,
-          message404: true,
-          createdAt: true,
-          updatedAt: true,
-          userId: true,
-        }
-      },
-      user: true,
-    },
-  });
-
-  if (!agent) return null;
-
-  // Transform the result to match SelectAgent type, ensuring site is not null
-  const selectAgent: SelectAgent = {
-    ...agent,
-    site: agent.site || {
-      id: '',
-      name: null,
-      description: null,
-      logo: null,
-      font: 'font-cal',
-      image: null,  // Added image
-      imageBlurhash: null,  // Added imageBlurhash
-      subdomain: null,
-      customDomain: null,
-      message404: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      userId: null,
-    },
-    siteName: agent.site?.name ?? null,
-    userName: agent.user?.name ?? null,
-    settings: agent.settings as AgentSettings,
-  };
-
-  return selectAgent;
-};
-export const updateSite = withSiteAuth(
-  async (
-    formData: FormData,
-    site: SelectSite,
-    key: string
-  ): Promise<void> => {
-    const value = formData.get(key) as string;
-
-    try {
-      let response;
-
-      if (key === "customDomain") {
-        if (value.includes("vercel.pub")) {
-          redirect(
-            `/sites/${site.id}/settings?error=Cannot+use+vercel.pub+subdomain+as+your+custom+domain`
-          );
-          return;
-        } else if (validDomainRegex.test(value)) {
-          response = await db
-            .update(sites)
-            .set({
-              customDomain: value,
-            })
-            .where(eq(sites.id, site.id))
-            .returning()
-            .then((res) => res[0]);
-
-          await Promise.all([
-            addDomainToVercel(value),
-          ]);
-        } else if (value === "") {
-          response = await db
-            .update(sites)
-            .set({
-              customDomain: null,
-            })
-            .where(eq(sites.id, site.id))
-            .returning()
-            .then((res) => res[0]);
-        }
-
-        if (site.customDomain && site.customDomain !== value) {
-          await removeDomainFromVercelProject(site.customDomain);
-        }
-      } else if (key === "image" || key === "logo") {
-        if (!process.env.BLOB_READ_WRITE_TOKEN) {
-          redirect(
-            `/sites/${site.id}/settings?error=Missing+BLOB_READ_WRITE_TOKEN+token`
-          );
-          return;
-        }
-
-        const file = formData.get(key) as File;
-        const filename = `${nanoid()}.${file.type.split("/")[1]}`;
-
-        const { url } = await put(filename, file, {
-          access: "public",
-        });
-
-        const blurhash = key === "image" ? await getBlurDataURL(url) : null;
-
-        response = await db
-          .update(sites)
-          .set({
-            [key]: url,
-            ...(blurhash && { imageBlurhash: blurhash }),
-          })
-          .where(eq(sites.id, site.id))
-          .returning()
-          .then((res) => res[0]);
-      } else {
-        response = await db
-          .update(sites)
-          .set({
-            [key]: value,
-          })
-          .where(eq(sites.id, site.id))
-          .returning()
-          .then((res) => res[0]);
-      }
-
-      revalidateTag(
-        `${site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-metadata`
-      );
-      site.customDomain && revalidateTag(`${site.customDomain}-metadata`);
-    } catch (error: any) {
-      if (error.code === "P2002") {
-        redirect(
-          `/sites/${site.id}/settings?error=This+${key}+is+already+taken`
-        );
-      } else {
-        redirect(
-          `/sites/${site.id}/settings?error=${encodeURIComponent(
-            error.message
-          )}`
-        );
-      }
-      return;
-    }
-  }
-);
-
-export const deleteSite = withSiteAuth(
-  async (_: FormData, site: SelectSite): Promise<void> => {
-    try {
-      await db.delete(sites).where(eq(sites.id, site.id)).returning();
-
-      revalidateTag(
-        `${site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-metadata`
-      );
-      site.customDomain && revalidateTag(`${site.customDomain}-metadata`);
-    } catch (error: any) {
-      redirect(
-        `/sites/${site.id}/settings?error=${encodeURIComponent(
-          error.message
-        )}`
-      );
-      return;
-    }
-  }
-);
-
-export const getSiteFromPostId = async (postId: string): Promise<string | null> => {
-  const post = await db.query.posts.findFirst({
-    where: eq(posts.id, postId),
-    columns: {
-      siteId: true,
-    },
-  });
-
-  return post?.siteId || null;
-};
-
+// Create a new post within a site, ensuring the site belongs to the user's organization
 export const createPost = withSiteAuth(
   async (_: FormData, site: SelectSite): Promise<void> => {
     const session = await getSession();
-    if (!session?.user.id) {
+    if (!session?.user.id || !session.organizationId) {
       redirect("/login");
+      return;
+    }
+
+    // Verify site belongs to the organization
+    if (site.organizationId !== session.organizationId) {
+      redirect("/not-found");
       return;
     }
 
@@ -872,9 +779,10 @@ export const createPost = withSiteAuth(
         .insert(posts)
         .values({
           id: createId(),
-          slug: createId(),
+          slug: nanoid(),
           siteId: site.id,
-          userId: session.user.id,
+          createdBy: session.user.id,
+          organizationId: session.organizationId,
         })
         .returning();
 
@@ -889,23 +797,27 @@ export const createPost = withSiteAuth(
   }
 );
 
+// Update a post, ensuring it belongs to the user's organization
 export const updatePost = async (
   data: Partial<SelectPost> & { id: string }
 ): Promise<void> => {
   const session = await getSession();
-  if (!session?.user.id) {
+  if (!session?.user.id || !session.organizationId) {
     redirect("/login");
     return;
   }
 
   const post = await db.query.posts.findFirst({
-    where: eq(posts.id, data.id),
+    where: and(
+      eq(posts.id, data.id),
+      eq(posts.organizationId, session.organizationId)
+    ),
     with: {
       site: true,
     },
   }) as PostWithSite | undefined;
 
-  if (!post || post.userId !== session.user.id) {
+  if (!post || post.createdBy !== session.user.id) {
     redirect("/not-found");
     return;
   }
@@ -917,7 +829,10 @@ export const updatePost = async (
         ...data,
         updatedAt: new Date(),
       })
-      .where(eq(posts.id, data.id))
+      .where(and(
+        eq(posts.id, data.id),
+        eq(posts.organizationId, session.organizationId)
+      ))
       .returning();
 
     revalidateTag(
@@ -939,6 +854,61 @@ export const updatePost = async (
   }
 };
 
+// Delete a post, ensuring it belongs to the user's organization
+export const deletePost = withPostAuth(
+  async (_: FormData, post: SelectPost): Promise<void> => {
+    const session = await getSession();
+    if (!session?.user.id || !session.organizationId) {
+      redirect("/login");
+      return;
+    }
+
+    const postWithSite = await db.query.posts.findFirst({
+      where: and(
+        eq(posts.id, post.id),
+        eq(posts.organizationId, session.organizationId)
+      ),
+      with: {
+        site: true,
+      },
+    }) as PostWithSite | undefined;
+
+    if (!postWithSite || postWithSite.createdBy !== session.user.id) {
+      redirect("/not-found");
+      return;
+    }
+
+    try {
+      await db.delete(posts)
+        .where(and(
+          eq(posts.id, post.id),
+          eq(posts.organizationId, session.organizationId)
+        ))
+        .returning();
+
+      revalidateTag(
+        `${postWithSite.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-posts`
+      );
+      revalidateTag(
+        `${postWithSite.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-${postWithSite.slug}`
+      );
+
+      if (postWithSite.site?.customDomain) {
+        revalidateTag(`${postWithSite.site.customDomain}-posts`);
+        revalidateTag(`${postWithSite.site.customDomain}-${postWithSite.slug}`);
+      }
+    } catch (error: any) {
+      redirect(
+        `/post/${post.id}/settings?error=${encodeURIComponent(
+          error.message
+        )}`
+      );
+      return;
+    }
+  }
+);
+
+// Update post metadata, ensuring it belongs to the user's organization
 export const updatePostMetadata = withPostAuth(
   async (
     formData: FormData,
@@ -947,6 +917,12 @@ export const updatePostMetadata = withPostAuth(
     },
     key: string
   ): Promise<void> => {
+    const session = await getSession();
+    if (!session?.organizationId) {
+      redirect("/login");
+      return;
+    }
+
     const value = formData.get(key) as string;
 
     try {
@@ -965,7 +941,10 @@ export const updatePostMetadata = withPostAuth(
             image: url,
             imageBlurhash: blurhash,
           })
-          .where(eq(posts.id, post.id))
+          .where(and(
+            eq(posts.id, post.id),
+            eq(posts.organizationId, session.organizationId)
+          ))
           .returning();
       } else {
         await db
@@ -973,7 +952,10 @@ export const updatePostMetadata = withPostAuth(
           .set({
             [key]: key === "published" ? value === "true" : value,
           })
-          .where(eq(posts.id, post.id))
+          .where(and(
+            eq(posts.id, post.id),
+            eq(posts.organizationId, session.organizationId)
+          ))
           .returning();
       }
 
@@ -1005,10 +987,44 @@ export const updatePostMetadata = withPostAuth(
   }
 );
 
+// ===== User Management Functions =====
 
+// Edit user details, ensuring it belongs to the user's organization
+export const editUser = async (
+  formData: FormData,
+  _id: unknown,
+  key: string
+): Promise<void> => {
+  const session = await getSession();
+  if (!session?.user.id) {
+    redirect("/login");
+    return;
+  }
 
-// lib/actions.ts
+  const value = formData.get(key) as string;
 
+  try {
+    await db
+      .update(users)
+      .set({
+        [key]: value,
+      })
+      .where(eq(users.id, session.user.id))
+      .returning();
+  } catch (error: any) {
+    if (error.code === "P2002") {
+      redirect(`/profile?error=This+${key}+is+already+taken`);
+    } else {
+      redirect(`/profile?error=${encodeURIComponent(error.message)}`);
+    }
+    return;
+  }
+};
+
+// ===== Onboarding Session Management Functions =====
+
+// Create a new onboarding session, ensuring it belongs to the user's organization
+// Update createOnboardingSession function
 export const createOnboardingSession = async (
   agentId: string,
   data: {
@@ -1022,37 +1038,52 @@ export const createOnboardingSession = async (
     };
   }
 ): Promise<string> => {
-  // Get the agent to verify it exists and check settings
-  const agent = await getAgentById(agentId);
-  if (!agent) {
-    throw new Error('Agent not found');
+  const session = await getSession();
+  if (!session?.organizationId) {
+    throw new Error('Organization context required');
   }
-// Check if multiple sessions are allowed
-if (!agent.settings.allowMultipleSessions) {
-  // Count existing active sessions
-  const activeSessions = await db.query.onboardingSessions.findMany({
+
+  // Get the agent to verify it exists and belongs to organization
+  const agent = await db.query.agents.findFirst({
     where: and(
-      eq(onboardingSessions.agentId, agentId),
-      eq(onboardingSessions.status, 'active')
-    )
+      eq(agents.id, agentId),
+      eq(sites.organizationId, session.organizationId)
+    ),
+    with: {
+      site: true,
+    },
   });
 
-  if (activeSessions.length > 0) {
-    throw new Error('Multiple sessions are not allowed. Please complete or delete the existing session first.');
+  if (!agent) {
+    throw new Error('Agent not found or unauthorized');
   }
-}
 
- // Initialize steps from agent settings with default completion status
- const initialSteps = (agent.settings.steps || []).map(step => ({
-  id: createId(),
-  title: step.title,
-  description: step.description,
-  completionTool: step.completionTool,
-  completed: false,
-  completedAt: undefined
-}));
+  // Check if multiple sessions are allowed
+  if (!agent.settings.allowMultipleSessions) {
+    // Count existing active sessions
+    const activeSessions = await db.query.onboardingSessions.findMany({
+      where: and(
+        eq(onboardingSessions.agentId, agentId),
+        eq(onboardingSessions.status, 'active'),
+        eq(onboardingSessions.organizationId, session.organizationId)
+      )
+    });
 
-  // Use provided auth state or fallback to session check
+    if (activeSessions.length > 0) {
+      throw new Error('Multiple sessions are not allowed. Please complete or delete the existing session first.');
+    }
+  }
+
+  // Initialize steps from agent settings with default completion status
+  const initialSteps = (agent.settings.steps || []).map(step => ({
+    id: createId(),
+    title: step.title,
+    description: step.description,
+    completionTool: step.completionTool,
+    completed: false,
+    completedAt: undefined
+  }));
+
   const isAuthenticated = data.authState?.isAuthenticated || false;
   const isAnonymous = data.authState?.isAnonymous || true;
 
@@ -1068,31 +1099,23 @@ if (!agent.settings.allowMultipleSessions) {
     }
 
     // Create session in PostgreSQL
-  
     const sessionId = createId();
     const [dbSession] = await db
       .insert(onboardingSessions)
       .values({
         id: sessionId,
         agentId,
-        userId: effectiveUserId,
+        organizationId: session.organizationId,
+        userId: data.userId,
         name: data.name,
-        clientIdentifier: data.clientIdentifier || `${effectiveUserId || 'anon'}-${sessionId}`,
+        clientIdentifier: data.clientIdentifier || `${data.userId || 'anon'}-${sessionId}`,
         type: data.type,
         status: 'active',
-        stepProgress: {
-          steps: initialSteps.map(step => ({
-            id: step.id,
-            title: step.title,
-            description: step.description,
-            completionTool: step.completionTool,
-            completed: step.completed,
-            completedAt: step.completedAt
-          }))
-        },
+        stepProgress: { steps: [] },
         metadata: {
-          isAnonymous: isAnonymous || !effectiveUserId,
-          isAuthenticated: isAuthenticated && !!effectiveUserId,
+          isAnonymous: !data.userId,
+          isAuthenticated: !!data.userId,
+          organizationId: session.organizationId,
           createdAt: new Date().toISOString()
         },
         startedAt: new Date(),
@@ -1100,23 +1123,23 @@ if (!agent.settings.allowMultipleSessions) {
       })
       .returning();
 
-   // Initialize Redis state
-   await createSession(agentId, {
-    clientIdentifier: data.clientIdentifier || `${effectiveUserId || 'anon'}-${sessionId}`,
-    steps: initialSteps.map(step => ({
-      ...step,
-      completedAt: undefined
-    })),
-    metadata: {
-      sessionId: dbSession.id,
-      userId: effectiveUserId,
-      type: data.type,
-      isAnonymous: isAnonymous || !effectiveUserId,
-      isAuthenticated: isAuthenticated && !!effectiveUserId
-    },
-    currentStep: 0
-  });
-
+    // Initialize Redis state
+    await createSession(agentId, {
+      clientIdentifier: data.clientIdentifier || `${effectiveUserId || 'anon'}-${sessionId}`,
+      steps: initialSteps.map(step => ({
+        ...step,
+        completedAt: undefined
+      })),
+      metadata: {
+        sessionId: dbSession.id,
+        userId: effectiveUserId,
+        type: data.type,
+        isAnonymous: isAnonymous || !effectiveUserId,
+        isAuthenticated: isAuthenticated && !!effectiveUserId,
+        organizationId: session.organizationId
+      },
+      currentStep: 0
+    });
 
     // Publish session creation event
     await redis.publish('session-events', {
@@ -1151,13 +1174,97 @@ if (!agent.settings.allowMultipleSessions) {
   }
 };
 
+// Retrieve all onboarding sessions for an agent, ensuring they belong to the user's organization
+export const getSessions = async (agentId: string): Promise<SelectOnboardingSession[]> => {
+  const session = await getSession();
+  if (!session?.organizationId) {
+    throw new Error("Organization context required");
+  }
 
+  return db.query.onboardingSessions.findMany({
+    where: and(
+      eq(onboardingSessions.agentId, agentId),
+      eq(onboardingSessions.organizationId, session.organizationId)
+    ),
+    with: {
+      conversations: {
+        // Include messages within each conversation
+        with: {
+          messages: {
+            orderBy: [asc(messages.orderIndex)],
+          },
+        },
+        orderBy: [desc(conversations.startedAt)],
+      },
+    },
+    orderBy: [desc(onboardingSessions.updatedAt)],
+  });
+};
 
+// Delete an onboarding session, ensuring it belongs to the user's organization
+export const deleteSession = async (sessionId: string): Promise<void> => {
+  const session = await getSession();
+  if (!session?.organizationId) {
+    throw new Error("Organization context required");
+  }
 
+  try {
+    const onboardingSession = await db.query.onboardingSessions.findFirst({
+      where: and(
+        eq(onboardingSessions.id, sessionId),
+        eq(onboardingSessions.organizationId, session.organizationId)
+      ),
+    });
+
+    if (!onboardingSession) {
+      throw new Error('Session not found or unauthorized');
+    }
+
+    // Delete related conversations and messages first
+    await db.delete(conversations)
+      .where(eq(conversations.sessionId, sessionId));
+
+    // Delete the session from PostgreSQL
+    await db.delete(onboardingSessions)
+      .where(and(
+        eq(onboardingSessions.id, sessionId),
+        eq(onboardingSessions.organizationId, session.organizationId)
+      ));
+
+    // Clean up Redis state
+    await redis.del(`session:${sessionId}:state`);
+
+    console.log(`Successfully deleted session: ${sessionId}`);
+  } catch (error) {
+    console.error('Failed to delete session:', error);
+    throw error;
+  }
+};
+
+// ===== Step Management Functions =====
+
+// Mark a step as completed within an onboarding session
 export const completeStep = async (
   sessionId: string,
   stepId: string
 ): Promise<void> => {
+  const session = await getSession();
+  if (!session?.organizationId) {
+    throw new Error("Organization context required");
+  }
+
+  // Ensure the session belongs to the organization
+  const onboardingSession = await db.query.onboardingSessions.findFirst({
+    where: and(
+      eq(onboardingSessions.id, sessionId),
+      eq(onboardingSessions.organizationId, session.organizationId)
+    ),
+  });
+
+  if (!onboardingSession) {
+    throw new Error("Session not found or unauthorized");
+  }
+
   // Update Redis state first (for real-time updates)
   const state = await getSessionState(sessionId);
   if (!state) throw new Error('Session not found');
@@ -1180,148 +1287,117 @@ export const completeStep = async (
     .where(eq(onboardingSessions.id, sessionId));
 };
 
-export const getSessions = async (agentId: string): Promise<SelectOnboardingSession[]> => {
-  return db.query.onboardingSessions.findMany({
-    where: eq(onboardingSessions.agentId, agentId),
-    with: {
-      conversations: {
-        // Include messages within each conversation
-        with: {
-          messages: {
-            orderBy: [asc(messages.orderIndex)], // Updated line
-          },
-        },
-        orderBy: [desc(conversations.startedAt)], // Order conversations by start time
-      },
-    },
-    orderBy: [desc(onboardingSessions.updatedAt)],
-  });
-};
-
-export const deletePost = withPostAuth(
-  async (_: FormData, post: SelectPost): Promise<void> => {
-    const session = await getSession();
-    if (!session?.user.id) {
-      redirect("/login");
-      return;
-    }
-
-    const postWithSite = await db.query.posts.findFirst({
-      where: eq(posts.id, post.id),
-      with: {
-        site: true,
-      },
-    }) as PostWithSite | undefined;
-
-    if (!postWithSite || postWithSite.userId !== session.user.id) {
-      redirect("/not-found");
-      return;
-    }
-
-    try {
-      await db.delete(posts).where(eq(posts.id, post.id)).returning();
-
-      revalidateTag(
-        `${postWithSite.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-posts`
-      );
-      revalidateTag(
-        `${postWithSite.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-${postWithSite.slug}`
-      );
-
-      if (postWithSite.site?.customDomain) {
-        revalidateTag(`${postWithSite.site.customDomain}-posts`);
-        revalidateTag(`${postWithSite.site.customDomain}-${postWithSite.slug}`);
-      }
-    } catch (error: any) {
-      redirect(
-        `/post/${post.id}/settings?error=${encodeURIComponent(
-          error.message
-        )}`
-      );
-      return;
-    }
-  }
-);
-
-export const editUser = async (
-  formData: FormData,
-  _id: unknown,
-  key: string
-): Promise<void> => {
+// Update step completion status within an agent's onboarding session
+export const updateStepCompletionStatus = async (
+  agentId: string,
+  stepIndex: number,
+  completed: boolean
+): Promise<UpdateAgentMetadataResponse> => {
   const session = await getSession();
-  if (!session?.user.id) {
-    redirect("/login");
-    return;
-  }
-  const value = formData.get(key) as string;
-
-  try {
-    await db
-      .update(users)
-      .set({
-        [key]: value,
-      })
-      .where(eq(users.id, session.user.id))
-      .returning();
-  } catch (error: any) {
-    if (error.code === "P2002") {
-      redirect(`/profile?error=This+${key}+is+already+taken`);
-    } else {
-      redirect(`/profile?error=${encodeURIComponent(error.message)}`);
-    }
-    return;
-  }
-};
-
-export const updateAgent = async (
-  data: Partial<SelectAgent> & { id: string }
-): Promise<void> => {
-  const session = await getSession();
-  if (!session?.user.id) {
-    redirect("/login");
-    return;
+  if (!session?.organizationId) {
+    return { success: false, error: "Organization context required" };
   }
 
-  const agent = await db.query.agents.findFirst({
-    where: eq(agents.id, data.id),
-    with: {
-      site: true,
-    },
-  }) as AgentWithSite | undefined;
+  const agent = await getAgentById(agentId);
 
-  if (!agent || agent.userId !== session.user.id) {
-    redirect("/not-found");
-    return;
+  if (!agent || agent.site?.organizationId !== session.organizationId) {
+    return { success: false, error: "Agent not found or unauthorized" };
   }
+
+  if (!agent.settings.steps || stepIndex < 0 || stepIndex >= agent.settings.steps.length) {
+    return { success: false, error: "Invalid step index" };
+  }
+
+  const updatedSteps = agent.settings.steps.map((step, index) => 
+    index === stepIndex ? { ...step, completed } : step
+  );
 
   try {
     await db
       .update(agents)
       .set({
-        ...data,
+        settings: {
+          ...agent.settings,
+          steps: updatedSteps,
+        },
         updatedAt: new Date(),
       })
-      .where(eq(agents.id, data.id))
+      .where(and(
+        eq(agents.id, agentId),
+        eq(sites.organizationId, session.organizationId)
+      ))
+      .returning();
+
+    return { success: true };
+  } catch (error: any) {
+    console.error(`Failed to update agent steps: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+};
+
+// Update agent steps without authentication, ensuring it belongs to the user's organization
+export const updateAgentStepsWithoutAuth = async (
+  agentId: string,
+  steps: Step[]
+): Promise<UpdateAgentMetadataResponse> => {
+  const session = await getSession();
+  if (!session?.organizationId) {
+    return { success: false, error: "Organization context required" };
+  }
+
+  try {
+    const agent = await db.query.agents.findFirst({
+      where: and(
+        eq(agents.id, agentId),
+        eq(sites.organizationId, session.organizationId)
+      ),
+      with: {
+        site: true,
+      },
+    }) as AgentWithSite | undefined;
+
+    if (!agent) {
+      return { success: false, error: "Agent not found or unauthorized" };
+    }
+
+    const newSettings: AgentSettings = {
+      ...agent.settings,
+      steps,
+      authentication: {
+        ...agent.settings.authentication,
+      }
+    };
+
+    await db
+      .update(agents)
+      .set({
+        settings: newSettings,
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(agents.id, agentId),
+        eq(sites.organizationId, session.organizationId)
+      ))
       .returning();
 
     revalidateTag(
       `${agent.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-agents`
     );
-    revalidateTag(
-      `${agent.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-${agent.slug}`
-    );
-
     if (agent.site?.customDomain) {
       revalidateTag(`${agent.site.customDomain}-agents`);
-      revalidateTag(`${agent.site.customDomain}-${agent.slug}`);
     }
+
+    return { success: true };
   } catch (error: any) {
-    redirect(
-      `/agent/${data.id}/settings?error=${encodeURIComponent(error.message)}`
-    );
-    return;
+    console.error("Error updating agent steps:", error);
+    return { success: false, error: error.message || "Failed to update agent steps." };
   }
 };
 
-// actions.ts
+// ===== Organization Membership Verification =====
+
+// (Already included in helper function `verifyOrganizationAccess`)
+
+// ===== Re-exporting Functions =====
+
 export { addMessage, getConversationMessages, createConversation, getSessionConversations };
