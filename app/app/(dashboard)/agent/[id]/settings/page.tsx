@@ -24,7 +24,8 @@ export default async function AgentSettings({
     },
   });
 
-  if (!data || data.userId !== session.user.id) {
+if (!data || data.createdBy !== session.user.id) {
+
     notFound();
   }
 

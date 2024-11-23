@@ -1,3 +1,5 @@
+// types/site.ts
+
 export interface Site {
   id: string;
   name: string | null;
@@ -7,7 +9,20 @@ export interface Site {
   subdomain: string | null;
   customDomain: string | null;
   message404: string | null;
-  userId: string | null;
+  createdBy: string;  // Changed from userId to createdBy
   createdAt: Date;
   updatedAt: Date;
+}
+
+// Additional type for database operations if needed
+export interface SiteWithRelations extends Site {
+  organization?: {
+    id: string;
+    name: string;
+  };
+  creator?: {
+    id: string;
+    name: string | null;
+    email: string;
+  };
 }

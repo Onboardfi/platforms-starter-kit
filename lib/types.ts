@@ -32,6 +32,36 @@ export interface MessageContent {
   audioUrl?: string;
   transcript?: string;
 }
+export interface SelectOrganization {
+  id: string;
+  name: string;
+  slug: string;
+  createdBy: string;
+  logo?: string | null;
+  stripeCustomerId?: string | null;
+  stripeSubscriptionId?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SelectOrganizationMembership {
+  id: string;
+  organizationId: string;
+  userId: string;
+  role: 'owner' | 'admin' | 'member';
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SelectOrganizationWithRelations extends SelectOrganization {
+  memberships?: SelectOrganizationMembership[];
+  sites?: SelectSite[];
+  creator?: {
+    id: string;
+    name: string | null;
+    email: string;
+  };
+}
 
 export interface ToolCall {
   tool: string;
@@ -41,32 +71,28 @@ export interface ToolCall {
   timestamp: string;
   duration?: number;
 }
-export interface ConversationWithSession {
-  id: string;
-  sessionId: string;
-  session: {
-    id: string;
-    organizationId: string;
-    userId: string | null;
-    agent: {
-      id: string;
-      userId: string | null;
-      user?: {
-        id: string;
-      } | null;
-    } | null;
-    user?: {
-      id: string;
-    } | null;
-  } | null;
-}
+
+
 
 export interface SelectConversationWithRelations extends SelectConversation {
   session?: {
     id: string;
     organizationId: string;
+    user?: {
+      id: string;
+    };
+    agent?: {
+      id: string;
+      userId: string | null;
+      creator?: {
+        id: string;
+        name: string;
+        email: string;
+      } | null;
+    } | null;
   };
 }
+
 
 // Update your ConversationMetadata interface
 export interface ConversationMetadataWithOrg extends ConversationMetadata {
@@ -102,6 +128,36 @@ export interface MessageMetadata {
   [key: string]: any; // For any additional metadata
 
 }
+
+
+// Update Site type to include organization
+export interface SelectSite {
+  id: string;
+  name: string | null;
+  description: string | null;
+  logo: string | null;
+  font: string;
+  image: string | null;
+  imageBlurhash: string | null;
+  subdomain: string | null;
+  customDomain: string | null;
+  message404: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  organizationId: string;
+  createdBy: string;
+  organization: SelectOrganization;
+  creator: {
+    id: string;
+    name: string | null;
+    email: string;
+  };
+  _count?: {
+    agents: number;
+  };
+}
+
+
 export interface Content {
   type: string;
   text?: string;
@@ -207,26 +263,67 @@ export interface AuthenticationSettings {
   message?: string;
 }
 
-/**
- * Redis Cache Types
- */
+// Update existing interfaces to include organization context
 export interface AgentState {
   agentId: string;
   onboardingType: 'internal' | 'external';
   lastActive: number;
   context: Record<string, any>;
+  organizationId: string; // Existing property
+  userId?: string; // Optional property
+  settings?: AgentSettings; // Optional property if needed
 }
+
+export interface ConversationWithSession {
+  id: string;
+  sessionId: string;
+  status: ConversationStatus;
+  metadata: Record<string, any>;
+  session: {
+    id: string;
+    organizationId: string;
+    userId?: string | null;
+    agent?: {
+      id: string;
+      userId: string | null;
+      creator?: {
+        id: string;
+        name: string;
+        email: string;
+      } | null;
+    } | null;
+    user?: {
+      id: string;
+      userId?: string;  // Add this line to fix the type error
+    } | null;
+  } | null;
+  startedAt: Date;
+  endedAt: Date | null;
+  lastMessageAt: Date | null;
+  messageCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 
 export interface SessionState {
   sessionId: string;
   agentId: string;
-  clientIdentifier?: string;
   currentStep: number;
   steps: SessionStep[];
   context: Record<string, any>;
   lastActive: number;
-  metadata?: Record<string, any>;
+  metadata: { // Removed optional modifier
+    organizationId: string;
+    userId?: string;
+    type?: 'internal' | 'external';
+    isAnonymous?: boolean;
+    isAuthenticated?: boolean;
+    [key: string]: any;
+  };
+  clientIdentifier?: string;
 }
+
 
 /**
  * Core Agent Types
@@ -264,10 +361,12 @@ export interface Agent {
 /**
  * Session Management Types
  */
+// Update OnboardingSession to include organization
 export interface OnboardingSession {
   id: string;
   agentId: string;
-  userId: string;
+  userId: string | null;
+  organizationId: string; // Add organization context
   name: string;
   clientIdentifier?: string;
   type: 'internal' | 'external';
@@ -326,7 +425,7 @@ export interface AgentStateEvent {
   data: AgentState;
 }
 
-export type WebSocketEvent = SessionUpdateEvent | AgentStateEvent;
+
 
 /**
  * API Error Types
@@ -362,6 +461,91 @@ export interface DomainVerification {
   value: string;
   reason: string;
 }
+
+
+// Add organization-specific response types
+export interface CreateOrganizationResponse {
+  id?: string;
+  error?: string;
+}
+
+export interface UpdateOrganizationResponse {
+  success: boolean;
+  error?: string;
+  data?: SelectOrganization;
+}
+
+export interface OrganizationMembershipResponse {
+  success: boolean;
+  error?: string;
+  membership?: SelectOrganizationMembership;
+}
+
+// Update existing response types to include organization context
+export interface CreateSiteResponse {
+  id?: string;
+  error?: string;
+  organizationId?: string;
+}
+
+export interface UpdateSiteResponse {
+  success: boolean;
+  error?: string;
+  data?: SelectSite;
+}
+
+// Add organization-specific event types
+export interface OrganizationUpdateEvent {
+  type: 'organization-update';
+  organizationId: string;
+  data: {
+    name?: string;
+    slug?: string;
+    logo?: string;
+    updatedAt: Date;
+  };
+}
+
+export interface MembershipUpdateEvent {
+  type: 'membership-update';
+  organizationId: string;
+  userId: string;
+  data: {
+    role?: 'owner' | 'admin' | 'member';
+    updatedAt: Date;
+  };
+}
+
+// Update WebSocketEvent type
+export type WebSocketEvent = 
+  | SessionUpdateEvent 
+  | AgentStateEvent 
+  | OrganizationUpdateEvent 
+  | MembershipUpdateEvent;
+
+// Add organization-specific error types
+export interface OrganizationApiError extends ApiError {
+  organizationId?: string;
+  membershipId?: string;
+}
+
+// Update session types to include organization context
+export interface ExtendedSession {
+  user: {
+    id: string;
+    name: string | null;
+    username: string | null;
+    email: string;
+    image: string | null;
+  };
+  organizationId: string;
+}
+
+
+
+
+
+
 
 export interface DomainResponse {
   name: string;

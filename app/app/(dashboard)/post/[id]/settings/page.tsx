@@ -18,7 +18,7 @@ export default async function PostSettings({
   const data = await db.query.posts.findFirst({
     where: (posts, { eq }) => eq(posts.id, decodeURIComponent(params.id)),
   });
-  if (!data || data.userId !== session.user.id) {
+  if (!data || data.createdBy !== session.user.id) {
     notFound();
   }
   return (

@@ -68,24 +68,33 @@ import {
   SelectOrganizationMembership,
   SelectOrganizationWithRelations
 } from './schema';
-
+import type { Session } from 'next-auth';
 // Define the ExtendedSession type properly
-type ExtendedSession = {
-  user: {
-    id: string;
-    name: string;
-    username: string;
-    email: string;
-    image: string;
-  };
-  organizationId: string;
-};
 
-// Add module augmentation
-declare module "@/lib/auth" {
-  export function getSession(): Promise<ExtendedSession | null>;
-}
 // Interfaces for responses
+
+// Extend the built-in next-auth types
+declare module "next-auth" {
+  interface Session {
+    user: {
+      id: string;
+      name: string | null;
+      username?: string | null;
+      email: string;
+      image: string | null;
+    };
+    organizationId: string;
+  }
+
+  interface User {
+    id: string;
+    name?: string | null;
+    username?: string | null;
+    email: string;
+    image?: string | null;
+    emailVerified?: Date | null;
+  }
+}
 interface CreateSiteResponse {
   error?: string;
   id?: string;
@@ -386,6 +395,16 @@ async function getAgentWithRelations(agentId: string, organizationId: string) {
     }
   }) as AgentWithRelations;
 }
+
+
+
+
+
+
+
+
+
+
 
 function formatAgentResponse(
   agent: AgentWithRelations,
@@ -1020,6 +1039,91 @@ export const editUser = async (
     return;
   }
 };
+
+
+export async function getAgentsWithSessionCount(siteId: string, createdBy: string): Promise<SelectAgent[]> {
+  try {
+    // Get the site to verify organization context
+    const site = await db.query.sites.findFirst({
+      where: eq(sites.id, siteId),
+      with: {
+        organization: true,
+        creator: true
+      }
+    });
+
+    if (!site) {
+      return [];
+    }
+
+    // Get all agents for the site with their creator info
+    const agentsWithCreator = await db.query.agents.findMany({
+      where: and(
+        eq(agents.siteId, siteId),
+        eq(agents.createdBy, createdBy)
+      ),
+      with: {
+        site: {
+          with: {
+            organization: true,
+            creator: true
+          }
+        },
+        creator: true
+      },
+      orderBy: (agents, { desc }) => [desc(agents.createdAt)]
+    });
+
+    // For each agent, count their sessions
+    const agentsWithCounts = await Promise.all(
+      agentsWithCreator.map(async (agent) => {
+        // Get sessions count from database
+        const sessionCount = await db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(onboardingSessions)
+          .where(eq(onboardingSessions.agentId, agent.id))
+          .then(result => result[0].count);
+
+        const formattedAgent: SelectAgent = {
+          ...agent,
+          site: agent.site ? {
+            ...agent.site,
+            organization: agent.site.organization,
+            creator: agent.site.creator
+          } : undefined,
+          creator: agent.creator || {
+            id: createdBy,
+            name: null,
+            username: null,
+            gh_username: null,
+            email: '',
+            emailVerified: null,
+            image: null,
+            stripeCustomerId: null,
+            stripeSubscriptionId: null,
+            metadata: {},
+            createdAt: new Date(),
+            updatedAt: new Date()
+          },
+          siteName: agent.site?.name ?? null,
+          settings: agent.settings as AgentSettings,
+          _count: {
+            sessions: sessionCount
+          }
+        };
+
+        return formattedAgent;
+      })
+    );
+
+    return agentsWithCounts;
+
+  } catch (error) {
+    console.error('Error fetching agents with session count:', error);
+    return [];
+  }
+}
+
 
 // ===== Onboarding Session Management Functions =====
 

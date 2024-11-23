@@ -28,9 +28,7 @@ export type ConversationStatus = 'active' | 'completed' | 'archived';
 
 
 
-
-
-
+// In schema.ts, update the users table definition:
 
 export const users = pgTable('users', {
   id: text('id').primaryKey().$defaultFn(() => createId()),
@@ -40,8 +38,9 @@ export const users = pgTable('users', {
   email: text('email').notNull().unique(),
   emailVerified: timestamp('emailVerified', { mode: 'date' }),
   image: text('image'),
-  stripeCustomerId: text('stripeCustomerId'), // Add this line
-  stripeSubscriptionId: text('stripeSubscriptionId'), // Optionally add this line
+  stripeCustomerId: text('stripeCustomerId'),
+  stripeSubscriptionId: text('stripeSubscriptionId'),
+  metadata: jsonb('metadata').$type<Record<string, any>>().default({}),
   createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
   updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
 });
@@ -393,6 +392,7 @@ export const messages = pgTable(
   })
 );
 
+
 export const usageLogs = pgTable(
   'usage_logs',
   {
@@ -405,27 +405,31 @@ export const usageLogs = pgTable(
       .references(() => conversations.id, { onDelete: 'set null' }),
     messageId: text('messageId')
       .references(() => messages.id, { onDelete: 'set null' }),
-    // Keep duration tracking
     durationSeconds: integer('durationSeconds').notNull(),
-    // Add token tracking
-    promptTokens: integer('promptTokens').default(0),
-    completionTokens: integer('completionTokens').default(0),
-    totalTokens: integer('totalTokens').default(0),
+    promptTokens: integer('promptTokens').notNull().default(0), // Updated
+    completionTokens: integer('completionTokens').notNull().default(0), // Updated
+    totalTokens: integer('totalTokens').notNull().default(0), // Updated
     messageRole: text('messageRole').$type<'assistant' | 'user'>().notNull(),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(), // Added
     stripeCustomerId: text('stripeCustomerId'),
     stripeEventId: text('stripeEventId'),
     reportingStatus: text('reportingStatus')
       .$type<'pending' | 'reported'>()
-      .default('pending'),
+      .notNull()
+      .default('pending'), // Ensured not nullable
+    organizationId: text('organizationId')
+      .references(() => organizations.id, { onDelete: 'cascade' })
+      .notNull(),
   },
   (table) => ({
     userIdIdx: index('usage_logs_userId_idx').on(table.userId),
     sessionIdIdx: index('usage_logs_sessionId_idx').on(table.sessionId),
     conversationIdIdx: index('usage_logs_conversationId_idx').on(table.conversationId),
     createdAtIdx: index('usage_logs_createdAt_idx').on(table.createdAt),
+    organizationIdx: index('usage_logs_organization_idx').on(table.organizationId),
   })
 );
+
 export const systemLogs = pgTable(
   'system_logs',
   {
@@ -483,12 +487,11 @@ export interface AgentSettings {
 
 
 
-
-// Update the agents relations
 export const agentsRelations = relations(agents, ({ one }) => ({
   site: one(sites, { references: [sites.id], fields: [agents.siteId] }),
-  creator: one(users, { references: [users.id], fields: [agents.createdBy] }),
+  creator: one(users, { references: [users.id], fields: [agents.createdBy] }), // Correct relation
 }));
+
 
 
 // Update posts relations
@@ -626,7 +629,7 @@ export type SelectAgent = typeof agents.$inferSelect & {
     organization?: SelectOrganization;
     creator?: typeof users.$inferSelect;
   };
-  creator: typeof users.$inferSelect;
+  creator: typeof users.$inferSelect; // Reflects the 'creator' relation
   siteName?: string | null;
   settings: AgentSettings;
   _count?: {

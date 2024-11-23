@@ -1,79 +1,100 @@
+//Users/bobbygilbert/Documents/Github/platforms-starter-kit/lib/upstash.ts
+
 import { Redis } from '@upstash/redis';
 import { createId } from '@paralleldrive/cuid2';
-import { eq, desc, and, lt } from 'drizzle-orm';
+import { eq, desc, and, lt, sql } from 'drizzle-orm';
 import { stripe } from '@/lib/stripe';
+import { users } from '@/lib/schema';
 import db from '@/lib/db';
-import { 
-  onboardingSessions, 
-  conversations, 
+
+import {
+  onboardingSessions,
+  conversations,
   messages,
   usageLogs,
-  users,
-  organizations,
-  organizationMemberships,
-  SelectOrganization,
-  SelectOrganizationMembership
+  organizations, // Add organizations table
+  organizationMemberships // Add memberships table
 } from '@/lib/schema';
+import {
+  AgentState,
+  SessionState,
+  BaseStep,
+  SessionStep,
+  StepProgress,
+  MessageContent,
+  MessageMetadata,
+  ConversationMetadata,
+  SelectMessage,
+  SelectConversation,
+  MessageType,
+  MessageRole,
+  ConversationStatus,
+  ToolCall,
+  ConversationWithSession,
+} from '@/lib/types';
 
-// Core types for database state management
-export interface AgentStateWithOrg {
-  agentId: string;
-  onboardingType: 'internal' | 'external';
-  lastActive: number;
-  context: Record<string, any>;
-  organizationId: string;
-}
+import {  count } from 'drizzle-orm';
 
-export interface SessionStateWithOrg {
-  sessionId: string;
-  agentId: string;
-  organizationId: string;
-  userId?: string;
-  currentStep: number;
-  steps: Array<SessionStep>;
-  context: Record<string, any>;
-  lastActive: number;
-  metadata?: Record<string, any>;
-  clientIdentifier?: string;
-}
 
-export interface ConversationWithSession {
+// Add these imports if not already present
+import { InferModel } from 'drizzle-orm';
+
+interface CreateUsageLog {
   id: string;
-  sessionId: string;
-  session: {
-    id: string;
-    organizationId: string;
-    userId: string | null;
-    agent: {
-      id: string;
-      userId: string | null;
-      user?: {
-        id: string;
-      } | null;
-    } | null;
-    user?: {
-      id: string;
-    } | null;
-  } | null;
-}
-
-export interface SelectConversationWithSession extends ConversationWithSession {
-  status: ConversationStatus;
-  metadata: ConversationMetadata;
-  startedAt: Date;
-  createdAt: Date;
-  updatedAt: Date;
-  messages: SelectMessage[];
-  endedAt?: Date;
-  lastMessageAt?: Date;
-  messageCount: number;
-}
-
-export interface ConversationMetadataWithOrg extends ConversationMetadata {
+  userId: string | null;
+  sessionId: string | null;
+  conversationId: string | null;
+  messageId: string | null;
+  durationSeconds: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  messageRole: 'user' | 'assistant';
+  stripeCustomerId: string | null;
+  reportingStatus: 'pending' | 'reported';
   organizationId: string;
+  createdAt: Date; // Added
+  // Optionally add other fields like stripeEventId if necessary
 }
 
-// Redis client setup
+
+
+// Helper function to validate organization access
+async function validateOrganizationAccess(
+  organizationId: string, 
+  userId?: string
+): Promise<boolean> {
+  if (!userId) return false;
+
+  const membership = await db.query.organizationMemberships.findFirst({
+    where: and(
+      eq(organizationMemberships.organizationId, organizationId),
+      eq(organizationMemberships.userId, userId)
+    )
+  });
+
+  return !!membership;
+}
+type UsageLogMessageRole = 'user' | 'assistant';
+function isValidUsageLogRole(role: MessageRole): role is UsageLogMessageRole {
+  return role === 'user' || role === 'assistant';
+}
+// Helper function to get organization-specific Redis key
+function getOrgScopedKey(prefix: string, id: string, organizationId: string): string {
+  return `${ORGANIZATION_PREFIX}${organizationId}:${prefix}${id}`;
+}
+
+// Helper function to validate session exists
+async function validateSession(sessionId: string): Promise<boolean> {
+  const session = await db.query.onboardingSessions.findFirst({
+    where: eq(onboardingSessions.id, sessionId),
+  });
+  return !!session;
+}
+
+/**
+ * Redis Client Configuration
+ */
 if (!process.env.UPSTASH_REDIS_URL || !process.env.UPSTASH_REDIS_TOKEN) {
   throw new Error('Missing Upstash Redis configuration');
 }
@@ -83,18 +104,40 @@ export const redis = new Redis({
   token: process.env.UPSTASH_REDIS_TOKEN,
 });
 
-// Constants
+/**
+ * Constants
+ */
+
+// Update Redis key patterns to include organization context
+const ORGANIZATION_PREFIX = 'org:';
 const AGENT_STATE_PREFIX = 'agent:';
 const SESSION_STATE_PREFIX = 'session:';
 const CONVERSATION_PREFIX = 'conversation:';
 const MESSAGE_PREFIX = 'message:';
-const ORGANIZATION_PREFIX = 'org:';
 const STATE_SUFFIX = ':state';
-const MEMBER_SUFFIX = ':members';
-const DEFAULT_EXPIRY = 24 * 60 * 60; // 24 hours
-const CLEANUP_THRESHOLD = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+const DEFAULT_EXPIRY = 24 * 60 * 60;
+const CLEANUP_THRESHOLD = 24 * 60 * 60 * 1000;
 
-// Default metadata
+/**
+ * Helper Functions and Default Values
+ */
+function ensureStepCompleteness(step: Partial<BaseStep>): BaseStep {
+  return {
+    id: step.id || createId(),
+    title: step.title || '',
+    description: step.description || '',
+    completed: step.completed || false,
+    completionTool: step.completionTool || null,
+    completedAt: step.completedAt,
+  };
+}
+
+function ensureMetadata<T extends Record<string, any>>(metadata: Record<string, any> | null, defaults: T): T {
+  return {
+    ...defaults,
+    ...(metadata || {}),
+  };
+}
 const defaultMessageMetadata: MessageMetadata = {
   clientId: '',
   deviceInfo: {},
@@ -104,7 +147,7 @@ const defaultMessageMetadata: MessageMetadata = {
   totalTokens: 0,
   toolCalls: [],
   isFinal: false,
-  audioDurationSeconds: 0,
+  audioDurationSeconds: 0,  // Add this
 };
 
 const defaultConversationMetadata: ConversationMetadata = {
@@ -118,264 +161,177 @@ const defaultConversationMetadata: ConversationMetadata = {
   messageCount: 0,
 };
 
-// Helper functions
-const ensureStepCompleteness = (step: Partial<BaseStep>): BaseStep => ({
-  id: step.id || createId(),
-  title: step.title || '',
-  description: step.description || '',
-  completed: step.completed || false,
-  completionTool: step.completionTool || null,
-  completedAt: step.completedAt,
-});
-
-const ensureMetadata = <T extends Record<string, any>>(
-  metadata: Record<string, any> | null, 
-  defaults: T
-): T => ({
-  ...defaults,
-  ...(metadata || {}),
-});
-
-const safeArrayAdd = async (key: string, values: string[]): Promise<void> => {
-  if (values.length > 0) {
-    await redis.sadd(key, values as unknown as [string, ...string[]]);
-  }
-};
-
-// Organization validation helpers
-const validateOrganizationAccess = async (
-  userId: string, 
-  organizationId: string
-): Promise<boolean> => {
-  const membership = await db.query.organizationMemberships.findFirst({
-    where: and(
-      eq(organizationMemberships.userId, userId),
-      eq(organizationMemberships.organizationId, organizationId)
-    )
-  });
-  return !!membership;
-};
-
-const validateSessionOrganization = async (
-  sessionId: string, 
-  organizationId: string
-): Promise<boolean> => {
-  const session = await db.query.onboardingSessions.findFirst({
-    where: and(
-      eq(onboardingSessions.id, sessionId),
-      eq(onboardingSessions.organizationId, organizationId)
-    ),
-  });
-  return !!session;
-};
-
 /**
- * Agent State Management with Organization Context
+ * Agent State Management
  */
-export const setAgentState = async (
+// Update setAgentState to include organization context
+export async function setAgentState(
   agentId: string, 
-  state: AgentStateWithOrg
-): Promise<void> => {
+  state: AgentState & { organizationId: string }
+): Promise<void> {
   try {
-    const key = `${AGENT_STATE_PREFIX}${agentId}${STATE_SUFFIX}`;
-    const orgKey = `${ORGANIZATION_PREFIX}${state.organizationId}:agents`;
+    const key = getOrgScopedKey(AGENT_STATE_PREFIX, agentId, state.organizationId) + STATE_SUFFIX;
+    await redis.set(key, state, { ex: DEFAULT_EXPIRY });
     
-    await Promise.all([
-      redis.set(key, state, { ex: DEFAULT_EXPIRY }),
-      redis.sadd(orgKey, agentId)
-    ]);
+    // Set organization index
+    await redis.sadd(`${ORGANIZATION_PREFIX}${state.organizationId}:agents`, agentId);
     
-    console.log(`Agent state updated for ${agentId} in organization ${state.organizationId}`);
+    console.log(`Agent state updated for ${agentId} in org ${state.organizationId}`);
   } catch (error) {
     console.error('Failed to set agent state:', error);
     throw new Error('Failed to update agent state');
   }
-};
+}
 
-export const getAgentState = async (
-  agentId: string
-): Promise<AgentStateWithOrg | null> => {
+// Update getAgentState to be organization-aware
+export async function getAgentState(
+  agentId: string, 
+  organizationId: string
+): Promise<AgentState | null> {
   try {
-    const key = `${AGENT_STATE_PREFIX}${agentId}${STATE_SUFFIX}`;
-    return await redis.get<AgentStateWithOrg>(key);
+    const key = getOrgScopedKey(AGENT_STATE_PREFIX, agentId, organizationId) + STATE_SUFFIX;
+    return await redis.get(key);
   } catch (error) {
     console.error('Failed to get agent state:', error);
     throw new Error('Failed to retrieve agent state');
   }
-};
+}
 
 /**
- * Organization Cache Management
+ * Session Management
  */
-export const cleanupOrganizationData = async (
-  organizationId: string
-): Promise<void> => {
-  try {
-    const pattern = `${ORGANIZATION_PREFIX}${organizationId}:*`;
-    const keys = await redis.keys(pattern);
-    if (keys.length > 0) {
-      await redis.del(...keys);
-    }
-  } catch (error) {
-    console.error('Failed to cleanup organization data:', error);
-    throw new Error('Failed to cleanup organization data');
-  }
-};
-
-export const initializeOrganizationCache = async (
-  organizationId: string
-): Promise<void> => {
-  try {
-    const members = await db.query.organizationMemberships.findMany({
-      where: eq(organizationMemberships.organizationId, organizationId)
-    });
-    
-    const memberKey = `${ORGANIZATION_PREFIX}${organizationId}${MEMBER_SUFFIX}`;
-    const memberIds = members.map(m => m.userId);
-    await safeArrayAdd(memberKey, memberIds);
-    
-    const sessions = await db.query.onboardingSessions.findMany({
-      where: and(
-        eq(onboardingSessions.organizationId, organizationId),
-        eq(onboardingSessions.status, 'active')
-      )
-    });
-    
-    const sessionKey = `${ORGANIZATION_PREFIX}${organizationId}:sessions`;
-    const sessionIds = sessions.map(s => s.id);
-    await safeArrayAdd(sessionKey, sessionIds);
-  } catch (error) {
-    console.error('Failed to initialize organization cache:', error);
-    throw new Error('Failed to initialize organization cache');
-  }
-};
-
-/**
- * Session Management with Organization Context
- */
-export const createSession = async (
+// Update session creation to include organization context
+export async function createSession(
   agentId: string,
-  data: Partial<SessionStateWithOrg>
-): Promise<string> => {
+  data: Partial<SessionState> & {
+    metadata: {
+      organizationId: string;
+      [key: string]: any;
+    };
+  }
+): Promise<string> {
   try {
-    if (!data.organizationId) {
-      throw new Error('Organization ID is required');
-    }
-
-    if (data.userId && !(await validateOrganizationAccess(data.userId, data.organizationId))) {
-      throw new Error('User does not have access to the organization');
-    }
-
     const sessionId = createId();
+    const { organizationId } = data.metadata;
+
+    // Create session with complete steps and organization context
     const steps = data.steps?.map(ensureStepCompleteness) || [];
 
-    const session: SessionStateWithOrg = {
+    const session: SessionState = {
       sessionId,
       agentId,
-      organizationId: data.organizationId,
-      userId: data.userId,
       currentStep: 0,
       steps,
       context: {},
       lastActive: Date.now(),
-      metadata: data.metadata || {},
-      clientIdentifier: data.clientIdentifier,
+      metadata: data.metadata,
+      // Use nullish coalescing to provide a default value
+      clientIdentifier: data.clientIdentifier ?? `default-${sessionId}`
     };
+   
+    const key = getOrgScopedKey(SESSION_STATE_PREFIX, sessionId, organizationId) + STATE_SUFFIX;
+    await redis.set(key, session, { ex: DEFAULT_EXPIRY });
 
-    const key = `${SESSION_STATE_PREFIX}${sessionId}${STATE_SUFFIX}`;
-    const orgKey = `${ORGANIZATION_PREFIX}${data.organizationId}:sessions`;
-    
-    await Promise.all([
-      redis.set(key, session, { ex: DEFAULT_EXPIRY }),
-      safeArrayAdd(orgKey, [sessionId])
-    ]);
+    // Set organization index
+    await redis.sadd(`${ORGANIZATION_PREFIX}${organizationId}:sessions`, sessionId);
 
+    console.log(`Session created: ${sessionId} for agent: ${agentId} in org: ${organizationId}`);
     return sessionId;
   } catch (error) {
     console.error('Failed to create session:', error);
-    throw error;
+    throw new Error('Failed to create new session');
   }
-};
+}
 
-export const getSessionState = async (
-  sessionId: string
-): Promise<SessionStateWithOrg | null> => {
+// Update getSessionState to validate organization access
+export async function getSessionState(sessionId: string): Promise<SessionState | null> {
   try {
-    const key = `${SESSION_STATE_PREFIX}${sessionId}${STATE_SUFFIX}`;
-    const session = await redis.get<SessionStateWithOrg>(key);
+    const session = await db.query.onboardingSessions.findFirst({
+      where: eq(onboardingSessions.id, sessionId),
+      columns: {
+        organizationId: true
+      }
+    });
 
     if (!session) {
       console.log(`Session not found: ${sessionId}`);
       return null;
     }
 
-    session.steps = session.steps.map(ensureStepCompleteness);
-    return session;
+    const key = getOrgScopedKey(SESSION_STATE_PREFIX, sessionId, session.organizationId) + STATE_SUFFIX;
+    const state = await redis.get<SessionState>(key);
+
+    if (!state) {
+      console.log(`Session state not found in Redis: ${sessionId}`);
+      return null;
+    }
+
+    // Ensure all steps are complete
+    state.steps = state.steps.map(ensureStepCompleteness);
+
+    return state;
   } catch (error) {
     console.error('Failed to get session state:', error);
     throw new Error('Failed to retrieve session state');
   }
-};
-
-export const updateSessionState = async (
+}
+export async function updateSessionState(
   sessionId: string,
-  updates: Partial<SessionStateWithOrg>
-): Promise<void> => {
+  updates: Partial<SessionState>
+): Promise<void> {
   try {
     const current = await getSessionState(sessionId);
     if (!current) throw new Error('Session not found');
 
-    const steps = updates.steps?.map(ensureStepCompleteness) || current.steps;
+    // Add runtime check to ensure metadata and organizationId are defined
+    if (!current.metadata || !current.metadata.organizationId) {
+      throw new Error('Session metadata is incomplete: organizationId missing');
+    }
 
     const key = `${SESSION_STATE_PREFIX}${sessionId}${STATE_SUFFIX}`;
-    const updated: SessionStateWithOrg = {
+    const updated: SessionState = {
       ...current,
       ...updates,
-      steps,
-      metadata: updates.metadata || current.metadata || {},
+      steps: updates.steps?.map(ensureStepCompleteness) || current.steps,
+      metadata: {
+        ...current.metadata,
+        ...(updates.metadata || {}),
+        organizationId: current.metadata.organizationId // Now TypeScript knows it's a string
+      },
       lastActive: Date.now(),
     };
 
     await redis.set(key, updated, { ex: DEFAULT_EXPIRY });
+    console.log(`Session updated: ${sessionId}`);
   } catch (error) {
     console.error('Failed to update session state:', error);
     throw new Error('Failed to update session state');
   }
-};
+}
 
-export const deleteSession = async (
-  sessionId: string
-): Promise<void> => {
+
+export async function deleteSession(sessionId: string): Promise<void> {
   try {
-    const session = await getSessionState(sessionId);
-    if (!session) {
-      console.warn(`Attempted to delete non-existent session: ${sessionId}`);
-      return;
-    }
-
     const key = `${SESSION_STATE_PREFIX}${sessionId}${STATE_SUFFIX}`;
-    const orgKey = `${ORGANIZATION_PREFIX}${session.organizationId}:sessions`;
-    
-    await Promise.all([
-      redis.del(key),
-      redis.srem(orgKey, sessionId)
-    ]);
+    await redis.del(key);
+    console.log(`Session deleted: ${sessionId}`);
   } catch (error) {
     console.error('Failed to delete session:', error);
     throw new Error('Failed to delete session');
   }
-};
+}
 
-export const getActiveSessions = async (
-  agentId: string
-): Promise<string[]> => {
+/**
+ * Session Discovery and Management
+ */
+export async function getActiveSessions(agentId: string): Promise<string[]> {
   try {
     const pattern = `${SESSION_STATE_PREFIX}*${STATE_SUFFIX}`;
     const keys = await redis.keys(pattern);
 
     const sessions = await Promise.all(
       keys.map(async (key) => {
-        const session = await redis.get<SessionStateWithOrg>(key);
+        const session = await redis.get<SessionState>(key);
         return session && session.agentId === agentId ? session.sessionId : null;
       })
     );
@@ -385,9 +341,12 @@ export const getActiveSessions = async (
     console.error('Failed to get active sessions:', error);
     throw new Error('Failed to retrieve active sessions');
   }
-};
+}
 
-export const cleanupExpiredSessions = async (): Promise<void> => {
+/**
+ * Cleanup and Maintenance
+ */
+export async function cleanupExpiredSessions(): Promise<void> {
   try {
     const pattern = `${SESSION_STATE_PREFIX}*${STATE_SUFFIX}`;
     const keys = await redis.keys(pattern);
@@ -395,7 +354,7 @@ export const cleanupExpiredSessions = async (): Promise<void> => {
 
     const expiredKeys = await Promise.all(
       keys.map(async (key) => {
-        const session = await redis.get<SessionStateWithOrg>(key);
+        const session = await redis.get<SessionState>(key);
         return session && now - session.lastActive > CLEANUP_THRESHOLD ? key : null;
       })
     );
@@ -403,18 +362,19 @@ export const cleanupExpiredSessions = async (): Promise<void> => {
     const keysToDelete = expiredKeys.filter((key): key is string => key !== null);
 
     if (keysToDelete.length > 0) {
-      await redis.del(...keysToDelete);
+      await Promise.all(keysToDelete.map((key) => redis.del(key)));
       console.log(`Cleaned up ${keysToDelete.length} expired sessions`);
     }
   } catch (error) {
     console.error('Failed to cleanup expired sessions:', error);
     throw new Error('Failed to cleanup expired sessions');
   }
-};
+}
 
-export const syncSessionState = async (
-  sessionId: string
-): Promise<void> => {
+/**
+ * Persistence and Synchronization
+ */
+export async function syncSessionState(sessionId: string): Promise<void> {
   try {
     const state = await getSessionState(sessionId);
     if (!state) return;
@@ -423,7 +383,8 @@ export const syncSessionState = async (
       steps: state.steps.map(ensureStepCompleteness),
     };
 
-    await db.update(onboardingSessions)
+    await db
+      .update(onboardingSessions)
       .set({
         stepProgress,
         lastInteractionAt: new Date(state.lastActive),
@@ -431,135 +392,78 @@ export const syncSessionState = async (
         updatedAt: new Date(),
       })
       .where(eq(onboardingSessions.id, sessionId));
+
+    console.log(`Synced session state to database: ${sessionId}`);
   } catch (error) {
     console.error('Failed to sync session state:', error);
     throw new Error('Failed to sync session with database');
   }
-};
+}
 
-/**
- * Conversation Management with Organization Context
- */
-const getDetailedConversation = async (
-  conversationId: string
-): Promise<ConversationWithSession | null> => {
-  const conversation = await db.query.conversations.findFirst({
-    where: eq(conversations.id, conversationId),
-    with: {
-      session: {
-        columns: {
-          id: true,
-          organizationId: true,
-          userId: true
-        },
-        with: {
-          agent: {
-            columns: {
-              id: true,
-              userId: true
-            },
-            with: {
-              user: {
-                columns: {
-                  id: true
-                }
-              }
-            }
-          },
-          user: {
-            columns: {
-              id: true
-            }
-          }
-        }
-      }
-    }
-  });
-
-  if (!conversation) return null;
-
-  return {
-    id: conversation.id,
-    sessionId: conversation.sessionId!,
-    session: conversation.session
-  };
-};
-
-const validateConversationWithSession = async (
-  conversationId: string,
-  sessionId?: string
-): Promise<{
-  conversation: SelectConversationWithSession;
-  isValid: boolean;
-}> => {
-  const conversation = await db.query.conversations.findFirst({
-    where: sessionId
-      ? and(
-          eq(conversations.id, conversationId),
-          eq(conversations.sessionId, sessionId)
-        )
-      : eq(conversations.id, conversationId),
-    with: {
-      session: {
-        columns: {
-          id: true,
-          organizationId: true,
-          userId: true
-        }
-      }
-    }
-  });
-
-  if (!conversation || (sessionId && conversation.sessionId !== sessionId)) {
-    return {
-      isValid: false,
-      conversation: {
-        id: '',
-        sessionId: '',
-        session: null,
-        status: 'active',
-        metadata: defaultConversationMetadata,
-        startedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        messages: [],
-        messageCount: 0
-      }
-    };
-  }
-
-  return {
-    isValid: true,
-    conversation: {
-      ...conversation,
-      session: conversation.session,
-      metadata: ensureMetadata(conversation.metadata, defaultConversationMetadata),
-      messages: [],
-      endedAt: conversation.endedAt || undefined,
-      lastMessageAt: conversation.lastMessageAt || undefined,
-      messageCount: conversation.messageCount || 0,
-      status: conversation.status as ConversationStatus
-    }
-  };
-};
-
-export const createConversation = async (
-  sessionId: string,
-  metadata: Partial<ConversationMetadataWithOrg> = {}
-): Promise<SelectConversation> => {
+// Update initializeRedisFromPostgres to handle undefined clientIdentifier
+export async function initializeRedisFromPostgres(sessionId: string): Promise<void> {
   try {
     const session = await db.query.onboardingSessions.findFirst({
-      where: eq(onboardingSessions.id, sessionId)
+      where: eq(onboardingSessions.id, sessionId),
+    });
+
+    if (!session) throw new Error('Session not found in database');
+
+    // Transform steps ensuring completeness
+    const transformedSteps: SessionStep[] = (session.stepProgress?.steps || []).map(
+      ensureStepCompleteness
+    );
+
+    const redisState: SessionState = {
+      sessionId: session.id,
+      agentId: session.agentId || '',
+      // Provide a default value if clientIdentifier is undefined
+      clientIdentifier: session.clientIdentifier || `default-${session.id}`,
+      currentStep: 0,
+      steps: transformedSteps,
+      context: {},
+      lastActive: Date.now(),
+      metadata: {
+        ...(session.metadata || {}),
+        organizationId: session.organizationId ?? ''
+      },
+    };
+
+    const key = `${SESSION_STATE_PREFIX}${sessionId}${STATE_SUFFIX}`;
+    await redis.set(key, redisState, { ex: DEFAULT_EXPIRY });
+
+    console.log(`Initialized Redis state from database: ${sessionId}`);
+  } catch (error) {
+    console.error('Failed to initialize Redis from database:', error);
+    throw new Error('Failed to initialize Redis state');
+  }
+}
+/**
+ * Conversation Management
+ */
+
+// Update conversation creation to include organization context
+export async function createConversation(
+  sessionId: string,
+  metadata: Partial<ConversationMetadata & { organizationId: string }> = {}
+): Promise<SelectConversation> {
+  try {
+    const session = await db.query.onboardingSessions.findFirst({
+      where: eq(onboardingSessions.id, sessionId),
+      columns: {
+        organizationId: true
+      }
     });
 
     if (!session) {
       throw new Error(`Session ${sessionId} not found`);
     }
 
-    const finalMetadata = ensureMetadata(
-      { ...metadata, organizationId: session.organizationId },
-      defaultConversationMetadata
-    );
+    const finalMetadata = {
+      ...defaultConversationMetadata,
+      ...metadata,
+      organizationId: session.organizationId
+    };
 
     const [conversation] = await db
       .insert(conversations)
@@ -587,30 +491,245 @@ export const createConversation = async (
       messageCount: conversation.messageCount || 0,
     };
 
-    await Promise.all([
-      redis.set(
-        `${CONVERSATION_PREFIX}${conversation.id}`,
-        {
-          metadata: finalMetadata,
-          messageCount: 0,
-          lastActive: Date.now(),
-        },
-        { ex: DEFAULT_EXPIRY }
-      ),
-      redis.sadd('active_conversations', conversation.id)
-    ]);
+    // Use organization-scoped Redis keys
+    const redisKey = getOrgScopedKey(CONVERSATION_PREFIX, conversation.id, session.organizationId);
+    await redis.set(
+      redisKey,
+      {
+        metadata: finalMetadata,
+        messageCount: 0,
+        lastActive: Date.now(),
+      },
+      { ex: DEFAULT_EXPIRY }
+    );
+
+    // Add to organization's active conversations
+    await redis.sadd(`${ORGANIZATION_PREFIX}${session.organizationId}:active_conversations`, conversation.id);
 
     return result;
   } catch (error) {
     console.error('Failed to create conversation:', error);
     throw error instanceof Error ? error : new Error('Failed to create conversation');
   }
-};
+}
 
-/**
- * Message Management with Organization-Level Billing and Usage Tracking
- */
-export const addMessage = async (
+
+export async function getSessionConversations(
+  sessionId: string,
+  status?: ConversationStatus
+): Promise<SelectConversation[]> {
+  try {
+    // First verify session exists
+    const sessionExists = await validateSession(sessionId);
+    if (!sessionExists) {
+      throw new Error(`Session ${sessionId} not found`);
+    }
+
+    const conditions = [eq(conversations.sessionId, sessionId)];
+    if (status) {
+      conditions.push(eq(conversations.status, status));
+    }
+
+    const results = await db.query.conversations.findMany({
+      where: and(...conditions),
+      orderBy: [desc(conversations.startedAt)],
+    });
+
+    // Transform results with guaranteed non-null sessionId
+    return results.map((conv): SelectConversation => ({
+      id: conv.id,
+      sessionId: conv.sessionId!, // Assert non-null
+      status: conv.status,
+      metadata: ensureMetadata(conv.metadata, defaultConversationMetadata),
+      startedAt: conv.startedAt,
+      createdAt: conv.createdAt,
+      updatedAt: conv.updatedAt,
+      messages: [],
+      endedAt: conv.endedAt || undefined,
+      lastMessageAt: conv.lastMessageAt || undefined,
+      messageCount: conv.messageCount || 0,
+    }));
+  } catch (error) {
+    console.error('Failed to get session conversations:', error);
+    throw error instanceof Error ? error : new Error('Failed to get session conversations');
+  }
+}
+
+// Helper function to validate conversation belongs to session
+export async function validateConversationSession(
+  conversationId: string,
+  sessionId: string
+): Promise<boolean> {
+  const conversation = await db.query.conversations.findFirst({
+    where: and(
+      eq(conversations.id, conversationId),
+      eq(conversations.sessionId, sessionId)
+    ),
+  });
+  return !!conversation;
+}
+
+// Helper function to validate conversation exists with valid session
+async function validateConversationWithSession(
+  conversationId: string,
+  sessionId?: string
+): Promise<{
+  conversation: SelectConversation;
+  isValid: boolean;
+}> {
+  const conversation = await db.query.conversations.findFirst({
+    where: sessionId
+      ? and(
+          eq(conversations.id, conversationId),
+          eq(conversations.sessionId, sessionId)
+        )
+      : eq(conversations.id, conversationId),
+  });
+
+  if (!conversation || (sessionId && conversation.sessionId !== sessionId)) {
+    return {
+      isValid: false,
+      conversation: null as unknown as SelectConversation, // Type assertion for compilation
+    };
+  }
+
+  // Transform to SelectConversation with guaranteed non-null sessionId
+  const result: SelectConversation = {
+    id: conversation.id,
+    sessionId: conversation.sessionId!, // Assert non-null
+    status: conversation.status,
+    metadata: ensureMetadata(conversation.metadata, defaultConversationMetadata),
+    startedAt: conversation.startedAt,
+    createdAt: conversation.createdAt,
+    updatedAt: conversation.updatedAt,
+    messages: [],
+    endedAt: conversation.endedAt || undefined,
+    lastMessageAt: conversation.lastMessageAt || undefined,
+    messageCount: conversation.messageCount || 0,
+  };
+
+  return {
+    isValid: true,
+    conversation: result,
+  };
+}
+
+// Add a function to get conversation with session validation
+export async function getConversationWithSession(
+  conversationId: string,
+  sessionId: string
+): Promise<SelectConversation> {
+  const { isValid, conversation } = await validateConversationWithSession(conversationId, sessionId);
+
+  if (!isValid) {
+    throw new Error(`Conversation ${conversationId} not found for session ${sessionId}`);
+  }
+
+  return conversation;
+}
+
+// Helper to ensure conversation belongs to session
+export async function ensureConversationSession(
+  conversationId: string,
+  sessionId: string
+): Promise<void> {
+  const isValid = await validateConversationSession(conversationId, sessionId);
+  if (!isValid) {
+    throw new Error(`Conversation ${conversationId} does not belong to session ${sessionId}`);
+  }
+}
+
+export async function completeConversation(
+  conversationId: string,
+  sessionId: string,
+  metadata: Partial<ConversationMetadata> = {}
+): Promise<void> {
+  try {
+    const { isValid, conversation } = await validateConversationWithSession(
+      conversationId,
+      sessionId
+    );
+
+    if (!isValid) {
+      throw new Error(`Conversation ${conversationId} not found for session ${sessionId}`);
+    }
+
+    const finalMetadata = ensureMetadata(
+      { ...conversation.metadata, ...metadata },
+      defaultConversationMetadata
+    );
+
+    await db
+      .update(conversations)
+      .set({
+        status: 'completed' as ConversationStatus,
+        endedAt: new Date(),
+        metadata: finalMetadata,
+      })
+      .where(eq(conversations.id, conversationId));
+
+    await redis.srem('active_conversations', conversationId);
+
+    console.log(`Completed conversation: ${conversationId} for session ${sessionId}`);
+  } catch (error) {
+    console.error('Failed to complete conversation:', error);
+    throw error instanceof Error ? error : new Error('Failed to complete conversation');
+  }
+}
+
+// Add function to check active conversations for a session
+export async function hasActiveConversation(sessionId: string): Promise<boolean> {
+  const activeConversation = await db.query.conversations.findFirst({
+    where: and(
+      eq(conversations.sessionId, sessionId),
+      eq(conversations.status, 'active')
+    ),
+  });
+
+  return !!activeConversation;
+}
+
+export async function cleanupCompletedConversations(
+  cutoffHours: number = 24
+): Promise<void> {
+  try {
+    const cutoffDate = new Date();
+    cutoffDate.setHours(cutoffDate.getHours() - cutoffHours);
+
+    const oldConversations = await db.query.conversations.findMany({
+      where: and(
+        eq(conversations.status, 'completed'),
+        lt(conversations.endedAt, cutoffDate)
+      ),
+      columns: {
+        id: true,
+      },
+    });
+
+    await Promise.all(
+      oldConversations.map(async (conv) => {
+        const messageIds = await redis.zrange(
+          `${CONVERSATION_PREFIX}${conv.id}:messages`,
+          0,
+          -1
+        );
+
+        await Promise.all([
+          redis.del(`${CONVERSATION_PREFIX}${conv.id}`),
+          redis.del(`${CONVERSATION_PREFIX}${conv.id}:messages`),
+          ...messageIds.map((id) => redis.del(`${MESSAGE_PREFIX}${id}`)),
+        ]);
+      })
+    );
+
+    console.log(`Cleaned up ${oldConversations.length} old conversations`);
+  } catch (error) {
+    console.error('Failed to cleanup completed conversations:', error);
+    throw new Error('Failed to cleanup completed conversations');
+  }
+}
+
+export async function addMessage(
   messageData: {
     id: string;
     conversationId: string;
@@ -620,9 +739,8 @@ export const addMessage = async (
     metadata?: Partial<MessageMetadata>;
     parentMessageId?: string;
     stepId?: string;
-    organizationId: string;
   }
-): Promise<SelectMessage> => {
+): Promise<SelectMessage> {
   try {
     console.log('addMessage called with parameters:', {
       id: messageData.id,
@@ -635,51 +753,91 @@ export const addMessage = async (
       stepId: messageData.stepId
     });
 
-    // Validate organization context
-    const detailedConversation = await getDetailedConversation(messageData.conversationId);
+    // Get conversation with complete session details
+    const conversation = await db.query.conversations.findFirst({
+      where: eq(conversations.id, messageData.conversationId),
+      with: {
+        session: {
+          columns: {
+            organizationId: true,
+            userId: true
+          },
+          with: {
+            agent: {
+              columns: {
+                id: true,
+                createdBy: true
+              },
+              with: {
+                creator: { // Correctly reference 'creator'
+                  columns: {
+                    id: true,
+                    name: true,
+                    email: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }) as ConversationWithSession; 
+    
 
-    if (!detailedConversation?.session?.organizationId) {
-      throw new Error('Invalid organization context');
+    if (!conversation?.session) {
+      throw new Error('Conversation or session not found');
     }
 
-    if (detailedConversation.session.organizationId !== messageData.organizationId) {
-      throw new Error('Organization mismatch');
-    }
+    const organizationId = conversation.session.organizationId;
+    const effectiveUserId = conversation.session.userId || 
+    conversation.session.agent?.userId || 
+    conversation.session.agent?.creator?.id;
+    
 
-    const organization = await db.query.organizations.findFirst({
-      where: eq(organizations.id, messageData.organizationId)
+
+    console.log('addMessage: Retrieved conversation:', {
+      conversationId: conversation.id,
+      organizationId,
+      effectiveUserId
     });
 
-    if (!organization) {
-      throw new Error('Organization not found');
+    if (!effectiveUserId) {
+      console.warn('addMessage: No user ID found for conversation:', messageData.conversationId);
     }
 
-    const effectiveUserId = detailedConversation.session?.userId || 
-                          detailedConversation.session?.agent?.userId || 
-                          detailedConversation.session?.agent?.user?.id;
-
-    const finalMetadata = ensureMetadata(messageData.metadata || {}, defaultMessageMetadata);
-
+    // Use organization-scoped Redis key for message count
     const orderIndex = (
-      await redis.incr(`${CONVERSATION_PREFIX}${messageData.conversationId}:message_count`)
+      await redis.incr(`${ORGANIZATION_PREFIX}${organizationId}:${CONVERSATION_PREFIX}${messageData.conversationId}:message_count`)
     ).toString();
 
-    // Check for existing message
+    console.log(`addMessage: Retrieved orderIndex ${orderIndex} for conversation ${messageData.conversationId}`);
+
+    // Check if message already exists
     const existingMessage = await db.query.messages.findFirst({
       where: eq(messages.id, messageData.id)
     });
 
     if (existingMessage) {
+      console.log('addMessage: Message already exists:', messageData.id);
       return {
         ...existingMessage,
-        metadata: ensureMetadata(existingMessage.metadata, defaultMessageMetadata),
+        metadata: {
+          ...ensureMetadata(existingMessage.metadata, defaultMessageMetadata),
+          organizationId
+        },
         toolCalls: (existingMessage.toolCalls || []) as ToolCall[],
         stepId: existingMessage.stepId || undefined,
         parentMessageId: existingMessage.parentMessageId || undefined
       };
     }
 
-    // Create new message
+    // Include organization ID in metadata
+    const finalMetadata = {
+      ...ensureMetadata(messageData.metadata || {}, defaultMessageMetadata),
+      organizationId
+    };
+
+    // Create message with provided ID
     const [dbMessage] = await db
       .insert(messages)
       .values({
@@ -696,6 +854,8 @@ export const addMessage = async (
       })
       .returning();
 
+    console.log('addMessage: Successfully inserted message:', dbMessage);
+
     const message: SelectMessage = {
       ...dbMessage,
       metadata: finalMetadata,
@@ -704,64 +864,130 @@ export const addMessage = async (
       parentMessageId: dbMessage.parentMessageId || undefined,
     };
 
-    // Handle organization-level billing and usage tracking
+    // Log usage and handle Stripe billing
     if (messageData.role === 'assistant' && 
-        (finalMetadata.audioDurationSeconds || finalMetadata.promptTokens || finalMetadata.completionTokens) &&
-        organization.stripeCustomerId) {
+      (finalMetadata.audioDurationSeconds || finalMetadata.promptTokens || finalMetadata.completionTokens)) {
       try {
-        // Log usage
+        console.log(`addMessage: Logging usage for message ${message.id}`);
+        
+        const user = effectiveUserId ? await db.query.users.findFirst({
+          where: eq(users.id, effectiveUserId),
+        }) : null;
+
+        // Prepare usage log
         const usageLog = {
-          organizationId: messageData.organizationId,
           userId: effectiveUserId,
-          sessionId: detailedConversation.sessionId,
-          conversationId: detailedConversation.id,
+          sessionId: conversation.session.id,
+          conversationId: conversation.id,
           messageId: message.id,
           durationSeconds: Math.round(finalMetadata.audioDurationSeconds || 0),
           promptTokens: finalMetadata.promptTokens || 0,
           completionTokens: finalMetadata.completionTokens || 0,
           totalTokens: finalMetadata.totalTokens || 0,
           messageRole: messageData.role,
-          stripeCustomerId: organization.stripeCustomerId,
-          reportingStatus: 'pending' as const
+          stripeCustomerId: user?.stripeCustomerId || null,
+          reportingStatus: 'pending' as const,
+          organizationId
         };
 
-        await db.insert(usageLogs).values(usageLog);
+        const [logResult] = await db
+          .insert(usageLogs)
+          .values(usageLog)
+          .returning();
 
-        // Send billing events to Stripe
-        if (finalMetadata.promptTokens) {
-          await stripe.billing.meterEvents.create({
-            event_name: 'input_tokens',
-            payload: {
-              stripe_customer_id: organization.stripeCustomerId,
-              value: Math.ceil(finalMetadata.promptTokens / 1000).toString(),
-              timestamp: new Date().toISOString()
-            }
+        // Handle Stripe billing
+        if (user?.stripeCustomerId) {
+          const timestamp = new Date().toISOString();
+          
+          // Create string metadata for Stripe
+          const stripeMetadata = JSON.stringify({
+            organizationId,
+            messageId: message.id,
+            sessionId: conversation.session.id
           });
+
+          const billingPromises = [];
+
+          if (finalMetadata.promptTokens) {
+            billingPromises.push(
+              stripe.billing.meterEvents.create({
+                event_name: 'input_tokens',
+                payload: {
+                  stripe_customer_id: user.stripeCustomerId,
+                  value: Math.ceil(finalMetadata.promptTokens / 1000).toString(),
+                  timestamp,
+                  metadata: stripeMetadata
+                }
+              })
+            );
+          }
+
+          if (finalMetadata.completionTokens) {
+            billingPromises.push(
+              stripe.billing.meterEvents.create({
+                event_name: 'output_tokens',
+                payload: {
+                  stripe_customer_id: user.stripeCustomerId,
+                  value: Math.ceil(finalMetadata.completionTokens / 1000).toString(),
+                  timestamp,
+                  metadata: stripeMetadata
+                }
+              })
+            );
+          }
+
+          if (finalMetadata.audioDurationSeconds) {
+            billingPromises.push(
+              stripe.billing.meterEvents.create({
+                event_name: 'audio_duration',
+                payload: {
+                  stripe_customer_id: user.stripeCustomerId,
+                  value: Math.round(finalMetadata.audioDurationSeconds).toString(),
+                  timestamp,
+                  metadata: stripeMetadata
+                }
+              })
+            );
+          }
+
+          await Promise.all(billingPromises);
         }
 
-        if (finalMetadata.completionTokens) {
-          await stripe.billing.meterEvents.create({
-            event_name: 'output_tokens',
-            payload: {
-              stripe_customer_id: organization.stripeCustomerId,
-              value: Math.ceil(finalMetadata.completionTokens / 1000).toString(),
-              timestamp: new Date().toISOString()
-            }
-          });
+        // Double log for agent user if different from session user
+        if (conversation.session?.userId && 
+            conversation.session.agent?.userId &&
+            conversation.session.userId !== conversation.session.agent.userId) {
+          await db
+            .insert(usageLogs)
+            .values({
+              ...usageLog,
+              id: createId(),
+              userId: conversation.session.agent.userId
+            })
+            .returning();
         }
 
-        if (finalMetadata.audioDurationSeconds) {
-          await stripe.billing.meterEvents.create({
-            event_name: 'audio_duration',
-            payload: {
-              stripe_customer_id: organization.stripeCustomerId,
-              value: Math.round(finalMetadata.audioDurationSeconds).toString(),
-              timestamp: new Date().toISOString()
-            }
-          });
-        }
+        console.log(`addMessage: Successfully logged usage for message ${message.id}:`, {
+          duration: finalMetadata.audioDurationSeconds,
+          promptTokens: finalMetadata.promptTokens,
+          completionTokens: finalMetadata.completionTokens,
+          userId: effectiveUserId,
+          organizationId,
+          logId: logResult.id
+        });
       } catch (error) {
-        console.error('Failed to log usage:', error);
+        console.error('addMessage: Failed to log usage:', error);
+        console.error('addMessage: Usage logging context:', {
+          userId: effectiveUserId,
+          organizationId,
+          sessionId: conversation.session.id,
+          messageId: message.id,
+          duration: finalMetadata.audioDurationSeconds,
+          tokens: {
+            prompt: finalMetadata.promptTokens,
+            completion: finalMetadata.completionTokens
+          }
+        });
       }
     }
 
@@ -772,16 +998,18 @@ export const addMessage = async (
         lastMessageAt: new Date(),
         messageCount: parseInt(orderIndex),
         metadata: {
-          ...detailedConversation.session,
+          ...conversation.metadata,
           lastMessageId: message.id,
+          organizationId
         },
       })
       .where(eq(conversations.id, messageData.conversationId));
 
-    // Update Redis state
-    const messageKey = `${MESSAGE_PREFIX}${message.id}`;
-    const conversationKey = `${CONVERSATION_PREFIX}${messageData.conversationId}`;
+    // Use organization-scoped Redis keys
+    const messageKey = getOrgScopedKey(MESSAGE_PREFIX, message.id, organizationId);
+    const conversationKey = getOrgScopedKey(CONVERSATION_PREFIX, messageData.conversationId, organizationId);
 
+    // Update Redis state
     await Promise.all([
       redis.set(messageKey, message, { ex: DEFAULT_EXPIRY }),
       redis.zadd(`${conversationKey}:messages`, {
@@ -794,26 +1022,94 @@ export const addMessage = async (
           lastMessageId: message.id,
           messageCount: parseInt(orderIndex),
           lastActive: Date.now(),
+          organizationId
         },
         { ex: DEFAULT_EXPIRY }
       ),
+      // Add to organization's message index
+      redis.sadd(`${ORGANIZATION_PREFIX}${organizationId}:messages`, message.id)
     ]);
 
+    console.log('addMessage: Function completed successfully with message:', message);
     return message;
   } catch (error) {
-    console.error('Failed to add message:', error);
+    console.error('addMessage: Failed to add message:', error);
     throw error instanceof Error ? error : new Error('Failed to add message');
   }
-};
+}
+// Function to create a usage log with type safety
+async function createUsageLog(data: Omit<CreateUsageLog, 'id' | 'createdAt'>): Promise<CreateUsageLog> {
+  const [logResult] = await db
+    .insert(usageLogs)
+    .values({
+      id: createId(),
+      userId: data.userId,
+      sessionId: data.sessionId,
+      conversationId: data.conversationId,
+      messageId: data.messageId,
+      durationSeconds: data.durationSeconds,
+      promptTokens: data.promptTokens,
+      completionTokens: data.completionTokens,
+      totalTokens: data.totalTokens,
+      messageRole: data.messageRole,
+      stripeCustomerId: data.stripeCustomerId,
+      reportingStatus: data.reportingStatus,
+      organizationId: data.organizationId
+    })
+    .returning();
 
-export const updateMessage = async (
+  // Ensure createdAt is included and correctly typed
+  return {
+    ...logResult,
+    createdAt: logResult.createdAt, // Ensure this matches the interface
+  };
+}
+
+
+
+
+
+// Add new function to get organization statistics
+
+export async function getOrganizationStats(organizationId: string): Promise<{
+  activeSessionCount: number;
+  totalMessageCount: number;
+  activeConversationCount: number;
+}> {
+  try {
+    const activeSessionCount = await redis.scard(`${ORGANIZATION_PREFIX}${organizationId}:sessions`);
+    const activeConversationCount = await redis.scard(`${ORGANIZATION_PREFIX}${organizationId}:active_conversations`);
+
+    // Perform raw SQL query with type specification
+    const result = await db.execute<{ count: string }>(sql`
+      SELECT COUNT(*) AS count
+      FROM messages
+      JOIN conversations ON messages.conversationId = conversations.id
+      JOIN onboarding_sessions ON conversations.sessionId = onboardingSessions.id
+      WHERE onboarding_sessions.organizationId = ${organizationId}
+    `);
+
+    // Parse the count as an integer
+    const totalMessageCount = parseInt(result.rows[0].count, 10);
+
+    return {
+      activeSessionCount,
+      activeConversationCount,
+      totalMessageCount,
+    };
+  } catch (error) {
+    console.error('Failed to get organization stats:', error);
+    throw new Error('Failed to get organization stats');
+  }
+}
+export async function updateMessage(
   messageId: string,
   updates: Partial<{
     content: MessageContent;
     metadata: Partial<MessageMetadata>;
     toolCalls: ToolCall[];
   }>
-): Promise<SelectMessage> => {
+): Promise<SelectMessage> {
   try {
     const currentMessage = await db.query.messages.findFirst({
       where: eq(messages.id, messageId),
@@ -852,18 +1148,19 @@ export const updateMessage = async (
     console.error('Failed to update message:', error);
     throw new Error('Failed to update message');
   }
-};
+}
 
-export const getConversationMessages = async (
+export async function getConversationMessages(
   conversationId: string,
   options: {
     limit?: number;
     offset?: number;
     afterId?: string;
   } = {}
-): Promise<SelectMessage[]> => {
+): Promise<SelectMessage[]> {
   try {
     const { limit = 50, offset = 0, afterId } = options;
+
     const conditions = [eq(messages.conversationId, conversationId)];
 
     if (afterId) {
@@ -896,91 +1193,4 @@ export const getConversationMessages = async (
     console.error('Failed to get conversation messages:', error);
     throw new Error('Failed to get conversation messages');
   }
-};
-
-export const getSessionConversations = async (
-  sessionId: string,
-  status?: ConversationStatus
-): Promise<SelectConversation[]> => {
-  try {
-    const session = await db.query.onboardingSessions.findFirst({
-      where: eq(onboardingSessions.id, sessionId),
-    });
-
-    if (!session) {
-      throw new Error(`Session ${sessionId} not found`);
-    }
-
-    const conditions = [eq(conversations.sessionId, sessionId)];
-    if (status) {
-      conditions.push(eq(conversations.status, status));
-    }
-
-    const results = await db.query.conversations.findMany({
-      where: and(...conditions),
-      orderBy: [desc(conversations.startedAt)],
-    });
-
-    return results.map((conv): SelectConversation => ({
-      id: conv.id,
-      sessionId: conv.sessionId!,
-      status: conv.status,
-      metadata: ensureMetadata(conv.metadata, defaultConversationMetadata),
-      startedAt: conv.startedAt,
-      createdAt: conv.createdAt,
-      updatedAt: conv.updatedAt,
-      messages: [],
-      endedAt: conv.endedAt || undefined,
-      lastMessageAt: conv.lastMessageAt || undefined,
-      messageCount: conv.messageCount || 0,
-    }));
-  } catch (error) {
-    console.error('Failed to get session conversations:', error);
-    throw error instanceof Error ? error : new Error('Failed to get session conversations');
-  }
-};
-
-export const completeConversation = async (
-  conversationId: string,
-  sessionId: string,
-  metadata: Partial<ConversationMetadata> = {}
-): Promise<void> => {
-  try {
-    const { isValid, conversation } = await validateConversationWithSession(
-      conversationId,
-      sessionId
-    );
-
-    if (!isValid) {
-      throw new Error(`Conversation ${conversationId} not found for session ${sessionId}`);
-    }
-
-    const finalMetadata = ensureMetadata(
-      { ...conversation.metadata, ...metadata },
-      defaultConversationMetadata
-    );
-
-    await db
-      .update(conversations)
-      .set({
-        status: 'completed' as ConversationStatus,
-        endedAt: new Date(),
-        metadata: finalMetadata,
-      })
-      .where(eq(conversations.id, conversationId));
-
-    await redis.srem('active_conversations', conversationId);
-  } catch (error) {
-    console.error('Failed to complete conversation:', error);
-    throw error instanceof Error ? error : new Error('Failed to complete conversation');
-  }
-};
-
-// Export all types and interfaces
-export type {
-  AgentStateWithOrg,
-  SessionStateWithOrg,
-  ConversationWithSession,
-  SelectConversationWithSession,
-  ConversationMetadataWithOrg
-};
+}

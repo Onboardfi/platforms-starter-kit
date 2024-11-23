@@ -24,13 +24,13 @@ export default async function SiteAgents({ params }: { params: { id: string } })
       subdomain: true,
       customDomain: true,
       message404: true,
-      userId: true,
+      createdBy: true,
       createdAt: true,
       updatedAt: true,
     },
   });
 
-  if (!data || data.userId !== session.user.id) {
+  if (!data || data.createdBy !== session.user.id) {
     notFound();
   }
 
@@ -39,11 +39,11 @@ export default async function SiteAgents({ params }: { params: { id: string } })
     name: data.name,
     description: data.description,
     logo: data.logo,
-    font: data.font || 'font-cal', // Provide default font if null
+    font: data.font || 'font-cal',
     subdomain: data.subdomain,
     customDomain: data.customDomain,
     message404: data.message404,
-    userId: data.userId,
+    createdBy: data.createdBy,
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
   };
@@ -57,7 +57,7 @@ export default async function SiteAgents({ params }: { params: { id: string } })
       <SiteHeader site={site} url={url} />
       <div className="space-y-6">
         <h1 className="text-3xl font-cal">Onboards</h1>
-        <Agents siteId={site.id} userId={session.user.id} />
+        <Agents siteId={site.id} createdBy={session.user.id} />
       </div>
     </div>
   );
