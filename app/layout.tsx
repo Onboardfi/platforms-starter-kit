@@ -1,3 +1,6 @@
+
+///Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/layout.tsx
+
 import "@/styles/globals.css";
 import { cal, inter } from "@/styles/fonts";
 import { Analytics } from "@vercel/analytics/react";

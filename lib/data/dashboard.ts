@@ -4,9 +4,17 @@ import { agents, sites, onboardingSessions } from "../schema";
 import { sql, and, eq, gte, lte } from "drizzle-orm";
 import db from "../db";
 import { authenticateUser } from "./safe-action";
+import { getSession } from "../auth";
 
 export async function getAgentAndSiteCounts(inputStartDate?: Date, inputEndDate?: Date) {
-  const userId = await authenticateUser();
+  // Get both user ID and organization ID from session
+  const session = await getSession();
+  if (!session?.user.id || !session.organizationId) {
+    throw new Error('Authentication required');
+  }
+
+  const userId = session.user.id;
+  const organizationId = session.organizationId;
 
   // Use provided dates or default to last 30 days
   const endDate = inputEndDate || new Date();
@@ -17,15 +25,17 @@ export async function getAgentAndSiteCounts(inputStartDate?: Date, inputEndDate?
 
   // Fetch all counts in parallel
   const [agentCounts, siteCounts, sessionCounts] = await Promise.all([
-    // Agent counts
+    // Agent counts - Check for agents created by user within organization
     db.select({
-      date: sql<string>`DATE(agents."createdAt")`.as("date"),
-      count: sql<number>`COUNT(*)`.as("count"),
+      date: sql<string>`DATE(agents."createdAt")::text`.as("date"),
+      count: sql<number>`COUNT(*)::integer`.as("count"),
     })
     .from(agents)
+    .innerJoin(sites, eq(agents.siteId, sites.id))
     .where(
       and(
-        eq(agents.userId, userId),
+        eq(agents.createdBy, userId),
+        eq(sites.organizationId, organizationId),
         gte(agents.createdAt, startDate),
         lte(agents.createdAt, endDate)
       )
@@ -33,15 +43,15 @@ export async function getAgentAndSiteCounts(inputStartDate?: Date, inputEndDate?
     .groupBy(sql`DATE(agents."createdAt")`)
     .orderBy(sql`DATE(agents."createdAt")`),
 
-    // Site counts
+    // Site counts - Get sites for the organization
     db.select({
-      date: sql<string>`DATE(sites."createdAt")`.as("date"),
-      count: sql<number>`COUNT(*)`.as("count"),
+      date: sql<string>`DATE(sites."createdAt")::text`.as("date"),
+      count: sql<number>`COUNT(*)::integer`.as("count"),
     })
     .from(sites)
     .where(
       and(
-        eq(sites.userId, userId),
+        eq(sites.organizationId, organizationId),
         gte(sites.createdAt, startDate),
         lte(sites.createdAt, endDate)
       )
@@ -49,16 +59,17 @@ export async function getAgentAndSiteCounts(inputStartDate?: Date, inputEndDate?
     .groupBy(sql`DATE(sites."createdAt")`)
     .orderBy(sql`DATE(sites."createdAt")`),
 
-    // Session counts - Join with agents to get only sessions from user's agents
+    // Session counts - Join with agents and sites to get organization context
     db.select({
-      date: sql<string>`DATE(onboarding_sessions."createdAt")`.as("date"),
-      count: sql<number>`COUNT(*)`.as("count"),
+      date: sql<string>`DATE(onboarding_sessions."createdAt")::text`.as("date"),
+      count: sql<number>`COUNT(*)::integer`.as("count"),
     })
     .from(onboardingSessions)
     .innerJoin(agents, eq(onboardingSessions.agentId, agents.id))
+    .innerJoin(sites, eq(agents.siteId, sites.id))
     .where(
       and(
-        eq(agents.userId, userId),
+        eq(sites.organizationId, organizationId),
         gte(onboardingSessions.createdAt, startDate),
         lte(onboardingSessions.createdAt, endDate)
       )

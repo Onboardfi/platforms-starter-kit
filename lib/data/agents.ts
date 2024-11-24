@@ -5,6 +5,7 @@ import { eq, desc, sql, and, gte, lte } from "drizzle-orm";
 import db from "../db";
 import { z } from "zod";
 import { authenticateUser, validateInput } from "./safe-action";
+import { createId } from '@paralleldrive/cuid2';
 
 /**
  * Creates a new agent in the database
@@ -41,7 +42,7 @@ export async function createAgent(input: unknown) {
   const site = await db
     .select()
     .from(sites)
-    .where(and(eq(sites.id, siteId), eq(sites.userId, userId)))
+    .where(and(eq(sites.id, siteId), eq(sites.createdBy, userId)))
     .limit(1);
 
   if (!site.length) {
@@ -52,12 +53,12 @@ export async function createAgent(input: unknown) {
   const [newAgent] = await db
     .insert(agents)
     .values({
-      id: crypto.randomUUID(), // Use any ID generation method you prefer
+      id: createId(),
       name,
       description,
       slug,
       siteId,
-      userId,
+      createdBy: userId,
       image,
       imageBlurhash,
       published,
@@ -77,55 +78,65 @@ export async function getAgents() {
   "use server";
 
   const userId = await authenticateUser();
-  const agentsData = await db
-    .select({
-      agents: agents,
-      sites: sites,
-    })
-    .from(agents)
-    .leftJoin(sites, eq(agents.siteId, sites.id))
-    .where(eq(agents.userId, userId))
-    .orderBy(desc(agents.createdAt));
+  
+  // Query agents with their related site data
+  const agentsData = await db.query.agents.findMany({
+    where: eq(agents.createdBy, userId),
+    with: {
+      site: {
+        with: {
+          organization: true,
+          creator: true
+        }
+      },
+      creator: true
+    },
+    orderBy: [desc(agents.createdAt)]
+  });
 
   const data = agentsData.map((row) => ({
     // Agent fields
-    id: row.agents.id,
-    name: row.agents.name,
-    description: row.agents.description,
-    slug: row.agents.slug,
-    image: row.agents.image,
-    imageBlurhash: row.agents.imageBlurhash,
-    published: row.agents.published,
-    settings: row.agents.settings,
-    createdAt: row.agents.createdAt,
-    updatedAt: row.agents.updatedAt,
-    siteId: row.agents.siteId,
-    userId: row.agents.userId,
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    slug: row.slug,
+    image: row.image,
+    imageBlurhash: row.imageBlurhash,
+    published: row.published,
+    settings: row.settings,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    siteId: row.siteId,
+    createdBy: row.createdBy,
     
     // Site information
-    site: row.sites ? {
-      id: row.sites.id,
-      name: row.sites.name,
-      description: row.sites.description,
-      logo: row.sites.logo,
-      font: row.sites.font,
-      image: row.sites.image,
-      imageBlurhash: row.sites.imageBlurhash,
-      subdomain: row.sites.subdomain,
-      customDomain: row.sites.customDomain,
-      message404: row.sites.message404,
-      createdAt: row.sites.createdAt,
-      updatedAt: row.sites.updatedAt,
-      userId: row.sites.userId,
+    site: row.site ? {
+      id: row.site.id,
+      name: row.site.name,
+      description: row.site.description,
+      logo: row.site.logo,
+      font: row.site.font,
+      image: row.site.image,
+      imageBlurhash: row.site.imageBlurhash,
+      subdomain: row.site.subdomain,
+      customDomain: row.site.customDomain,
+      message404: row.site.message404,
+      createdAt: row.site.createdAt,
+      updatedAt: row.site.updatedAt,
+      organizationId: row.site.organizationId,
+      createdBy: row.site.createdBy,
+      organization: row.site.organization,
+      creator: row.site.creator
     } : null,
     
     // Additional fields
-    siteName: row.sites?.name ?? null,
-    userName: null
+    siteName: row.site?.name ?? null,
+    creator: row.creator
   }));
 
   return { data };
 }
+
 /**
  * Get agent data for one specific agent
  */
@@ -139,44 +150,42 @@ export async function getAgentData(input: unknown) {
   const { id } = parsedInput;
 
   const agentWithUser = await db
-    .select({ agentUserId: agents.userId })
+    .select({ agentCreatorId: agents.createdBy })
     .from(agents)
     .where(eq(agents.id, id))
     .limit(1);
 
-  if (!agentWithUser.length || agentWithUser[0].agentUserId !== userId) {
+  if (!agentWithUser.length || agentWithUser[0].agentCreatorId !== userId) {
     throw new Error("You are not authorized for this action.");
   }
 
-  const agentData = await db
-    .select()
-    .from(agents)
-    .leftJoin(sites, eq(agents.siteId, sites.id))
-    .where(eq(agents.id, id))
-    .limit(1);
+  const agent = await db.query.agents.findFirst({
+    where: eq(agents.id, id),
+    with: {
+      site: true,
+      creator: true
+    }
+  });
 
-  if (!agentData.length) {
+  if (!agent) {
     throw new Error("Agent not found.");
   }
 
-  const agent = agentData[0];
-
-  const data = {
-    id: agent.agents.id,
-    name: agent.agents.name,
-    description: agent.agents.description,
-    slug: agent.agents.slug,
-    image: agent.agents.image,
-    imageBlurhash: agent.agents.imageBlurhash,
-    published: agent.agents.published,
-    settings: agent.agents.settings,
-    createdAt: agent.agents.createdAt,
-    updatedAt: agent.agents.updatedAt,
-    siteId: agent.sites?.id || null,
-    siteName: agent.sites?.name || null,
+  return {
+    id: agent.id,
+    name: agent.name,
+    description: agent.description,
+    slug: agent.slug,
+    image: agent.image,
+    imageBlurhash: agent.imageBlurhash,
+    published: agent.published,
+    settings: agent.settings,
+    createdAt: agent.createdAt,
+    updatedAt: agent.updatedAt,
+    siteId: agent.site?.id || null,
+    siteName: agent.site?.name || null,
+    creator: agent.creator
   };
-
-  return data;
 }
 
 /**
@@ -194,34 +203,37 @@ export async function getAgentsBySite(input: unknown) {
   const site = await db
     .select()
     .from(sites)
-    .where(and(eq(sites.id, siteId), eq(sites.userId, userId)))
+    .where(and(eq(sites.id, siteId), eq(sites.createdBy, userId)))
     .limit(1);
 
   if (!site.length) {
     throw new Error("You are not authorized for this action.");
   }
 
-  const agentsData = await db
-    .select()
-    .from(agents)
-    .where(eq(agents.siteId, siteId))
-    .orderBy(desc(agents.createdAt));
+  const agentsData = await db.query.agents.findMany({
+    where: eq(agents.siteId, siteId),
+    orderBy: [desc(agents.createdAt)],
+    with: {
+      creator: true
+    }
+  });
 
-  const data = agentsData.map((agent) => ({
-    id: agent.id,
-    name: agent.name,
-    description: agent.description,
-    slug: agent.slug,
-    image: agent.image,
-    imageBlurhash: agent.imageBlurhash,
-    published: agent.published,
-    settings: agent.settings,
-    createdAt: agent.createdAt,
-    updatedAt: agent.updatedAt,
-    siteId: agent.siteId,
-  }));
-
-  return { data };
+  return {
+    data: agentsData.map((agent) => ({
+      id: agent.id,
+      name: agent.name,
+      description: agent.description,
+      slug: agent.slug,
+      image: agent.image,
+      imageBlurhash: agent.imageBlurhash,
+      published: agent.published,
+      settings: agent.settings,
+      createdAt: agent.createdAt,
+      updatedAt: agent.updatedAt,
+      siteId: agent.siteId,
+      creator: agent.creator
+    }))
+  };
 }
 
 /**
@@ -237,35 +249,32 @@ export async function deleteAgent(input: unknown) {
   const { id } = parsedInput;
 
   const agentWithUser = await db
-    .select({ agentUserId: agents.userId })
+    .select({ agentCreatorId: agents.createdBy })
     .from(agents)
     .where(eq(agents.id, id));
 
-  if (!agentWithUser.length || agentWithUser[0].agentUserId !== userId) {
+  if (!agentWithUser.length || agentWithUser[0].agentCreatorId !== userId) {
     throw new Error("You are not authorized for this action.");
   }
 
   await db.delete(agents).where(eq(agents.id, id));
-  // Optionally revalidate paths if you're using caching
-  // revalidatePath("/agents");
 
   return { success: true };
 }
+
 export async function getAgentCounts(startDate?: Date, endDate?: Date) {
   "use server";
 
   const userId = await authenticateUser();
 
-  // If no dates provided, default to all time
   const dateFilter = startDate && endDate 
     ? and(
-        eq(agents.userId, userId),
+        eq(agents.createdBy, userId),
         gte(agents.createdAt, startDate),
         lte(agents.createdAt, endDate)
       )
-    : eq(agents.userId, userId);
+    : eq(agents.createdBy, userId);
 
-  // Fetch agent counts grouped by date
   const agentCounts = await db
     .select({
       date: sql<string>`DATE(agents."createdAt")`.as("date"),
@@ -276,17 +285,15 @@ export async function getAgentCounts(startDate?: Date, endDate?: Date) {
     .groupBy(sql`DATE(agents."createdAt")`)
     .orderBy(sql`DATE(agents."createdAt")`);
 
-  // Create a date map for quick lookup
   const dateMap = new Map<string, number>();
   agentCounts.forEach((item) => {
     const dateString = item.date;
     dateMap.set(dateString, Number(item.count));
   });
 
-  // Generate continuous date range
   const days = startDate && endDate 
     ? Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
-    : 30; // Default to 30 days if no range specified
+    : 30;
 
   const chartData = [];
   for (let i = 0; i <= days; i++) {
@@ -303,18 +310,12 @@ export async function getAgentCounts(startDate?: Date, endDate?: Date) {
 
   return { data: chartData };
 }
-/**
- * Get agent counts over time for the dashboard chart
- */
-/**
- * Get usage statistics for the user
- */
+
 export async function getUsageForUser() {
   "use server";
 
   const userId = await authenticateUser();
 
-  // Define the date range (e.g., current month)
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
@@ -326,13 +327,11 @@ export async function getUsageForUser() {
     .from(agents)
     .where(
       and(
-        eq(agents.userId, userId),
+        eq(agents.createdBy, userId),
         gte(agents.createdAt, startOfMonth),
         lte(agents.createdAt, endOfMonth)
       )
     );
 
-  const totalAgents = usageData[0]?.totalAgents || 0;
-
-  return { data: totalAgents };
+  return { data: usageData[0]?.totalAgents || 0 };
 }

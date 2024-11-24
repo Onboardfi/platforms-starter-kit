@@ -1,3 +1,5 @@
+//Users/bobbygilbert/Documents/Github/platforms-starter-kit/lib/combined-auth.ts
+
 import { getToken } from 'next-auth/jwt';
 import { JWT } from 'next-auth/jwt';
 import { NextRequest, NextResponse } from 'next/server';
@@ -8,34 +10,63 @@ import { eq, and } from 'drizzle-orm';
 import { organizationMemberships, sites } from './schema';
 
 // Extend JWT type to include organization context
+// In combined-auth.ts
 declare module "next-auth/jwt" {
   interface JWT {
-    organizationId?: string;
+    id?: string;
+    needsOnboarding?: boolean;
+    email?: string;
+    user?: any;
+    sub?: string;
+    organizationId?: string | null; // Updated to match other declaration
     organizationRole?: 'owner' | 'admin' | 'member';
   }
 }
 
-// Define the enhanced token payload type
+declare module "next-auth" {
+  interface Session {
+    user: {
+      id: string;
+      name: string | null;
+      username?: string | null;
+      email: string;
+      image: string | null;
+    };
+    organizationId?: string | null; // Updated to be consistent
+    needsOnboarding?: boolean;
+  }
+
+  interface User {
+    id: string;
+    name?: string | null;
+    username?: string | null;
+    gh_username?: string;
+    email: string;
+    image?: string | null;
+  }
+}
+
+// Update TokenPayload interface to match
 interface TokenPayload extends JWT {
   userId?: string;
   agentId?: string;
-  organizationId?: string;
+  organizationId?: string | null; // Updated to match JWT declaration
   organizationRole?: 'owner' | 'admin' | 'member';
   isAnonymous?: boolean;
   isAuthenticated?: boolean;
   sessionId?: string;
 }
 
-export interface AuthState {
+// Update AuthState interface for consistency
+interface AuthState {
   userId: string;
-  organizationId: string;
+  organizationId: string | null; // Updated to be nullable
   organizationRole?: 'owner' | 'admin' | 'member';
   isAuthenticated: boolean;
   isAnonymous: boolean;
   agentId: string;
   sessionId?: string;
 }
-
 /**
  * Verify organization access and get role
  */

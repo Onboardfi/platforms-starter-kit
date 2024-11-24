@@ -1,39 +1,32 @@
+///Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/app/(auth)/login/login-button.tsx
+
 "use client";
 
 import LoadingDots from "@/components/icons/loading-dots";
 import { signIn } from "next-auth/react";
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 interface LoginButtonProps {
   returnTo?: string | null;
-  showLoadingState?: boolean;
 }
 
 export default function LoginButton({ returnTo }: LoginButtonProps) {
   const [loading, setLoading] = useState(false);
-  const isDevelopment = process.env.NODE_ENV === 'development';
 
-  const handleLogin = useCallback(async () => {
+  const handleLogin = async () => {
     try {
       setLoading(true);
-      
-      const signInOptions: any = {
-        redirect: true,
-        callbackUrl: returnTo || "/",
-      };
-
-      if (isDevelopment && returnTo?.includes('localhost:3000')) {
-        signInOptions.state = returnTo;
-      }
-
-      await signIn("github", signInOptions);
+      await signIn("github", {
+        callbackUrl: "/onboarding",
+        redirect: true
+      });
     } catch (error) {
       console.error('Login error:', error);
       toast.error('Failed to login');
       setLoading(false);
     }
-  }, [returnTo, isDevelopment]);
+  };
 
   return (
     <button
@@ -50,10 +43,7 @@ export default function LoginButton({ returnTo }: LoginButtonProps) {
         group relative overflow-hidden
       `}
     >
-      {/* Gradient overlay */}
       <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 via-transparent to-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity" />
-      
-      {/* Content */}
       <div className="relative flex items-center space-x-3">
         {loading ? (
           <LoadingDots color="#A8A29E" />

@@ -5,7 +5,8 @@ import { eq, desc, sql, and, or, gte, lte } from "drizzle-orm";
 import db from "../db";
 import { z } from "zod";
 import { authenticateUser, validateInput } from "./safe-action";
-import crypto from "crypto";
+import { createId } from '@paralleldrive/cuid2';
+import { getSession } from '@/lib/auth';
 
 /**
  * Creates a new site in the database
@@ -26,6 +27,12 @@ export async function createSite(input: unknown) {
   "use server";
 
   const userId = await authenticateUser();
+  const session = await getSession();
+  
+  if (!session?.organizationId) {
+    throw new Error("Organization context required");
+  }
+
   const parsedInput = await validateInput(createSiteSchema, input);
 
   const {
@@ -60,7 +67,7 @@ export async function createSite(input: unknown) {
   const [newSite] = await db
     .insert(sites)
     .values({
-      id: crypto.randomUUID(), // Use any ID generation method you prefer
+      id: createId(),
       name,
       description,
       logo,
@@ -70,7 +77,8 @@ export async function createSite(input: unknown) {
       subdomain,
       customDomain,
       message404,
-      userId,
+      organizationId: session.organizationId,
+      createdBy: userId,
       createdAt: new Date(),
       updatedAt: new Date(),
     })
@@ -80,18 +88,24 @@ export async function createSite(input: unknown) {
 }
 
 /**
- * Gets all sites for a user
+ * Gets all sites for a user's organization
  */
 export async function getSites() {
   "use server";
 
-  const userId = await authenticateUser();
+  const session = await getSession();
+  if (!session?.organizationId) {
+    throw new Error("Organization context required");
+  }
 
-  const sitesData = await db
-    .select()
-    .from(sites)
-    .where(eq(sites.userId, userId))
-    .orderBy(desc(sites.createdAt));
+  const sitesData = await db.query.sites.findMany({
+    where: eq(sites.organizationId, session.organizationId),
+    with: {
+      organization: true,
+      creator: true
+    },
+    orderBy: [desc(sites.createdAt)]
+  });
 
   const data = sitesData.map((site) => ({
     id: site.id,
@@ -106,7 +120,10 @@ export async function getSites() {
     message404: site.message404,
     createdAt: site.createdAt,
     updatedAt: site.updatedAt,
-    userId: site.userId,
+    organizationId: site.organizationId,
+    createdBy: site.createdBy,
+    organization: site.organization,
+    creator: site.creator
   }));
 
   return { data };
@@ -120,33 +137,30 @@ const getSiteDataSchema = z.object({ id: z.string() });
 export async function getSiteData(input: unknown) {
   "use server";
 
-  const userId = await authenticateUser();
+  const session = await getSession();
+  if (!session?.organizationId) {
+    throw new Error("Organization context required");
+  }
+
   const parsedInput = await validateInput(getSiteDataSchema, input);
   const { id } = parsedInput;
 
-  const siteWithUser = await db
-    .select({ siteUserId: sites.userId })
-    .from(sites)
-    .where(eq(sites.id, id))
-    .limit(1);
+  const site = await db.query.sites.findFirst({
+    where: and(
+      eq(sites.id, id),
+      eq(sites.organizationId, session.organizationId)
+    ),
+    with: {
+      organization: true,
+      creator: true
+    }
+  });
 
-  if (!siteWithUser.length || siteWithUser[0].siteUserId !== userId) {
-    throw new Error("You are not authorized for this action.");
+  if (!site) {
+    throw new Error("Site not found or unauthorized");
   }
 
-  const siteData = await db
-    .select()
-    .from(sites)
-    .where(eq(sites.id, id))
-    .limit(1);
-
-  if (!siteData.length) {
-    throw new Error("Site not found.");
-  }
-
-  const site = siteData[0];
-
-  const data = {
+  return {
     id: site.id,
     name: site.name,
     description: site.description,
@@ -159,10 +173,11 @@ export async function getSiteData(input: unknown) {
     message404: site.message404,
     createdAt: site.createdAt,
     updatedAt: site.updatedAt,
-    userId: site.userId,
+    organizationId: site.organizationId,
+    createdBy: site.createdBy,
+    organization: site.organization,
+    creator: site.creator
   };
-
-  return data;
 }
 
 /**
@@ -173,22 +188,31 @@ const deleteSiteSchema = z.object({ id: z.string() });
 export async function deleteSite(input: unknown) {
   "use server";
 
-  const userId = await authenticateUser();
+  const session = await getSession();
+  if (!session?.organizationId) {
+    throw new Error("Organization context required");
+  }
+
   const parsedInput = await validateInput(deleteSiteSchema, input);
   const { id } = parsedInput;
 
-  const siteWithUser = await db
-    .select({ siteUserId: sites.userId })
-    .from(sites)
-    .where(eq(sites.id, id));
+  const site = await db.query.sites.findFirst({
+    where: and(
+      eq(sites.id, id),
+      eq(sites.organizationId, session.organizationId)
+    )
+  });
 
-  if (!siteWithUser.length || siteWithUser[0].siteUserId !== userId) {
-    throw new Error("You are not authorized for this action.");
+  if (!site) {
+    throw new Error("Site not found or unauthorized");
   }
 
-  await db.delete(sites).where(eq(sites.id, id));
-  // Optionally revalidate paths if you're using caching
-  // revalidatePath("/sites");
+  await db.delete(sites).where(
+    and(
+      eq(sites.id, id),
+      eq(sites.organizationId, session.organizationId)
+    )
+  );
 
   return { success: true };
 }
@@ -196,23 +220,23 @@ export async function deleteSite(input: unknown) {
 /**
  * Get site counts over time for the dashboard chart
  */
-
-
 export async function getSiteCounts(startDate?: Date, endDate?: Date) {
   "use server";
 
-  const userId = await authenticateUser();
+  const session = await getSession();
+  if (!session?.organizationId) {
+    throw new Error("Organization context required");
+  }
 
   // If no dates provided, default to all time
   const dateFilter = startDate && endDate 
     ? and(
-        eq(sites.userId, userId),
+        eq(sites.organizationId, session.organizationId),
         gte(sites.createdAt, startDate),
         lte(sites.createdAt, endDate)
       )
-    : eq(sites.userId, userId);
+    : eq(sites.organizationId, session.organizationId);
 
-  // Fetch site counts grouped by date
   const siteCounts = await db
     .select({
       date: sql<string>`DATE(sites."createdAt")`.as("date"),
@@ -223,17 +247,15 @@ export async function getSiteCounts(startDate?: Date, endDate?: Date) {
     .groupBy(sql`DATE(sites."createdAt")`)
     .orderBy(sql`DATE(sites."createdAt")`);
 
-  // Create a date map for quick lookup
   const dateMap = new Map<string, number>();
   siteCounts.forEach((item) => {
     const dateString = item.date;
     dateMap.set(dateString, Number(item.count));
   });
 
-  // Generate continuous date range
   const days = startDate && endDate 
     ? Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
-    : 30; // Default to 30 days if no range specified
+    : 30;
 
   const chartData = [];
   for (let i = 0; i <= days; i++) {

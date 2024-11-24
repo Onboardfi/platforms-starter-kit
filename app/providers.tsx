@@ -1,3 +1,5 @@
+////Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/providers.tsx
+
 'use client';
 
 import { ReactNode } from "react";

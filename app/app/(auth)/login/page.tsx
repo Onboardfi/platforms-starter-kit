@@ -1,3 +1,5 @@
+///Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/app/(auth)/login/page.tsx
+
 import Image from "next/image";
 import LoginButton from "./login-button";
 import { Suspense } from "react";

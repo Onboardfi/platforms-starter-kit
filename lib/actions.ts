@@ -9,7 +9,7 @@ import { put } from "@vercel/blob";
 import { eq, InferModel, desc, asc, and } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 import { revalidateTag } from "next/cache";
-import { withPostAuth, withSiteAuth, withAgentAuth } from "./auth";
+import {  withSiteAuth, withAgentAuth } from "./auth";
 import db from "./db";
 import { Agent, Site } from '@/types/agent';
 import { redirect } from "next/navigation";
@@ -70,6 +70,11 @@ import {
 } from './schema';
 import type { Session } from 'next-auth';
 // Define the ExtendedSession type properly
+import { 
+  hasValidOrganization, 
+  hasCompleteOrganizationContext, 
+  isAuthenticated 
+} from './utils/type-guards';
 
 // Interfaces for responses
 
@@ -83,10 +88,9 @@ declare module "next-auth" {
       email: string;
       image: string | null;
     };
-    organizationId: string;
+    organizationId?: string | null; // Make organizationId optional and nullable
   }
-
-  interface User {
+ interface User {
     id: string;
     name?: string | null;
     username?: string | null;
@@ -104,6 +108,9 @@ interface CreateAgentResponse {
   error?: string;
   id?: string;
 }
+
+
+
 
 // Nanoid configuration for unique ID generation
 const nanoid = customAlphabet(
@@ -145,10 +152,9 @@ async function verifyOrganizationAccess(userId: string, organizationId: string):
 
 // ===== Site Management Functions =====
 
-// Create a new site within an organization
 export const createSite = async (formData: FormData): Promise<CreateSiteResponse> => {
   const session = await getSession();
-  if (!session?.user.id || !session.organizationId) {
+  if (!hasValidOrganization(session)) {
     return { error: "Unauthorized or no organization context" };
   }
 
@@ -162,7 +168,6 @@ export const createSite = async (formData: FormData): Promise<CreateSiteResponse
     if (!hasAccess) {
       return { error: "Not a member of this organization" };
     }
-
     const result = await db
       .insert(sites)
       .values({
@@ -223,6 +228,9 @@ export async function getSitesWithAgentCount() {
   .groupBy(sites.id)
   .orderBy(desc(sites.createdAt));
 }
+
+
+
 
 // Update site properties, ensuring it belongs to the user's organization
 export const updateSite = withSiteAuth(
@@ -873,138 +881,8 @@ export const updatePost = async (
   }
 };
 
-// Delete a post, ensuring it belongs to the user's organization
-export const deletePost = withPostAuth(
-  async (_: FormData, post: SelectPost): Promise<void> => {
-    const session = await getSession();
-    if (!session?.user.id || !session.organizationId) {
-      redirect("/login");
-      return;
-    }
 
-    const postWithSite = await db.query.posts.findFirst({
-      where: and(
-        eq(posts.id, post.id),
-        eq(posts.organizationId, session.organizationId)
-      ),
-      with: {
-        site: true,
-      },
-    }) as PostWithSite | undefined;
 
-    if (!postWithSite || postWithSite.createdBy !== session.user.id) {
-      redirect("/not-found");
-      return;
-    }
-
-    try {
-      await db.delete(posts)
-        .where(and(
-          eq(posts.id, post.id),
-          eq(posts.organizationId, session.organizationId)
-        ))
-        .returning();
-
-      revalidateTag(
-        `${postWithSite.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-posts`
-      );
-      revalidateTag(
-        `${postWithSite.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-${postWithSite.slug}`
-      );
-
-      if (postWithSite.site?.customDomain) {
-        revalidateTag(`${postWithSite.site.customDomain}-posts`);
-        revalidateTag(`${postWithSite.site.customDomain}-${postWithSite.slug}`);
-      }
-    } catch (error: any) {
-      redirect(
-        `/post/${post.id}/settings?error=${encodeURIComponent(
-          error.message
-        )}`
-      );
-      return;
-    }
-  }
-);
-
-// Update post metadata, ensuring it belongs to the user's organization
-export const updatePostMetadata = withPostAuth(
-  async (
-    formData: FormData,
-    post: SelectPost & {
-      site: SelectSite;
-    },
-    key: string
-  ): Promise<void> => {
-    const session = await getSession();
-    if (!session?.organizationId) {
-      redirect("/login");
-      return;
-    }
-
-    const value = formData.get(key) as string;
-
-    try {
-      if (key === "image") {
-        const file = formData.get("image") as File;
-        const filename = `${nanoid()}.${file.type.split("/")[1]}`;
-
-        const { url } = await put(filename, file, {
-          access: "public",
-        });
-
-        const blurhash = await getBlurDataURL(url);
-        await db
-          .update(posts)
-          .set({
-            image: url,
-            imageBlurhash: blurhash,
-          })
-          .where(and(
-            eq(posts.id, post.id),
-            eq(posts.organizationId, session.organizationId)
-          ))
-          .returning();
-      } else {
-        await db
-          .update(posts)
-          .set({
-            [key]: key === "published" ? value === "true" : value,
-          })
-          .where(and(
-            eq(posts.id, post.id),
-            eq(posts.organizationId, session.organizationId)
-          ))
-          .returning();
-      }
-
-      revalidateTag(
-        `${post.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-posts`
-      );
-      revalidateTag(
-        `${post.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-${post.slug}`
-      );
-
-      if (post.site?.customDomain) {
-        revalidateTag(`${post.site.customDomain}-posts`);
-        revalidateTag(`${post.site.customDomain}-${post.slug}`);
-      }
-    } catch (error: any) {
-      if (error.code === "P2002") {
-        redirect(
-          `/post/${post.id}/settings?error=This+slug+is+already+in+use`
-        );
-      } else {
-        redirect(
-          `/post/${post.id}/settings?error=${encodeURIComponent(
-            error.message
-          )}`
-        );
-      }
-      return;
-    }
-  }
-);
 
 // ===== User Management Functions =====
 
@@ -1379,6 +1257,17 @@ export const completeStep = async (
       : step
   );
 
+
+
+
+  // Updated error type for better error handling
+interface AuthError {
+  error: string;
+  code: 'UNAUTHORIZED' | 'NO_ORG_CONTEXT' | 'NOT_MEMBER';
+}
+
+
+
   await updateSessionState(sessionId, { steps: updatedSteps });
 
   // Then update PostgreSQL
@@ -1497,6 +1386,9 @@ export const updateAgentStepsWithoutAuth = async (
     return { success: false, error: error.message || "Failed to update agent steps." };
   }
 };
+
+
+
 
 // ===== Organization Membership Verification =====
 

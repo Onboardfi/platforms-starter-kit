@@ -23,7 +23,11 @@ export type ConversationStatus = 'active' | 'completed' | 'archived';
 
 
 
-
+export interface OrganizationMetadata {
+  companySize?: 'small' | 'medium' | 'large' | 'enterprise';
+  industry?: string;
+  [key: string]: any;
+}
 
 
 
@@ -107,7 +111,7 @@ export const accounts = pgTable(
     compositePk: primaryKey(table.provider, table.providerAccountId),
   })
 );
-
+// Update the organizations table definition
 export const organizations = pgTable(
   'organizations',
   {
@@ -120,6 +124,7 @@ export const organizations = pgTable(
     logo: text('logo'),
     stripeCustomerId: text('stripeCustomerId'),
     stripeSubscriptionId: text('stripeSubscriptionId'),
+    metadata: jsonb('metadata').$type<OrganizationMetadata>().default({}).notNull(),
     createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
     updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
   },
@@ -128,6 +133,16 @@ export const organizations = pgTable(
     createdByIdx: index('organizations_createdBy_idx').on(table.createdBy),
   })
 );
+export type CreateOrganizationRequest = {
+  name: string;
+  slug: string;
+  metadata?: OrganizationMetadata;
+};
+
+export type OrganizationResponse = {
+  organization: typeof organizations.$inferSelect;
+  requiresSessionUpdate: boolean;
+};
 
 export const organizationMemberships = pgTable(
   'organization_memberships',

@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
       console.warn('No agent ID provided in verification request');
       return NextResponse.json({ 
         error: "Agent ID required",
-        success: false
+        success: false 
       }, { 
         status: 400,
         headers: corsHeaders 
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
       console.warn(`Agent not found: ${agentId}`);
       return NextResponse.json({ 
         error: "Agent not found",
-        success: false
+        success: false 
       }, { 
         status: 404,
         headers: corsHeaders 
@@ -101,7 +101,8 @@ export async function GET(req: NextRequest) {
       userId: 'anonymous',
       agentId,
       isAnonymous: true,
-      isAuthenticated: false
+      isAuthenticated: false,
+      organizationId: null // Provide organizationId as null
     });
     
     const response = NextResponse.json({ 
