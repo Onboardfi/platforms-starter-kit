@@ -16,8 +16,8 @@ const JWT_SECRET = process.env.NEXTAUTH_SECRET || '';
 export interface TokenPayload {
   userId: string;
   agentId: string;
-  organizationId: string; // Add organization context
-  organizationRole?: 'owner' | 'admin' | 'member'; // Add role context
+  organizationId: string | null; // Update to allow null
+  organizationRole?: 'owner' | 'admin' | 'member';
   isAnonymous: boolean;
   isAuthenticated: boolean;
   sessionId?: string;

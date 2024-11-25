@@ -6,7 +6,8 @@ import { getSession } from "@/lib/auth";
 import { addDomainToVercel, removeDomainFromVercelProject, validDomainRegex } from "@/lib/domains";
 import { getBlurDataURL } from "@/lib/utils";
 import { put } from "@vercel/blob";
-import { eq, InferModel, desc, asc, and } from "drizzle-orm";
+import { eq, InferModel, desc, asc, and, exists, } from "drizzle-orm";
+
 import { customAlphabet } from "nanoid";
 import { revalidateTag } from "next/cache";
 import { withSiteAuth, withAgentAuth } from "./auth";
@@ -384,12 +385,18 @@ export const deleteSite = withSiteAuth(
 );
 
 // ===== Agent Management Functions =====
-
 async function getAgentWithRelations(agentId: string, organizationId: string) {
   return await db.query.agents.findFirst({
     where: and(
       eq(agents.id, agentId),
-      eq(sites.organizationId, organizationId)
+      exists(
+        db.selectDistinct({ dummy: sql<number>`1` })
+          .from(sites)
+          .where(and(
+            eq(sites.id, agents.siteId),
+            eq(sites.organizationId, organizationId)
+          ))
+      )
     ),
     with: {
       site: {
@@ -402,7 +409,6 @@ async function getAgentWithRelations(agentId: string, organizationId: string) {
     }
   }) as AgentWithRelations;
 }
-
 function formatAgentResponse(
   agent: AgentWithRelations,
   fallbackOrganizationId: string,
@@ -433,40 +439,44 @@ function formatAgentResponse(
     creator: agent.creator || {
       id: fallbackUserId,
       name: null,
+      username: null,
+      gh_username: null,
       email: '',
       emailVerified: null,
       image: null,
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      metadata: {},
       createdAt: new Date(),
       updatedAt: new Date()
     }
   };
 }
 
-// Replace your existing getAgentById with this version
+// Remove the duplicate declaration and keep only this version
 export const getAgentById = async (agentId: string): Promise<SelectAgent | null> => {
   const session = await getSession();
   if (!session?.user.id || !session.organizationId) {
     return null;
   }
 
-  const agent = await getAgentWithRelations(agentId, session.organizationId);
-  if (!agent) return null;
+  try {
+    const agent = await getAgentWithRelations(agentId, session.organizationId);
+    if (!agent) return null;
 
-  return formatAgentResponse(agent, session.organizationId, session.user.id);
+    return formatAgentResponse(agent, session.organizationId, session.user.id);
+  } catch (error) {
+    console.error('Error getting agent:', error);
+    return null;
+  }
 };
-
 // Create a new agent within a site, ensuring the site belongs to the user's organization
+
 export const createAgent = withSiteAuth(
   async (_: FormData, site: SelectSite): Promise<CreateAgentResponse> => {
-
     const session = await getSession();
     if (!session?.user.id || !session.organizationId) {
       return { error: "Unauthorized or no organization context" };
-    }
-
-    // Verify the site belongs to the organization
-    if (site.organizationId !== session.organizationId) {
-      return { error: "Site does not belong to your organization" };
     }
 
     try {
@@ -500,7 +510,7 @@ export const createAgent = withSiteAuth(
         onboardingType: "external",
         lastActive: Date.now(),
         context: {},
-        organizationId: site.organizationId // Add this line to fix the AgentStateWithOrg error
+        organizationId: site.organizationId
       });
 
       revalidateTag(
@@ -514,7 +524,6 @@ export const createAgent = withSiteAuth(
     }
   }
 );
-
 // Update agent metadata, including handling authentication settings
 export const updateAgentMetadata = withAgentAuth(
   async (

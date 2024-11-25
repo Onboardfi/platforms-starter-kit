@@ -392,35 +392,71 @@ export async function getSession() {
  * Higher-Order Function to wrap actions with site authentication
  */
 export function withSiteAuth<
-  Args extends any[],
+  Args extends [FormData, SelectSite, ...any[]], // Enforce FormData and SelectSite as first two arguments
   ReturnType
 >(
   handler: (...args: Args) => Promise<ReturnType>
 ): (...args: Args) => Promise<ReturnType> {
   return async (...args: Args) => {
     console.log("withSiteAuth: Starting authentication");
-    const session = await getSession();
-    console.log("withSiteAuth: Session retrieved", session);
+    
+    const session = await getServerSession(authOptions) as Session | null;
+    
+    console.log("withSiteAuth: Session retrieved", {
+      hasSession: !!session,
+      organizationId: session?.organizationId
+    });
 
     if (!session?.organizationId) {
       console.error("withSiteAuth: Unauthorized - No organization context");
       throw new Error("Unauthorized or no organization context");
     }
 
-    // Assuming the second argument is the site
-    const site: SelectSite = args[1];
-    console.log("withSiteAuth: Site organizationId", site.organizationId);
-    console.log("withSiteAuth: Session organizationId", session.organizationId);
+    const [formData, site, ...rest] = args;
+
+    // Debug log to help diagnose argument passing
+    console.log("withSiteAuth: Arguments:", {
+      hasFormData: formData instanceof FormData,
+      site: {
+        id: site?.id,
+        organizationId: site?.organizationId,
+        hasOrganization: !!site?.organization
+      },
+      additionalArgs: rest.length
+    });
+
+    // Enhanced validation for site object
+    if (!site || typeof site !== 'object') {
+      console.error("withSiteAuth: Site validation failed", { 
+        receivedSite: site 
+      });
+      throw new Error("Invalid site object - Site is required");
+    }
+
+    if (!site.organizationId) {
+      console.error("withSiteAuth: Missing organization ID", { 
+        site 
+      });
+      throw new Error("Invalid site object - Missing organization ID");
+    }
 
     if (site.organizationId !== session.organizationId) {
-      console.error("withSiteAuth: Site does not belong to your organization");
+      console.error("withSiteAuth: Organization mismatch", {
+        siteOrgId: site.organizationId,
+        sessionOrgId: session.organizationId
+      });
       throw new Error("Site does not belong to your organization");
     }
 
-    return handler(...args);
+    try {
+      // Call handler with properly typed arguments
+      return await handler(...args);
+    } catch (error) {
+      console.error("withSiteAuth: Handler execution failed", error);
+      throw error;
+    }
   };
 }
-
 /**
  * Higher-Order Function to wrap actions with agent authentication
  */

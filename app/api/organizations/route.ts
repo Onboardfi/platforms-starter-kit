@@ -43,6 +43,180 @@ function generateSlug(name: string): string {
   return `org-${timestamp}-${sanitizedName}`.slice(0, 50);
 }
 
+// Helper function to setup Stripe meters and pricing
+async function setupStripeMetersAndPricing() {
+  try {
+    console.log('Checking for existing Stripe meters...');
+    
+    // 1. Get existing meters
+    const existingMeters = await stripe.billing.meters.list({ 
+      status: 'active',
+      limit: 100 // Adjust if needed
+    });
+
+    // 2. Find existing meters by event name
+    let inputTokensMeter = existingMeters.data.find(m => m.event_name === 'input_tokens');
+    let outputTokensMeter = existingMeters.data.find(m => m.event_name === 'output_tokens');
+
+    // 3. Create input tokens meter if it doesn't exist
+    if (!inputTokensMeter) {
+      console.log('Creating new input tokens meter...');
+      inputTokensMeter = await stripe.billing.meters.create({
+        display_name: 'Input Tokens',
+        event_name: 'input_tokens',
+        default_aggregation: {
+          formula: 'sum',
+        },
+        value_settings: {
+          event_payload_key: 'value',
+        },
+        customer_mapping: {
+          type: 'by_id',
+          event_payload_key: 'stripe_customer_id',
+        },
+      });
+    } else {
+      console.log('Using existing input tokens meter:', inputTokensMeter.id);
+    }
+
+    // 4. Create output tokens meter if it doesn't exist
+    if (!outputTokensMeter) {
+      console.log('Creating new output tokens meter...');
+      outputTokensMeter = await stripe.billing.meters.create({
+        display_name: 'Output Tokens',
+        event_name: 'output_tokens',
+        default_aggregation: {
+          formula: 'sum',
+        },
+        value_settings: {
+          event_payload_key: 'value',
+        },
+        customer_mapping: {
+          type: 'by_id',
+          event_payload_key: 'stripe_customer_id',
+        },
+      });
+    } else {
+      console.log('Using existing output tokens meter:', outputTokensMeter.id);
+    }
+
+    // 5. Get existing prices
+    const existingPrices = await stripe.prices.list({
+      active: true,
+      limit: 100,
+      type: 'recurring',
+      lookup_keys: ['input_tokens_price', 'output_tokens_price']
+    });
+
+    // 6. Find existing prices by lookup key
+    let inputTokensPrice = existingPrices.data.find(p => p.lookup_key === 'input_tokens_price');
+    let outputTokensPrice = existingPrices.data.find(p => p.lookup_key === 'output_tokens_price');
+
+    // 7. Create input tokens price if it doesn't exist
+    if (!inputTokensPrice) {
+      console.log('Creating new input tokens price...');
+      inputTokensPrice = await stripe.prices.create({
+        nickname: 'Input Tokens',
+        currency: 'usd',
+        recurring: {
+          usage_type: 'metered',
+          aggregate_usage: 'sum',
+          interval: 'month'
+        },
+        lookup_key: 'input_tokens_price',
+        billing_scheme: 'per_unit',
+        unit_amount: 15, // $0.015 per 1K tokens
+        product_data: {
+          name: 'Input Tokens',
+          metadata: {
+            meter_id: inputTokensMeter.id
+          }
+        },
+        transform_quantity: {
+          divide_by: 1000,
+          round: 'up'
+        }
+      });
+    } else {
+      console.log('Using existing input tokens price:', inputTokensPrice.id);
+    }
+
+    // 8. Create output tokens price if it doesn't exist
+    if (!outputTokensPrice) {
+      console.log('Creating new output tokens price...');
+      outputTokensPrice = await stripe.prices.create({
+        nickname: 'Output Tokens',
+        currency: 'usd',
+        recurring: {
+          usage_type: 'metered',
+          aggregate_usage: 'sum',
+          interval: 'month'
+        },
+        lookup_key: 'output_tokens_price',
+        billing_scheme: 'per_unit',
+        unit_amount: 20, // $0.020 per 1K tokens
+        product_data: {
+          name: 'Output Tokens',
+          metadata: {
+            meter_id: outputTokensMeter.id
+          }
+        },
+        transform_quantity: {
+          divide_by: 1000,
+          round: 'up'
+        }
+      });
+    } else {
+      console.log('Using existing output tokens price:', outputTokensPrice.id);
+    }
+
+    // 9. Log setup summary
+    console.log('Stripe meters and prices setup complete:', {
+      meters: {
+        input: {
+          id: inputTokensMeter.id,
+          status: inputTokensMeter.status,
+          isNew: !existingMeters.data.find(m => m.event_name === 'input_tokens')
+        },
+        output: {
+          id: outputTokensMeter.id,
+          status: outputTokensMeter.status,
+          isNew: !existingMeters.data.find(m => m.event_name === 'output_tokens')
+        }
+      },
+      prices: {
+        input: {
+          id: inputTokensPrice.id,
+          isNew: !existingPrices.data.find(p => p.lookup_key === 'input_tokens_price')
+        },
+        output: {
+          id: outputTokensPrice.id,
+          isNew: !existingPrices.data.find(p => p.lookup_key === 'output_tokens_price')
+        }
+      }
+    });
+
+    // 10. Return the resources
+    return {
+      inputTokens: {
+        meter: inputTokensMeter,
+        price: inputTokensPrice
+      },
+      outputTokens: {
+        meter: outputTokensMeter,
+        price: outputTokensPrice
+      }
+    };
+
+  } catch (error) {
+    console.error('Failed to setup Stripe meters and pricing:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    });
+    throw error;
+  }
+}
+
 // Main API handler
 export async function POST(req: Request) {
   console.log('Organizations API - Received create organization request');
@@ -51,7 +225,6 @@ export async function POST(req: Request) {
     // 1. Get and validate session with explicit authOptions
     const session = await getServerSession(authOptions);
     
-    // Enhanced session logging
     console.log('Organizations API - Session details:', {
       hasSession: !!session,
       hasUser: !!session?.user,
@@ -60,27 +233,10 @@ export async function POST(req: Request) {
       sessionData: JSON.stringify(session, null, 2)
     });
     
-    // Improved session validation
-    if (!session) {
-      console.error('Organizations API - No session found');
+    if (!session?.user?.id) {
+      console.error('Organizations API - Invalid session');
       return NextResponse.json(
-        { error: "No session found" },
-        { status: 401 }
-      );
-    }
-
-    if (!session.user) {
-      console.error('Organizations API - No user in session');
-      return NextResponse.json(
-        { error: "No user found in session" },
-        { status: 401 }
-      );
-    }
-
-    if (!session.user.id) {
-      console.error('Organizations API - No user ID in session');
-      return NextResponse.json(
-        { error: "No user ID found" },
+        { error: "Unauthorized" },
         { status: 401 }
       );
     }
@@ -130,7 +286,7 @@ export async function POST(req: Request) {
       id: orgId,
       name: name.trim(),
       slug,
-      createdBy: user.id, // Use verified user ID
+      createdBy: user.id,
       metadata: {
         ...metadata,
         createdAt: now.toISOString(),
@@ -138,8 +294,6 @@ export async function POST(req: Request) {
       createdAt: now,
       updatedAt: now
     };
-
-    console.log('Organizations API - Creating organization with data:', orgData);
 
     // 6. Execute transaction with enhanced error handling
     const result = await db.transaction(async (tx) => {
@@ -170,9 +324,15 @@ export async function POST(req: Request) {
         throw new Error('Failed to create organization membership');
       }
 
-      // Handle Stripe integration if enabled
+      // Handle Stripe integration
       if (stripe) {
         try {
+          console.log('Setting up Stripe billing...');
+
+          // Setup meters and prices
+          const stripeResources = await setupStripeMetersAndPricing();
+          
+          // Create Stripe customer
           const customer = await stripe.customers.create({
             email: user.email,
             metadata: {
@@ -182,17 +342,75 @@ export async function POST(req: Request) {
             name: org.name,
           });
 
+          // Create subscription
+          const subscription = await stripe.subscriptions.create({
+            customer: customer.id,
+            items: [
+              {
+                price: stripeResources.inputTokens.price.id,
+                metadata: {
+                  meter_id: stripeResources.inputTokens.meter.id
+                }
+              },
+              {
+                price: stripeResources.outputTokens.price.id,
+                metadata: {
+                  meter_id: stripeResources.outputTokens.meter.id
+                }
+              }
+            ],
+            metadata: {
+              organizationId: org.id
+            },
+            payment_behavior: 'default_incomplete',
+            collection_method: 'charge_automatically',
+            description: `Metered billing subscription for ${org.name}`
+          });
+
+          // Update organization with Stripe details
           await tx
             .update(organizations)
             .set({ 
               stripeCustomerId: customer.id,
-              updatedAt: now
+              stripeSubscriptionId: subscription.id,
+              updatedAt: now,
+              metadata: {
+                ...org.metadata,
+                stripeEnabled: true,
+                stripeMeters: {
+                  inputTokens: {
+                    meterId: stripeResources.inputTokens.meter.id,
+                    priceId: stripeResources.inputTokens.price.id
+                  },
+                  outputTokens: {
+                    meterId: stripeResources.outputTokens.meter.id,
+                    priceId: stripeResources.outputTokens.price.id
+                  }
+                }
+              }
             })
             .where(eq(organizations.id, org.id));
             
           org.stripeCustomerId = customer.id;
+          org.stripeSubscriptionId = subscription.id;
+
+          console.log('Stripe setup completed:', {
+            organizationId: org.id,
+            customerId: customer.id,
+            subscriptionId: subscription.id,
+            meters: {
+              inputTokens: stripeResources.inputTokens.meter.id,
+              outputTokens: stripeResources.outputTokens.meter.id
+            }
+          });
         } catch (error) {
-          console.error('Failed to create Stripe customer:', error);
+          console.error('Failed to setup Stripe billing:', error);
+          // Log detailed error but don't block organization creation
+          console.error('Stripe setup error details:', {
+            orgId: org.id,
+            userId: user.id,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
         }
       }
 
@@ -204,7 +422,6 @@ export async function POST(req: Request) {
       };
 
       const metadataUpdated = await updateUserMetadata(user.id, userMetadataUpdate);
-      
       if (!metadataUpdated) {
         console.warn('Failed to update user metadata, but organization was created');
       }
@@ -217,10 +434,8 @@ export async function POST(req: Request) {
 
     // 7. Revalidate cached paths
     revalidatePath('/');
-    revalidatePath('/');
-    revalidatePath('/');
-
-    console.log('Organizations API - Organization created successfully:', result.organization.id);
+    revalidatePath('/organizations');
+    revalidatePath(`/organizations/${result.organization.id}`);
 
     // 8. Return response
     return NextResponse.json({
@@ -229,7 +444,9 @@ export async function POST(req: Request) {
         id: result.organization.id,
         name: result.organization.name,
         slug: result.organization.slug,
-        metadata: result.organization.metadata
+        metadata: result.organization.metadata,
+        stripeCustomerId: result.organization.stripeCustomerId,
+        stripeSubscriptionId: result.organization.stripeSubscriptionId
       },
       membership: {
         role: result.membership.role

@@ -66,7 +66,7 @@ interface TokenPayload extends JWT {
 }
 
 // Update AuthState interface for consistency
-interface AuthState {
+export interface AuthState {
   userId: string;
   organizationId: string | null; // Updated to be nullable
   organizationRole?: 'owner' | 'admin' | 'member';

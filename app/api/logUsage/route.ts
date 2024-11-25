@@ -29,11 +29,10 @@ async function reportUsageToStripe(
 ) {
   const timestamp = Math.floor(Date.now() / 1000);
 
-  // Create meter events for input tokens
   if (promptTokens > 0) {
     await stripe.billing.meterEvents.create({
       event_name: 'input_tokens',
-      identifier: `input_${createId()}`, // Unique identifier for each event
+      identifier: `input_${createId()}`,
       payload: {
         stripe_customer_id: stripeCustomerId,
         value: promptTokens.toString(),
@@ -43,11 +42,10 @@ async function reportUsageToStripe(
     console.log(`Reported ${promptTokens} input tokens for customer ${stripeCustomerId}`);
   }
 
-  // Create meter events for output tokens
   if (completionTokens > 0) {
     await stripe.billing.meterEvents.create({
       event_name: 'output_tokens',
-      identifier: `output_${createId()}`, // Unique identifier for each event
+      identifier: `output_${createId()}`,
       payload: {
         stripe_customer_id: stripeCustomerId,
         value: completionTokens.toString(),
@@ -61,19 +59,23 @@ async function reportUsageToStripe(
 export async function POST(req: NextRequest) {
   return withCombinedAuth(req, async (userId, agentId) => {
     try {
-      // Parse request body
       const data = await req.json() as UsageLogRequest;
 
-      // Get the onboarding session with related user and agent data
+      // Get the onboarding session with all necessary relations
       const onboardingSession = await db.query.onboardingSessions.findFirst({
         where: eq(onboardingSessions.id, data.sessionId),
         with: {
-          user: true,
           agent: {
             with: {
-              user: true
+              creator: true,
+              site: {
+                with: {
+                  organization: true
+                }
+              }
             }
-          }
+          },
+          user: true
         }
       });
 
@@ -86,15 +88,20 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Unauthorized access to session" }, { status: 403 });
       }
 
+      // Get organization ID from the agent's site
+      const organizationId = onboardingSession.agent?.site?.organization?.id;
+      if (!organizationId) {
+        return NextResponse.json({ error: "Organization context not found" }, { status: 400 });
+      }
+
       // Determine effective user and Stripe customer IDs
       const effectiveUserId = onboardingSession.userId || 
-                            onboardingSession.agent?.userId || 
-                            onboardingSession.agent?.user?.id ||
+                            onboardingSession.agent?.creator?.id ||
                             userId;
 
       const stripeCustomerId = data.stripeCustomerId || 
                               onboardingSession.user?.stripeCustomerId ||
-                              onboardingSession.agent?.user?.stripeCustomerId;
+                              onboardingSession.agent?.creator?.stripeCustomerId;
 
       // Report usage to Stripe if we have a customer ID
       let stripeReported = false;
@@ -109,7 +116,6 @@ export async function POST(req: NextRequest) {
           console.log('Successfully reported usage to Stripe meters');
         } catch (error) {
           console.error('Failed to report usage to Stripe:', error);
-          // Continue with database logging even if Stripe reporting fails
         }
       } else {
         console.log('No Stripe customer ID available for usage reporting');
@@ -128,7 +134,8 @@ export async function POST(req: NextRequest) {
         totalTokens: data.totalTokens,
         stripeCustomerId: stripeCustomerId || null,
         reportingStatus: stripeReported ? 'reported' as const : 'pending' as const,
-        createdAt: new Date()
+        createdAt: new Date(),
+        organizationId // Add organization context
       };
 
       // Insert the primary usage log
@@ -139,23 +146,23 @@ export async function POST(req: NextRequest) {
         })
         .returning();
 
-      // If there's a different agent user, create a second log entry
+      // If there's a different agent creator than session user, create a second log entry
       if (onboardingSession.userId && 
-          onboardingSession.agent?.userId &&
-          onboardingSession.userId !== onboardingSession.agent.userId) {
+          onboardingSession.agent?.creator?.id &&
+          onboardingSession.userId !== onboardingSession.agent.creator.id) {
         
-        // If agent has their own Stripe customer ID, report their usage separately
-        const agentStripeCustomerId = onboardingSession.agent.user?.stripeCustomerId;
-        if (agentStripeCustomerId) {
+        // If agent creator has their own Stripe customer ID, report their usage separately
+        const agentCreatorStripeId = onboardingSession.agent.creator.stripeCustomerId;
+        if (agentCreatorStripeId) {
           try {
             await reportUsageToStripe(
-              agentStripeCustomerId,
+              agentCreatorStripeId,
               data.promptTokens,
               data.completionTokens
             );
-            console.log('Successfully reported agent usage to Stripe meters');
+            console.log('Successfully reported agent creator usage to Stripe meters');
           } catch (error) {
-            console.error('Failed to report agent usage to Stripe:', error);
+            console.error('Failed to report agent creator usage to Stripe:', error);
           }
         }
 
@@ -163,8 +170,8 @@ export async function POST(req: NextRequest) {
           .values({
             id: createId(),
             ...logData,
-            userId: onboardingSession.agent.userId,
-            stripeCustomerId: agentStripeCustomerId || null
+            userId: onboardingSession.agent.creator.id,
+            stripeCustomerId: agentCreatorStripeId || null
           });
       }
 
@@ -173,7 +180,8 @@ export async function POST(req: NextRequest) {
         id: result.id,
         effectiveUserId,
         stripeCustomerId,
-        stripeReported
+        stripeReported,
+        organizationId
       });
 
     } catch (error) {

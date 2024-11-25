@@ -16,7 +16,7 @@ export default async function Tab2Page({
 
   const agent = await getAgentById(decodeURIComponent(params.id));
 
-  if (!agent || agent.userId !== session.user.id) {
+  if (!agent || agent.createdBy !== session.user.id) {
     notFound();
   }
 
