@@ -141,6 +141,13 @@
       "when": 1732421605945,
       "tag": "0019_bored_shooting_star",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1732463607771,
+      "tag": "0020_gifted_winter_soldier",
+      "breakpoints": true
     }
   ]
 }

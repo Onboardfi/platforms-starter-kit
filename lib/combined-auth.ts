@@ -18,8 +18,16 @@ declare module "next-auth/jwt" {
     email?: string;
     user?: any;
     sub?: string;
-    organizationId?: string | null; // Updated to match other declaration
+    organizationId?: string | null;
     organizationRole?: 'owner' | 'admin' | 'member';
+    hasInvite?: boolean;
+    hasPendingInvites?: boolean;
+    pendingInviteCount?: number;
+    pendingInvites?: Array<{
+      organizationId: string;
+      role: 'owner' | 'admin' | 'member';
+    }>;
+    updatedAt?: number;
   }
 }
 

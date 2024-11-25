@@ -1,3 +1,5 @@
+// /lib/onboarding-auth.ts
+
 import { cookies } from 'next/headers';
 import { getToken } from 'next-auth/jwt';
 import { NextRequest, NextResponse } from 'next/server';
@@ -7,6 +9,7 @@ import { getAgentById } from '@/lib/actions';
 import { organizationMemberships } from '@/lib/schema';
 import { eq, and } from 'drizzle-orm';
 import db from './db';
+import { acceptOrganizationInvite } from './organization-invites'; // Import the accept function
 
 const JWT_SECRET = process.env.NEXTAUTH_SECRET || '';
 

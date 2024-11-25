@@ -1,3 +1,5 @@
+// /components/onboarding-form.tsx
+
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
@@ -5,7 +7,11 @@ import { toast } from 'sonner';
 import LoadingDots from "@/components/icons/loading-dots";
 import Image from "next/image";
 
-const OnboardingForm = () => {
+interface OnboardingFormProps {
+  inviteToken?: string | null;
+}
+
+const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
   const router = useRouter();
   const { data: session, status, update: updateSession } = useSession();
   const [loading, setLoading] = useState(false);
@@ -56,72 +62,88 @@ const OnboardingForm = () => {
     
     return false;
   };
-// In your onboarding form component:
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  
-  if (loading || !formData.organizationName.trim()) {
-    return;
-  }
 
-  setLoading(true);
-  const toastId = toast.loading('Creating your organization...');
-
-  try {
-    const response = await fetch('/api/organizations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: formData.organizationName.trim(),
-        metadata: {
-          companySize: formData.companySize,
-          industry: formData.industry.trim(),
-        }
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to create organization');
-    }
-
-    const organizationId = data.organization?.id;
-    if (!organizationId) {
-      throw new Error('No organization ID received from server');
-    }
-
-    // Update session with new organization data
-    await updateSession({
-      organizationId,
-      needsOnboarding: false
-    });
-
-    // Wait for session to be updated
-    const sessionUpdated = await waitForSessionUpdate(organizationId);
-    if (!sessionUpdated) {
-      throw new Error('Session update timeout - please refresh the page');
-    }
-
-    toast.success('Organization created successfully!', { id: toastId });
-    router.push('/app/dashboard');
-
-  } catch (error: any) {
-    console.error('Organization creation error:', error);
-    toast.error(error.message || 'Failed to create organization', { id: toastId });
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     
-    if (retryCount >= 2) {
-      toast.error(
-        'Having trouble creating your organization. Please refresh the page and try again.',
-        { duration: 5000 }
-      );
-    } else {
-      setRetryCount(prev => prev + 1);
+    if (loading || !formData.organizationName.trim()) {
+      return;
     }
-  } finally {
-    setLoading(false);
-  }
-};
+
+    setLoading(true);
+    const toastId = toast.loading('Creating your organization...');
+
+    try {
+      const response = await fetch('/api/organizations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.organizationName.trim(),
+          metadata: {
+            companySize: formData.companySize,
+            industry: formData.industry.trim(),
+          }
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create organization');
+      }
+
+      const organizationId = data.organization?.id;
+      if (!organizationId) {
+        throw new Error('No organization ID received from server');
+      }
+
+      // Update session with new organization data
+      await updateSession({
+        organizationId,
+        needsOnboarding: false
+      });
+
+      // Wait for session to be updated
+      const sessionUpdated = await waitForSessionUpdate(organizationId);
+      if (!sessionUpdated) {
+        throw new Error('Session update timeout - please refresh the page');
+      }
+
+      // If there's an invite token, process the invite
+      if (inviteToken) {
+        const acceptResponse = await fetch('/api/organizations/invites', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: inviteToken }),
+        });
+
+        if (!acceptResponse.ok) {
+          throw new Error('Failed to accept invite token');
+        }
+
+        // Optionally, handle the response from accepting the invite
+      }
+
+      toast.success('Organization created successfully!', { id: toastId });
+      router.push('/app/dashboard');
+
+    } catch (error: any) {
+      console.error('Organization creation error:', error);
+      toast.error(error.message || 'Failed to create organization', { id: toastId });
+      
+      if (retryCount >= 2) {
+        toast.error(
+          'Having trouble creating your organization. Please refresh the page and try again.',
+          { duration: 5000 }
+        );
+      } else {
+        setRetryCount(prev => prev + 1);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-neutral-950">

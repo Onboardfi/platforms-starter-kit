@@ -30,6 +30,38 @@ export interface OrganizationMetadata {
 }
 
 
+export const organizationInvites = pgTable(
+  'organization_invites',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId()),
+    organizationId: text('organizationId')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    role: text('role').$type<'owner' | 'admin' | 'member'>().notNull().default('member'),
+    token: text('token').notNull().unique(),
+    status: text('status')
+      .$type<'pending' | 'accepted' | 'cancelled' | 'expired'>()
+      .notNull()
+      .default('pending'),
+    invitedBy: text('invitedBy')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    invitedAt: timestamp('invitedAt', { mode: 'date' }).defaultNow().notNull(),
+    expiresAt: timestamp('expiresAt', { mode: 'date' }).notNull(),
+    acceptedAt: timestamp('acceptedAt', { mode: 'date' }),
+    metadata: jsonb('metadata').$type<Record<string, any>>().default({}),
+  },
+  (table) => ({
+    emailOrgIdx: uniqueIndex('org_invites_email_org_idx').on(
+      table.email,
+      table.organizationId
+    ),
+    tokenIdx: index('org_invites_token_idx').on(table.token),
+    statusIdx: index('org_invites_status_idx').on(table.status),
+    orgIdIdx: index('org_invites_org_idx').on(table.organizationId),
+  })
+);
 
 
 // In schema.ts, update the users table definition:
@@ -300,6 +332,24 @@ export const stepsRelations = relations(steps, ({ one, many }) => ({
   }),
   messages: many(messages),
 }));
+
+
+// Add relations
+export const organizationInvitesRelations = relations(
+  organizationInvites,
+  ({ one }) => ({
+    organization: one(organizations, {
+      fields: [organizationInvites.organizationId],
+      references: [organizations.id],
+    }),
+    inviter: one(users, {
+      fields: [organizationInvites.invitedBy],
+      references: [users.id],
+    }),
+  })
+);
+
+
 
 export type SelectStep = typeof steps.$inferSelect;
 
@@ -759,3 +809,6 @@ export const getMessageKey = (messageId: string) =>
 export const getMessageOrderKey = (conversationId: string) => 
   `${MESSAGE_ORDER_PREFIX}${conversationId}`;
 
+
+export type SelectOrganizationInvite = typeof organizationInvites.$inferSelect;
+export type InsertOrganizationInvite = typeof organizationInvites.$inferInsert;

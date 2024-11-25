@@ -1,4 +1,4 @@
-//Users/bobbygilbert/Documents/GitHub/platforms-starter-kit/lib/actions.ts
+// lib/actions.ts
 
 "use server";
 
@@ -9,7 +9,7 @@ import { put } from "@vercel/blob";
 import { eq, InferModel, desc, asc, and } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 import { revalidateTag } from "next/cache";
-import {  withSiteAuth, withAgentAuth } from "./auth";
+import { withSiteAuth, withAgentAuth } from "./auth";
 import db from "./db";
 import { Agent, Site } from '@/types/agent';
 import { redirect } from "next/navigation";
@@ -26,7 +26,6 @@ import {
   users, 
   onboardingSessions, 
   SelectOnboardingSession,
-  
 } from './schema';
 import { 
   AgentState, 
@@ -60,7 +59,6 @@ import {
 import { sql } from "drizzle-orm";
 
 // Import new tables for organization context
-// Update the organization-related imports
 import { 
   organizations, 
   organizationMemberships, 
@@ -69,7 +67,6 @@ import {
   SelectOrganizationWithRelations
 } from './schema';
 import type { Session } from 'next-auth';
-// Define the ExtendedSession type properly
 import { 
   hasValidOrganization, 
   hasCompleteOrganizationContext, 
@@ -89,8 +86,11 @@ declare module "next-auth" {
       image: string | null;
     };
     organizationId?: string | null; // Make organizationId optional and nullable
+    needsOnboarding?: boolean;
+    hasInvite?: boolean;
   }
- interface User {
+  
+  interface User {
     id: string;
     name?: string | null;
     username?: string | null;
@@ -99,6 +99,7 @@ declare module "next-auth" {
     emailVerified?: Date | null;
   }
 }
+
 interface CreateSiteResponse {
   error?: string;
   id?: string;
@@ -109,8 +110,10 @@ interface CreateAgentResponse {
   id?: string;
 }
 
-
-
+interface AuthError {
+  error: string;
+  code: 'UNAUTHORIZED' | 'NO_ORG_CONTEXT' | 'NOT_MEMBER';
+}
 
 // Nanoid configuration for unique ID generation
 const nanoid = customAlphabet(
@@ -125,7 +128,6 @@ type PostWithSite = typeof posts.$inferSelect & {
   organization: SelectOrganization;
 };
 
-
 // Update AgentWithSite type
 type AgentWithSite = typeof agents.$inferSelect & {
   site: SelectSite;
@@ -139,6 +141,7 @@ type AgentWithRelations = typeof agents.$inferSelect & {
   };
   creator: typeof users.$inferSelect;
 };
+
 // Helper function to verify organization membership
 async function verifyOrganizationAccess(userId: string, organizationId: string): Promise<boolean> {
   const membership = await db.query.organizationMemberships.findFirst({
@@ -228,9 +231,6 @@ export async function getSitesWithAgentCount() {
   .groupBy(sites.id)
   .orderBy(desc(sites.createdAt));
 }
-
-
-
 
 // Update site properties, ensuring it belongs to the user's organization
 export const updateSite = withSiteAuth(
@@ -385,7 +385,6 @@ export const deleteSite = withSiteAuth(
 
 // ===== Agent Management Functions =====
 
-
 async function getAgentWithRelations(agentId: string, organizationId: string) {
   return await db.query.agents.findFirst({
     where: and(
@@ -403,16 +402,6 @@ async function getAgentWithRelations(agentId: string, organizationId: string) {
     }
   }) as AgentWithRelations;
 }
-
-
-
-
-
-
-
-
-
-
 
 function formatAgentResponse(
   agent: AgentWithRelations,
@@ -465,6 +454,7 @@ export const getAgentById = async (agentId: string): Promise<SelectAgent | null>
 
   return formatAgentResponse(agent, session.organizationId, session.user.id);
 };
+
 // Create a new agent within a site, ensuring the site belongs to the user's organization
 export const createAgent = withSiteAuth(
   async (_: FormData, site: SelectSite): Promise<CreateAgentResponse> => {
@@ -882,8 +872,6 @@ export const updatePost = async (
 };
 
 
-
-
 // ===== User Management Functions =====
 
 // Edit user details, ensuring it belongs to the user's organization
@@ -1006,7 +994,6 @@ export async function getAgentsWithSessionCount(siteId: string, createdBy: strin
 // ===== Onboarding Session Management Functions =====
 
 // Create a new onboarding session, ensuring it belongs to the user's organization
-// Update createOnboardingSession function
 export const createOnboardingSession = async (
   agentId: string,
   data: {
@@ -1257,17 +1244,6 @@ export const completeStep = async (
       : step
   );
 
-
-
-
-  // Updated error type for better error handling
-interface AuthError {
-  error: string;
-  code: 'UNAUTHORIZED' | 'NO_ORG_CONTEXT' | 'NOT_MEMBER';
-}
-
-
-
   await updateSessionState(sessionId, { steps: updatedSteps });
 
   // Then update PostgreSQL
@@ -1388,8 +1364,6 @@ export const updateAgentStepsWithoutAuth = async (
 };
 
 
-
-
 // ===== Organization Membership Verification =====
 
 // (Already included in helper function `verifyOrganizationAccess`)
@@ -1397,3 +1371,31 @@ export const updateAgentStepsWithoutAuth = async (
 // ===== Re-exporting Functions =====
 
 export { addMessage, getConversationMessages, createConversation, getSessionConversations };
+
+// ===== Logging Exports =====
+
+console.log('Exported functions:', {
+  createSite,
+  getSitesWithAgentCount,
+  updateSite,
+  deleteSite,
+  getAgentById,
+  createAgent,
+  updateAgentMetadata,
+  updateAgentAPI,
+  deleteAgent,
+  createPost,
+  updatePost,
+  editUser,
+  getAgentsWithSessionCount,
+  createOnboardingSession,
+  getSessions,
+  deleteSession,
+  completeStep,
+  updateStepCompletionStatus,
+  updateAgentStepsWithoutAuth,
+  addMessage,
+  getConversationMessages,
+  createConversation,
+  getSessionConversations
+});
