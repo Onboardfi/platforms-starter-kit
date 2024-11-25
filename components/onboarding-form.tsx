@@ -36,7 +36,7 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
   useEffect(() => {
     if (status === 'authenticated' && session?.organizationId) {
       console.log('Redirecting to dashboard - Organization exists:', session.organizationId);
-      router.push('/app/dashboard');
+      router.push('/');
     }
   }, [session, status, router]);
 
@@ -125,7 +125,7 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
       }
 
       toast.success('Organization created successfully!', { id: toastId });
-      router.push('/app/dashboard');
+      router.push('/');
 
     } catch (error: any) {
       console.error('Organization creation error:', error);

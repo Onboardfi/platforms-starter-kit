@@ -34,7 +34,7 @@ async function InvitePage({ params }: Props) {
     }
 
     // 4. Successful acceptance - redirect to dashboard
-    redirect('/app/dashboard');
+    redirect('/');
     
   } catch (error) {
     console.error('Error processing invite:', error);

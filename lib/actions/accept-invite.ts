@@ -141,9 +141,9 @@ export async function acceptInvite(token: string): Promise<InviteResult> {
     console.log(`Final Membership: ${membership.id}`);
 
     // 4. Revalidate necessary paths
-    revalidatePath('/app/dashboard');
-    revalidatePath('/app/settings');
-    revalidatePath('/app/organization');
+    revalidatePath('/');
+    revalidatePath('/');
+    revalidatePath('/');
 
     return {
       success: true,

@@ -216,9 +216,9 @@ export async function POST(req: Request) {
     });
 
     // 7. Revalidate cached paths
-    revalidatePath('/app/dashboard');
-    revalidatePath('/app/settings');
-    revalidatePath('/app/organization');
+    revalidatePath('/');
+    revalidatePath('/');
+    revalidatePath('/');
 
     console.log('Organizations API - Organization created successfully:', result.organization.id);
 

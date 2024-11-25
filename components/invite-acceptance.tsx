@@ -67,7 +67,7 @@ export default function InviteAcceptance() {
       });
 
       // Redirect to dashboard
-      window.location.href = '/app/dashboard';
+      window.location.href = '/';
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to accept invite';
       toast({

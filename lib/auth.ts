@@ -366,7 +366,7 @@ export const authOptions: NextAuthOptions = {
         if (url.includes('callback')) {
           const token = await getToken({ req: { cookies: url } as any });
           if (token?.organizationId) {
-            return `${baseUrl}/app/dashboard`;
+            return `${baseUrl}/`;
           }
           return `${baseUrl}/onboarding`;
         }

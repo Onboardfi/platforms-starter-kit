@@ -34,7 +34,7 @@ const OnboardingPage = () => {
     // If user already has an organization, redirect to dashboard
     if (session?.organizationId) {
       console.log('OnboardingPage - User has organizationId. Redirecting to /app/dashboard.');
-      router.push('/app/dashboard');
+      router.push('/');
       return;
     }
 
