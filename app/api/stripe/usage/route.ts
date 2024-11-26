@@ -1,13 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
 import db from '@/lib/db';
-import { users, usageLogs, onboardingSessions, organizations } from '@/lib/schema';
+import { users, usageLogs, onboardingSessions, organizations, organizationMemberships } from '@/lib/schema';
 import { eq, sum, and } from 'drizzle-orm';
 import { getToken } from 'next-auth/jwt';
-import { verifyOnboardingToken } from '@/lib/onboarding-auth';
+import { createId } from '@paralleldrive/cuid2';
 
 const PRICE_PER_1K_INPUT_TOKENS = 1.5;   // $0.015 per 1K input tokens
 const PRICE_PER_1K_OUTPUT_TOKENS = 2.0;   // $0.020 per 1K output tokens
+
+interface V2MeterEvent {
+  object: 'v2.billing.meter_event';
+  created: string;
+  livemode: boolean;
+  identifier: string;
+  event_name: string;
+  timestamp: string;
+  payload: {
+    stripe_customer_id: string;
+    value: string;
+    metadata?: string;
+  };
+}
+
+type MeterEventResponse = {
+  success: boolean;
+  id?: string;
+  error?: any;
+  type: 'input' | 'output';
+};
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-agent-id',
+};
 
 // Helper function to align timestamp to start of day (UTC)
 function alignToStartOfDay(timestamp: number) {
@@ -23,11 +50,153 @@ function alignToEndOfDay(timestamp: number) {
   return Math.floor(date.getTime() / 1000);
 }
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-agent-id',
-};
+async function verifyStripeMeters() {
+  try {
+    console.log('Checking active Stripe meters...');
+    const meters = await stripe.billing.meters.list({ status: 'active' });
+    const inputMeter = meters.data.find(m => m.event_name === 'input_tokens');
+    const outputMeter = meters.data.find(m => m.event_name === 'output_tokens');
+    
+    console.log('Active meters:', { 
+      inputMeter: inputMeter ? {
+        id: inputMeter.id,
+        status: inputMeter.status,
+        event_name: inputMeter.event_name
+      } : null,
+      outputMeter: outputMeter ? {
+        id: outputMeter.id,
+        status: outputMeter.status,
+        event_name: outputMeter.event_name
+      } : null
+    });
+
+    if (!inputMeter || !outputMeter) {
+      throw new Error('Required meters not found');
+    }
+
+    return { inputMeter, outputMeter };
+  } catch (error) {
+    console.error('Error verifying Stripe meters:', error);
+    throw error;
+  }
+}
+
+async function reportUsageToStripe(
+  stripeCustomerId: string, 
+  promptTokens: number,
+  completionTokens: number,
+  organizationId: string
+): Promise<MeterEventResponse[]> {
+  const timestamp = new Date().toISOString();
+  const identifier = createId();
+  const reportPromises: Promise<MeterEventResponse>[] = [];
+
+  if (promptTokens > 0) {
+    reportPromises.push(
+      stripe.v2.billing.meterEvents.create({
+        event_name: 'input_tokens',
+        identifier: `input_${identifier}`,
+        timestamp,
+        payload: {
+          stripe_customer_id: stripeCustomerId,
+          value: promptTokens.toString(),
+          metadata: JSON.stringify({
+            organizationId,
+            type: 'input'
+          })
+        }
+      } as any).then((response: unknown) => {
+        const event = response as V2MeterEvent;
+        return {
+          success: true,
+          id: event.identifier,
+          type: 'input' as const
+        };
+      }).catch(error => ({
+        success: false,
+        error,
+        type: 'input' as const
+      }))
+    );
+  }
+
+  if (completionTokens > 0) {
+    reportPromises.push(
+      stripe.v2.billing.meterEvents.create({
+        event_name: 'output_tokens',
+        identifier: `output_${identifier}`,
+        timestamp,
+        payload: {
+          stripe_customer_id: stripeCustomerId,
+          value: completionTokens.toString(),
+          metadata: JSON.stringify({
+            organizationId,
+            type: 'output'
+          })
+        }
+      } as any).then((response: unknown) => {
+        const event = response as V2MeterEvent;
+        return {
+          success: true,
+          id: event.identifier,
+          type: 'output' as const
+        };
+      }).catch(error => ({
+        success: false,
+        error,
+        type: 'output' as const
+      }))
+    );
+  }
+
+  return Promise.all(reportPromises);
+}
+
+async function getOrganizationContext(token: any) {
+  let organizationId: string | null = null;
+  let stripeCustomerId: string | null = null;
+  let effectiveUserId = 'anonymous';
+
+  if (token?.sub) {
+    effectiveUserId = token.sub;
+    
+    // First try to get organization context from token
+    if (token.organizationId) {
+      const org = await db.query.organizations.findFirst({
+        where: eq(organizations.id, token.organizationId)
+      });
+      if (org?.stripeCustomerId) {
+        stripeCustomerId = org.stripeCustomerId;
+        organizationId = org.id;
+        console.log('Found organization from token:', {
+          organizationId,
+          hasStripeCustomer: true
+        });
+      }
+    }
+    
+    // If no org context in token, try to get from user's membership
+    if (!stripeCustomerId) {
+      const membership = await db.query.organizationMemberships.findFirst({
+        where: eq(organizationMemberships.userId, token.sub),
+        with: {
+          organization: true
+        }
+      });
+      
+      if (membership?.organization?.stripeCustomerId) {
+        stripeCustomerId = membership.organization.stripeCustomerId;
+        organizationId = membership.organizationId;
+        console.log('Found organization from membership:', {
+          organizationId,
+          hasStripeCustomer: true
+        });
+      }
+    }
+  }
+
+  return { organizationId, stripeCustomerId, effectiveUserId };
+}
 
 export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders });
@@ -37,52 +206,16 @@ export async function GET(req: NextRequest) {
   try {
     // First try to get auth token
     const token = await getToken({ req });
-    let organizationId: string | null = null;
-    let effectiveUserId = 'anonymous';
-    let stripeCustomerId: string | null = null;
+    const { organizationId, stripeCustomerId, effectiveUserId } = await getOrganizationContext(token);
     
     console.log('Initial auth state:', { 
       hasToken: !!token, 
-      userId: token?.sub 
+      userId: token?.sub,
+      organizationId,
+      hasStripeCustomer: !!stripeCustomerId
     });
 
-    // Check for auth token first
-    if (token?.sub) {
-      effectiveUserId = token.sub;
-      const user = await db.query.users.findFirst({
-        where: eq(users.id, token.sub),
-      });
-      stripeCustomerId = user?.stripeCustomerId || null;
-      console.log('Found authenticated user:', {
-        userId: token.sub,
-        hasStripeCustomer: !!stripeCustomerId
-      });
-    } 
-    // If no auth token, check for onboarding token
-    else {
-      const onboardingToken = req.cookies.get('onboarding_token')?.value;
-      if (onboardingToken) {
-        const tokenData = await verifyOnboardingToken(onboardingToken);
-        if (tokenData) {
-          organizationId = tokenData.organizationId;
-          effectiveUserId = tokenData.userId;
-
-          // Get organization's stripe customer ID if available
-          if (organizationId) {
-            const org = await db.query.organizations.findFirst({
-              where: eq(organizations.id, organizationId)
-            });
-            stripeCustomerId = org?.stripeCustomerId || null;
-            console.log('Found organization context:', {
-              organizationId,
-              hasStripeCustomer: !!stripeCustomerId
-            });
-          }
-        }
-      }
-    }
-
-    // Return empty usage data for users without Stripe accounts
+    // Return empty usage data if no Stripe customer found
     if (!stripeCustomerId) {
       console.log('No Stripe customer ID found, returning empty usage data');
       return NextResponse.json({
@@ -174,11 +307,6 @@ export async function GET(req: NextRequest) {
       }) : null
     ]);
 
-    console.log('Meter summaries fetched:', {
-      hasInputSummaries: !!inputSummaries,
-      hasOutputSummaries: !!outputSummaries
-    });
-
     // Calculate totals from meter events
     const totalInputTokens = inputSummaries?.data.reduce(
       (sum, summary) => sum + summary.aggregated_value, 
@@ -190,11 +318,7 @@ export async function GET(req: NextRequest) {
       0
     ) || 0;
 
-    // Get backup usage from database if meter events are not yet available
-    const dbQuery = organizationId ? 
-      eq(usageLogs.organizationId, organizationId) :
-      eq(usageLogs.userId, effectiveUserId);
-
+    // Get backup usage from database
     const dbUsage = await db
       .select({
         totalPromptTokens: sum(usageLogs.promptTokens),
@@ -202,12 +326,7 @@ export async function GET(req: NextRequest) {
         totalTokens: sum(usageLogs.totalTokens),
       })
       .from(usageLogs)
-      .where(dbQuery);
-
-    console.log('Database usage fetched:', {
-      promptTokens: dbUsage[0].totalPromptTokens,
-      completionTokens: dbUsage[0].totalCompletionTokens
-    });
+      .where(eq(usageLogs.organizationId, organizationId as string));
 
     // Use the larger value between meter events and database records
     const finalInputTokens = Math.max(totalInputTokens, Number(dbUsage[0].totalPromptTokens) || 0);
@@ -218,19 +337,12 @@ export async function GET(req: NextRequest) {
     const outputCost = (finalOutputTokens / 1000) * PRICE_PER_1K_OUTPUT_TOKENS;
     const estimatedCost = Math.round(inputCost + outputCost);
 
-    console.log('Calculated usage totals:', {
-      inputTokens: finalInputTokens,
-      outputTokens: finalOutputTokens,
-      estimatedCost
-    });
-
     // Get upcoming invoice
     let upcomingInvoice;
     try {
       upcomingInvoice = await stripe.invoices.retrieveUpcoming({
         customer: stripeCustomerId,
       });
-      console.log('Retrieved upcoming invoice amount:', upcomingInvoice.amount_due);
     } catch (error) {
       console.error('Error fetching upcoming invoice:', error);
     }
@@ -269,4 +381,50 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export const runtime = 'nodejs';
+export async function POST(req: NextRequest) {
+  const token = await getToken({ req });
+  if (!token?.sub) {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401, headers: corsHeaders }
+    );
+  }
+
+  try {
+    const reqData = await req.json();
+    const { organizationId, stripeCustomerId } = await getOrganizationContext(token);
+
+    if (!organizationId) {
+      throw new Error('Organization context not found');
+    }
+
+    if (!stripeCustomerId) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'No Stripe customer found for organization' 
+      }, { headers: corsHeaders });
+    }
+
+    const result = await reportUsageToStripe(
+      stripeCustomerId,
+      reqData.promptTokens || 0,
+      reqData.completionTokens || 0,
+      organizationId
+    );
+
+    return NextResponse.json({ 
+      success: true,
+      results: result
+    }, { headers: corsHeaders });
+
+  } catch (error) {
+    console.error('Error reporting usage:', error);
+    return NextResponse.json(
+      { 
+        error: 'Failed to report usage',
+        details: error instanceof Error ? error.message : String(error)
+      },
+      { status: 500, headers: corsHeaders }
+    );
+  }
+}

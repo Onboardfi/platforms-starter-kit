@@ -1,3 +1,6 @@
+///Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/api/logUsage/route.ts
+
+
 import { NextRequest, NextResponse } from "next/server";
 import { withCombinedAuth } from "@/lib/combined-auth";
 import db from "@/lib/db";
@@ -5,7 +8,126 @@ import { usageLogs, onboardingSessions, organizations } from '@/lib/schema';
 import { createId } from '@paralleldrive/cuid2';
 import { eq } from "drizzle-orm";
 import { stripe } from '@/lib/stripe';
+import { Stripe } from 'stripe';
 
+interface V2MeterEvent {
+  object: 'v2.billing.meter_event';
+  created: string;
+  livemode: boolean;
+  identifier: string;
+  event_name: string;
+  timestamp: string;
+  payload: {
+    stripe_customer_id: string;
+    value: string;
+    metadata?: string;
+  };
+}
+
+type MeterEventResponse = {
+  success: boolean;
+  id?: string;
+  error?: any;
+  type: 'input' | 'output';
+};
+
+async function verifyStripeMeters() {
+  try {
+    console.log('Checking active Stripe meters...');
+    const meters = await stripe.billing.meters.list({ status: 'active' });
+    const inputMeter = meters.data.find(m => m.event_name === 'input_tokens');
+    const outputMeter = meters.data.find(m => m.event_name === 'output_tokens');
+    
+    console.log('Active meters:', { 
+      inputMeter: inputMeter ? {
+        id: inputMeter.id,
+        status: inputMeter.status,
+        event_name: inputMeter.event_name
+      } : null,
+      outputMeter: outputMeter ? {
+        id: outputMeter.id,
+        status: outputMeter.status,
+        event_name: outputMeter.event_name
+      } : null
+    });
+
+    if (!inputMeter || !outputMeter) {
+      throw new Error('Required meters not found');
+    }
+
+    return { inputMeter, outputMeter };
+  } catch (error) {
+    console.error('Error verifying Stripe meters:', error);
+    throw error;
+  }
+}
+async function reportUsageToStripe(
+  stripeCustomerId: string, 
+  promptTokens: number,
+  completionTokens: number,
+  organizationId: string
+): Promise<MeterEventResponse[]> {
+  const timestamp = new Date().toISOString();
+  const identifier = createId();
+  const reportPromises: Promise<MeterEventResponse>[] = [];
+
+  // First verify meters exist and are active
+  await verifyStripeMeters();
+
+  if (promptTokens > 0) {
+    reportPromises.push(
+      stripe.v2.billing.meterEvents.create({
+        event_name: 'input_tokens',
+        identifier: `input_${identifier}`,
+        timestamp,
+        payload: {
+          stripe_customer_id: stripeCustomerId,
+          value: promptTokens.toString(),
+          metadata: JSON.stringify({
+            organizationId,
+            type: 'input'
+          })
+        }
+      }).then((response: any) => ({
+        success: true,
+        id: response.identifier,
+        type: 'input' as const
+      })).catch(error => ({
+        success: false,
+        error,
+        type: 'input' as const
+      }))
+    );
+  }
+
+  if (completionTokens > 0) {
+    reportPromises.push(
+      stripe.v2.billing.meterEvents.create({
+        event_name: 'output_tokens',
+        identifier: `output_${identifier}`,
+        timestamp,
+        payload: {
+          stripe_customer_id: stripeCustomerId,
+          value: completionTokens.toString(),
+          metadata: JSON.stringify({
+            organizationId,
+            type: 'output'
+          })
+        }
+      }).then((response: any) => ({
+        success: true,
+        id: response.identifier,
+        type: 'output' as const
+      })).catch(error => ({
+        success: false,
+        error,
+        type: 'output' as const
+      }))
+    );
+  }
+
+  return Promise.all(reportPromises);
+}
 export async function POST(req: NextRequest) {
   return withCombinedAuth(req, async (userId, agentId) => {
     try {
@@ -27,7 +149,6 @@ export async function POST(req: NextRequest) {
         }
       });
 
-      // Double check organization context exists
       if (!onboardingSession?.organizationId) {
         console.error('Missing organization context:', { 
           sessionId: reqData.sessionId,
@@ -36,10 +157,7 @@ export async function POST(req: NextRequest) {
         throw new Error('Organization context not found');
       }
 
-      // Get organization context directly from session
       const organizationId = onboardingSession.organizationId;
-
-      // Get the organization to check Stripe details
       const organization = await db.query.organizations.findFirst({
         where: eq(organizations.id, organizationId)
       });
@@ -51,12 +169,12 @@ export async function POST(req: NextRequest) {
       // Handle user ID for anonymous users
       const effectiveUserId = userId?.startsWith('user-') ? null : userId;
 
-      // Create the usage log record with organization ID from session
-      const [result] = await db.insert(usageLogs)
+      // Create initial usage log record
+      const [logResult] = await db.insert(usageLogs)
         .values({
           id: createId(),
           userId: effectiveUserId,
-          organizationId, // Use organization ID directly from session
+          organizationId,
           sessionId: reqData.sessionId,
           messageId: reqData.messageId,
           messageRole: reqData.messageRole,
@@ -70,29 +188,67 @@ export async function POST(req: NextRequest) {
         })
         .returning();
 
-      // Report usage to Stripe if organization has Stripe set up
+      // Handle Stripe usage reporting if customer exists
       if (organization.stripeCustomerId) {
-        await reportUsageToStripe(
-          organization.stripeCustomerId,
-          reqData.promptTokens || 0,
-          reqData.completionTokens || 0,
-          organizationId
-        ).catch(error => {
-          console.error('Failed to report usage to Stripe:', error);
-        });
+        try {
+          const stripeResults = await reportUsageToStripe(
+            organization.stripeCustomerId,
+            reqData.promptTokens || 0,
+            reqData.completionTokens || 0,
+            organizationId
+          );
+
+          // Process results and update usage log with event IDs
+          for (const result of stripeResults) {
+            if (result.success && result.id) {
+              await db.update(usageLogs)
+                .set({ 
+                  stripeEventId: result.id,
+                  reportingStatus: 'reported'
+                })
+                .where(eq(usageLogs.id, logResult.id));
+
+              console.log('Updated usage log with Stripe event:', {
+                logId: logResult.id,
+                eventId: result.id,
+                type: result.type,
+                status: 'reported'
+              });
+            } else {
+              console.error('Failed to report usage to Stripe:', {
+                error: result.error,
+                type: result.type,
+                logId: logResult.id
+              });
+            }
+          }
+        } catch (stripeError) {
+          console.error('Failed to report usage to Stripe:', {
+            error: stripeError,
+            logId: logResult.id,
+            organizationId,
+            customerId: organization.stripeCustomerId
+          });
+          // Continue execution - don't fail the whole request
+        }
       }
 
       console.log('Successfully logged usage:', {
-        id: result.id,
+        id: logResult.id,
         sessionId: reqData.sessionId,
         organizationId,
         effectiveUserId,
-        hasStripeCustomer: !!organization.stripeCustomerId
+        hasStripeCustomer: !!organization.stripeCustomerId,
+        tokens: {
+          prompt: reqData.promptTokens,
+          completion: reqData.completionTokens,
+          total: reqData.totalTokens
+        }
       });
 
       return NextResponse.json({ 
         success: true,
-        id: result.id
+        id: logResult.id
       });
 
     } catch (error) {
@@ -100,88 +256,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { 
           error: "Failed to log usage",
-          details: error instanceof Error ? error.message : String(error),
-          context: {
-            sessionId: reqData?.sessionId,
-            userId,
-            messageId: reqData?.messageId
-          }
+          details: error instanceof Error ? error.message : String(error)
         },
-
         { status: 500 }
       );
     }
   });
-}
-
-async function reportUsageToStripe(
-  stripeCustomerId: string, 
-  promptTokens: number,
-  completionTokens: number,
-  organizationId: string
-) {
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const identifier = createId();
-
-  const reportPromises = [];
-
-  if (promptTokens > 0) {
-    reportPromises.push(
-      stripe.billing.meterEvents.create({
-        event_name: 'input_tokens',
-        identifier: `input_${identifier}`,
-        payload: {
-          stripe_customer_id: stripeCustomerId,
-          value: promptTokens.toString(),
-          timestamp,
-          metadata: JSON.stringify({
-            organizationId,
-            type: 'input'
-          })
-        }
-      }).catch(error => {
-        console.error('Failed to report input tokens to Stripe:', error);
-      })
-    );
-  }
-
-  if (completionTokens > 0) {
-    reportPromises.push(
-      stripe.billing.meterEvents.create({
-        event_name: 'output_tokens',
-        identifier: `output_${identifier}`,
-        payload: {
-          stripe_customer_id: stripeCustomerId,
-          value: completionTokens.toString(),
-          timestamp,
-          metadata: JSON.stringify({
-            organizationId,
-            type: 'output'
-          })
-        }
-      }).catch(error => {
-        console.error('Failed to report output tokens to Stripe:', error);
-      })
-    );
-  }
-
-  try {
-    const results = await Promise.allSettled(reportPromises);
-    
-    // Log results for debugging
-    results.forEach((result, index) => {
-      if (result.status === 'fulfilled') {
-        console.log(`Successfully reported meter event ${index + 1}:`, result.value);
-      } else {
-        console.error(`Failed to report meter event ${index + 1}:`, result.reason);
-      }
-    });
-
-    return results;
-  } catch (error) {
-    console.error('Error reporting usage to Stripe:', error);
-    throw error;
-  }
 }
 
 export const runtime = 'nodejs';
