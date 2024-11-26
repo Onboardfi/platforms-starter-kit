@@ -1,10 +1,10 @@
-// components/invite-member-form.tsx
 'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import LoadingDots from "@/components/icons/loading-dots";
 import { toast } from 'sonner';
+import { Mail } from 'lucide-react';
 
 interface InviteMemberFormProps {
   organizationId: string;
@@ -53,39 +53,52 @@ export function InviteMemberForm({ organizationId }: InviteMemberFormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-          Email Address
-        </label>
-        <div className="mt-1 flex rounded-md shadow-sm">
-          <input
-            type="email"
-            name="email"
-            id="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="teammate@company.com"
-            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black sm:text-sm dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
-          />
+    <form onSubmit={handleSubmit} className="flex items-center gap-4">
+      <div className="relative flex-1 max-w-md">
+        <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+          <Mail className="h-4 w-4 text-neutral-500" />
         </div>
+        <input
+          type="email"
+          name="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="teammate@company.com"
+          className="w-full pl-10 pr-4 py-2 rounded-lg bg-neutral-900/50 
+            border border-white/[0.08] hover:border-white/[0.12] 
+            focus:border-custom-green/50 focus:ring-custom-green/20
+            text-sm transition-colors shadow-dream"
+        />
       </div>
 
       <button
         type="submit"
         disabled={loading}
-        className={`${
-          loading
-            ? 'cursor-not-allowed bg-gray-100 dark:bg-gray-800'
-            : 'bg-black text-white hover:bg-gray-900 dark:bg-white dark:text-black dark:hover:bg-gray-100'
-        } flex h-10 w-full items-center justify-center rounded-md border text-sm transition-all focus:outline-none`}
+        className={`
+          relative group overflow-hidden px-4 py-2 rounded-lg font-medium 
+          transition-all duration-300
+          ${loading 
+            ? 'bg-neutral-800 cursor-not-allowed opacity-50' 
+            : 'bg-custom-green hover:bg-custom-green-light'
+          }
+          text-white shadow-dream hover:shadow-dream-lg
+          border border-white/[0.08] hover:border-white/[0.12]
+        `}
       >
-        {loading ? (
-          <LoadingDots color="#808080" />
-        ) : (
-          <p>Send Invitation</p>
-        )}
+        <div className="absolute inset-0 bg-gradient-to-r from-custom-green-light/0 
+          via-white/[0.1] to-custom-green-light/0 
+          opacity-0 group-hover:opacity-100 
+          transform -translate-x-full group-hover:translate-x-full 
+          transition-transform duration-1000" 
+        />
+        <span className="relative flex items-center gap-2">
+          {loading ? (
+            <LoadingDots color="#808080" />
+          ) : (
+            'Send Invite'
+          )}
+        </span>
       </button>
     </form>
   );

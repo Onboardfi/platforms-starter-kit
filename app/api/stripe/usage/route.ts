@@ -46,9 +46,14 @@ function alignToStartOfDay(timestamp: number) {
 // Helper function to align timestamp to end of day (UTC)
 function alignToEndOfDay(timestamp: number) {
   const date = new Date(timestamp * 1000);
-  date.setUTCHours(23, 59, 59, 999);
-  return Math.floor(date.getTime() / 1000);
+  date.setUTCHours(23, 59, 59, 0); // Changed from 999ms to 0ms
+  return Math.floor(date.getTime() / 1000) + 1; // Add 1 second to align with daily boundary
 }
+
+
+
+
+
 
 async function verifyStripeMeters() {
   try {

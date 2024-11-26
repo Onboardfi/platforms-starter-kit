@@ -1,3 +1,5 @@
+///Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/app/(dashboard)/site/[id]/not-found.tsx
+
 import Image from "next/image";
 
 export default function NotFoundSite() {
@@ -12,6 +14,7 @@ export default function NotFoundSite() {
         className="dark:hidden"
       />
       <Image
+
         alt="missing site"
         src="https://illustrations.popsy.co/white/falling.svg"
         width={400}
