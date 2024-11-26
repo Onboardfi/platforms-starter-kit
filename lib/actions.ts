@@ -384,30 +384,59 @@ export const deleteSite = withSiteAuth(
   }
 );
 
-// ===== Agent Management Functions =====
-async function getAgentWithRelations(agentId: string, organizationId: string) {
-  return await db.query.agents.findFirst({
-    where: and(
-      eq(agents.id, agentId),
-      exists(
-        db.selectDistinct({ dummy: sql<number>`1` })
-          .from(sites)
-          .where(and(
-            eq(sites.id, agents.siteId),
-            eq(sites.organizationId, organizationId)
-          ))
-      )
-    ),
-    with: {
-      site: {
-        with: {
-          organization: true,
-          creator: true
-        }
-      },
-      creator: true
+async function getAgentWithRelations(agentId: string) {
+  try {
+    // Get the agent with site and organization in a single query
+    const agent = await db.query.agents.findFirst({
+      where: eq(agents.id, agentId),
+      with: {
+        site: {
+          with: {
+            organization: true,
+            creator: true
+          }
+        },
+        creator: true
+      }
+    });
+
+    if (!agent) {
+      console.log('No agent found:', { agentId });
+      return null;
     }
-  }) as AgentWithRelations;
+
+    if (!agent.siteId || !agent.site) {
+      console.log('Agent found but missing site:', { agentId, siteId: agent.siteId });
+      return null;
+    }
+
+    return {
+      ...agent,
+      site: {
+        ...agent.site,
+        organization: agent.site.organization,
+        creator: agent.site.creator
+      },
+      creator: agent.creator || {
+        id: agent.createdBy,
+        name: null,
+        username: null,
+        gh_username: null,
+        email: '',
+        emailVerified: null,
+        image: null,
+        stripeCustomerId: null,
+        stripeSubscriptionId: null,
+        metadata: {},
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+    } as AgentWithRelations;
+
+  } catch (error) {
+    console.error('Error in getAgentWithRelations:', error);
+    throw error;
+  }
 }
 function formatAgentResponse(
   agent: AgentWithRelations,
@@ -453,23 +482,47 @@ function formatAgentResponse(
   };
 }
 
-// Remove the duplicate declaration and keep only this version
+
 export const getAgentById = async (agentId: string): Promise<SelectAgent | null> => {
-  const session = await getSession();
-  if (!session?.user.id || !session.organizationId) {
-    return null;
-  }
-
   try {
-    const agent = await getAgentWithRelations(agentId, session.organizationId);
-    if (!agent) return null;
+    // Get the agent with full relations
+    const agent = await getAgentWithRelations(agentId);
+    
+    // Log the found agent for debugging
+    console.log('Found agent:', {
+      agentId,
+      found: !!agent,
+      siteId: agent?.site?.id,
+      orgId: agent?.site?.organizationId
+    });
 
-    return formatAgentResponse(agent, session.organizationId, session.user.id);
+    if (!agent || !agent.site) {
+      console.log(`No agent found with ID: ${agentId}`);
+      return null;
+    }
+
+    // Format the response
+    return {
+      ...agent,
+      siteName: agent.site.name,
+      settings: agent.settings as AgentSettings,
+      site: {
+        ...agent.site,
+        organization: agent.site.organization,
+        creator: agent.site.creator
+      }
+    } as SelectAgent;
+
   } catch (error) {
     console.error('Error getting agent:', error);
+    console.error({
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      agentId
+    });
     return null;
   }
-};
+}
 // Create a new agent within a site, ensuring the site belongs to the user's organization
 
 export const createAgent = withSiteAuth(
@@ -587,23 +640,40 @@ export const updateAgentMetadata = withAgentAuth(
           };
         }
       } else {
-        const value = formData.get(key) as string;
-        updatedData = { [key]: value };
+        const value = formData.get(key);
+        // Handle boolean values properly
+        updatedData = {
+          [key]: key === "published" ? value === "true" : value
+        };
       }
 
-      // Update database
-      const updatedAgent = await db
+      // Update database using a subquery to verify site ownership
+      const [updatedAgent] = await db
         .update(agents)
         .set({
           ...updatedData,
           updatedAt: new Date(),
         })
-        .where(and(
-          eq(agents.id, agent.id),
-          eq(sites.organizationId, session.organizationId)
-        ))
-        .returning()
-        .then(res => res[0]);
+        .where(
+          and(
+            eq(agents.id, agent.id),
+            exists(
+              db.select({ id: sites.id })
+                .from(sites)
+                .where(
+                  and(
+                    eq(sites.id, agent.siteId as string),
+                    eq(sites.organizationId, session.organizationId)
+                  )
+                )
+            )
+          )
+        )
+        .returning();
+
+      if (!updatedAgent) {
+        throw new Error("Failed to update agent - no rows affected");
+      }
 
       // Cache the updated agent
       await redis.set(
@@ -675,21 +745,28 @@ export const updateAgentAPI = async (
     return { success: false, error: "Organization context required" };
   }
 
-  const agent = await db.query.agents.findFirst({
-    where: and(
-      eq(agents.id, data.id),
-      eq(sites.organizationId, session.organizationId)
-    ),
-    with: {
-      site: true,
-    },
-  }) as AgentWithSite | undefined;
-
-  if (!agent || agent.createdBy !== userId) {
-    return { success: false, error: "Agent not found or unauthorized" };
-  }
-
   try {
+    const agent = await db.query.agents.findFirst({
+      where: and(
+        eq(agents.id, data.id),
+        exists(
+          db.selectDistinct({ dummy: sql<number>`1` })
+            .from(sites)
+            .where(and(
+              eq(sites.id, agents.siteId),
+              eq(sites.organizationId, session.organizationId)
+            ))
+        )
+      ),
+      with: {
+        site: true,
+      },
+    }) as AgentWithSite | undefined;
+
+    if (!agent || agent.createdBy !== userId) {
+      return { success: false, error: "Agent not found or unauthorized" };
+    }
+
     await db
       .update(agents)
       .set({
@@ -698,7 +775,14 @@ export const updateAgentAPI = async (
       })
       .where(and(
         eq(agents.id, data.id),
-        eq(sites.organizationId, session.organizationId)
+        exists(
+          db.selectDistinct({ dummy: sql<number>`1` })
+            .from(sites)
+            .where(and(
+              eq(sites.id, agents.siteId),
+              eq(sites.organizationId, session.organizationId)
+            ))
+        )
       ))
       .returning();
 
@@ -719,6 +803,10 @@ export const updateAgentAPI = async (
     return { success: false, error: error.message };
   }
 };
+
+
+
+
 
 // Delete an agent, ensuring it belongs to the user's organization
 export const deleteAgent = async (
@@ -1013,27 +1101,34 @@ export const createOnboardingSession = async (
     authState?: {
       isAuthenticated: boolean;
       isAnonymous: boolean;
+      organizationId?: string;  // Add this
     };
   }
 ): Promise<string> => {
+  // First try to get organization context from session
   const session = await getSession();
-  if (!session?.organizationId) {
+  // Then fallback to authState if session doesn't have it
+  const organizationId = session?.organizationId || data.authState?.organizationId;
+  
+  if (!organizationId) {
     throw new Error('Organization context required');
   }
 
   // Get the agent to verify it exists and belongs to organization
   const agent = await db.query.agents.findFirst({
-    where: and(
-      eq(agents.id, agentId),
-      eq(sites.organizationId, session.organizationId)
-    ),
+    where: eq(agents.id, agentId),
     with: {
       site: true,
     },
   });
 
-  if (!agent) {
+  if (!agent || !agent.site) {
     throw new Error('Agent not found or unauthorized');
+  }
+
+  // Verify the organization matches
+  if (agent.site.organizationId !== organizationId) {
+    throw new Error('Agent does not belong to this organization');
   }
 
   // Check if multiple sessions are allowed
@@ -1043,7 +1138,7 @@ export const createOnboardingSession = async (
       where: and(
         eq(onboardingSessions.agentId, agentId),
         eq(onboardingSessions.status, 'active'),
-        eq(onboardingSessions.organizationId, session.organizationId)
+        eq(onboardingSessions.organizationId, organizationId)
       )
     });
 
@@ -1083,7 +1178,7 @@ export const createOnboardingSession = async (
       .values({
         id: sessionId,
         agentId,
-        organizationId: session.organizationId,
+        organizationId,
         userId: data.userId,
         name: data.name,
         clientIdentifier: data.clientIdentifier || `${data.userId || 'anon'}-${sessionId}`,
@@ -1093,7 +1188,7 @@ export const createOnboardingSession = async (
         metadata: {
           isAnonymous: !data.userId,
           isAuthenticated: !!data.userId,
-          organizationId: session.organizationId,
+          organizationId,
           createdAt: new Date().toISOString()
         },
         startedAt: new Date(),
@@ -1114,21 +1209,9 @@ export const createOnboardingSession = async (
         type: data.type,
         isAnonymous: isAnonymous || !effectiveUserId,
         isAuthenticated: isAuthenticated && !!effectiveUserId,
-        organizationId: session.organizationId
+        organizationId
       },
       currentStep: 0
-    });
-
-    // Publish session creation event
-    await redis.publish('session-events', {
-      type: 'session-created',
-      sessionId: dbSession.id,
-      agentId,
-      userId: effectiveUserId,
-      isAnonymous: isAnonymous || !effectiveUserId,
-      isAuthenticated: isAuthenticated && !!effectiveUserId,
-      steps: initialSteps,
-      timestamp: Date.now()
     });
 
     console.log('Created new session with steps:', {
@@ -1136,7 +1219,8 @@ export const createOnboardingSession = async (
       agentId,
       steps: initialSteps,
       type: data.type,
-      effectiveUserId
+      effectiveUserId,
+      organizationId
     });
 
     return dbSession.id;
@@ -1146,39 +1230,62 @@ export const createOnboardingSession = async (
       error,
       agentId,
       userId: data.userId,
-      type: data.type
+      type: data.type,
+      organizationId
     });
     throw error;
   }
 };
-
 // Retrieve all onboarding sessions for an agent, ensuring they belong to the user's organization
-export const getSessions = async (agentId: string): Promise<SelectOnboardingSession[]> => {
-  const session = await getSession();
-  if (!session?.organizationId) {
-    throw new Error("Organization context required");
-  }
+export const getSessions = async (agentId: string, organizationId?: string): Promise<SelectOnboardingSession[]> => {
+  try {
+    // Get the agent to verify it exists and its organization
+    const agent = await db.query.agents.findFirst({
+      where: eq(agents.id, agentId),
+      with: {
+        site: true
+      }
+    });
 
-  return db.query.onboardingSessions.findMany({
-    where: and(
-      eq(onboardingSessions.agentId, agentId),
-      eq(onboardingSessions.organizationId, session.organizationId)
-    ),
-    with: {
-      conversations: {
-        // Include messages within each conversation
-        with: {
-          messages: {
-            orderBy: [asc(messages.orderIndex)],
+    if (!agent || !agent.site) {
+      console.warn('getSessions: Agent not found or missing site', { agentId });
+      return [];
+    }
+
+    // Use the agent's organization if none provided
+    const effectiveOrgId = organizationId || agent.site.organizationId;
+
+    // Verify agent belongs to organization
+    if (agent.site.organizationId !== effectiveOrgId) {
+      console.warn('getSessions: Organization mismatch', {
+        agentOrgId: agent.site.organizationId,
+        providedOrgId: effectiveOrgId
+      });
+      return [];
+    }
+
+    return db.query.onboardingSessions.findMany({
+      where: and(
+        eq(onboardingSessions.agentId, agentId),
+        eq(onboardingSessions.organizationId, effectiveOrgId)
+      ),
+      with: {
+        conversations: {
+          with: {
+            messages: {
+              orderBy: [asc(messages.orderIndex)],
+            },
           },
+          orderBy: [desc(conversations.startedAt)],
         },
-        orderBy: [desc(conversations.startedAt)],
       },
-    },
-    orderBy: [desc(onboardingSessions.updatedAt)],
-  });
+      orderBy: [desc(onboardingSessions.updatedAt)],
+    });
+  } catch (error) {
+    console.error('getSessions error:', error);
+    throw error;
+  }
 };
-
 // Delete an onboarding session, ensuring it belongs to the user's organization
 export const deleteSession = async (sessionId: string): Promise<void> => {
   const session = await getSession();

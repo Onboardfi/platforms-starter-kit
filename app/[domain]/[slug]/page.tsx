@@ -1,3 +1,5 @@
+///Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/[domain]/[slug]/page.tsx
+
 import { notFound } from "next/navigation";
 import { getAgentData } from "@/lib/fetchers";
 import AgentConsole from "@/components/agent-console/index";

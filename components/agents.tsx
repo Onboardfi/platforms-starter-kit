@@ -1,3 +1,5 @@
+///Users/bobbygilbert/Documents/Github/platforms-starter-kit/components/agents.tsx
+
 import { getAgentsWithSessionCount } from '@/lib/actions';
 import AgentCard from '@/components/agent-card';
 import { Agent, Site } from '@/types/agent';

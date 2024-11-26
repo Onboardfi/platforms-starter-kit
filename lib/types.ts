@@ -176,6 +176,8 @@ export interface ConversationMetadata {
   toolsUsed?: string[];
   duration?: number;
   messageCount?: number;
+  isAnonymous?: boolean;  // Add this
+  isAuthenticated?: boolean;  // Add this
   lastToolUse?: {
     tool: string;
     timestamp: string;

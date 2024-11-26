@@ -1,3 +1,5 @@
+//Users/bobbygilbert/Documents/Github/platforms-starter-kit/lib/fetchers.ts
+
 import { unstable_cache } from "next/cache";
 import db from "./db";
 import { and, desc, eq, not } from "drizzle-orm";

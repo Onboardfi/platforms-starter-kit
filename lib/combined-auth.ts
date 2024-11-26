@@ -129,8 +129,6 @@ export async function withCombinedAuth(
       );
     }
 
-    console.log(`Agent ID extracted: ${agentId}`);
-
     // 2. Get agent settings and organization context
     const agent = await getAgentById(agentId);
     if (!agent || !agent.site) {
@@ -144,12 +142,33 @@ export async function withCombinedAuth(
     const organizationId = agent.site.organizationId;
     console.log(`Agent found: ${agentId} in organization: ${organizationId}`);
 
-    // 3. Check NextAuth session first
+    // 3. Check onboarding token first
+    const authToken = req.cookies.get('onboarding_token')?.value;
+    if (authToken) {
+      console.log('Onboarding token found in cookies');
+      const tokenState = await verifyOnboardingToken(authToken);
+      
+      if (tokenState && tokenState.agentId === agentId) {
+        const authState: AuthState = {
+          userId: tokenState.userId,
+          organizationId,
+          isAuthenticated: tokenState.isAuthenticated || false,
+          isAnonymous: tokenState.isAnonymous || false,
+          agentId: tokenState.agentId,
+          sessionId: tokenState.sessionId
+        };
+        
+        console.log('Token verification successful:', authState);
+        return handler(tokenState.userId, agentId, authState);
+      }
+    }
+
+    // 4. Check NextAuth session if no valid onboarding token
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET }) as TokenPayload;
     if (token?.sub) {
       console.log('NextAuth session found:', token);
       
-      // Verify organization access
+      // Verify organization access for authenticated users
       const { hasAccess, role } = await verifyOrganizationAccess(
         token.sub,
         organizationId
@@ -175,61 +194,8 @@ export async function withCombinedAuth(
       return handler(token.sub, agentId, authState);
     }
 
-    // 4. Check onboarding token
-    const authToken = req.cookies.get('onboarding_token')?.value;
-    if (authToken) {
-      console.log('Onboarding token found in cookies');
-      const tokenState = await verifyOnboardingToken(authToken);
-      
-      if (tokenState && tokenState.agentId === agentId) {
-        const authState: AuthState = {
-          userId: tokenState.userId,
-          organizationId,
-          isAuthenticated: true,
-          isAnonymous: tokenState.isAnonymous || false,
-          agentId: tokenState.agentId,
-          sessionId: tokenState.sessionId
-        };
-        
-        // For authenticated users, verify organization access
-        if (!tokenState.isAnonymous && tokenState.userId !== 'anonymous') {
-          const { hasAccess, role } = await verifyOrganizationAccess(
-            tokenState.userId,
-            organizationId
-          );
-
-          if (!hasAccess) {
-            return NextResponse.json(
-              { error: 'Organization access denied' },
-              { status: 403 }
-            );
-          }
-
-          authState.organizationRole = role;
-        }
-
-        console.log('Token verification successful:', authState);
-        
-        // Special handling for anonymous users with valid tokens
-        if (tokenState.userId === 'anonymous' && agent.settings.onboardingType === 'internal') {
-          return handler('anonymous', agentId, {
-            ...authState,
-            isAnonymous: true,
-            isAuthenticated: true
-          });
-        }
-        
-        return handler(tokenState.userId, agentId, authState);
-      } else {
-        console.warn('Invalid token or token mismatch for agent:', agentId);
-      }
-    }
-
-    // 5. Handle unauthenticated access based on agent settings
-    const isInternalOnboarding = agent.settings.onboardingType === 'internal';
-    const isAuthEnabled = agent.settings.authentication?.enabled;
-
-    if (isInternalOnboarding && isAuthEnabled) {
+    // 5. Handle unauthenticated access
+    if (agent.settings.onboardingType === 'internal' && agent.settings.authentication?.enabled) {
       console.log('Authentication required for internal onboarding');
       return NextResponse.json(
         { error: 'Authentication required', requiresAuth: true },
@@ -237,7 +203,15 @@ export async function withCombinedAuth(
       );
     }
 
-    // 6. Allow anonymous access for external onboarding or when auth is disabled
+    // 6. Create new token for anonymous access
+    const newToken = await generateOnboardingToken({
+      userId: 'anonymous',
+      agentId,
+      organizationId,
+      isAnonymous: true,
+      isAuthenticated: false
+    });
+
     const authState: AuthState = {
       userId: 'anonymous',
       organizationId,
@@ -246,40 +220,18 @@ export async function withCombinedAuth(
       agentId
     };
 
-    // For external onboarding without auth, create a token
-    if (agent.settings.onboardingType === 'external' || !agent.settings.authentication?.enabled) {
-      const newToken = await generateOnboardingToken({
-        userId: 'anonymous',
-        agentId,
-        organizationId,
-        isAnonymous: true,
-        isAuthenticated: false
-      });
+    const response = await handler(undefined, agentId, authState);
+    
+    // Add token to response
+    response.cookies.set('onboarding_token', newToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 24 * 60 * 60
+    });
 
-      const response = NextResponse.json(
-        { 
-          userId: 'anonymous', 
-          organizationId,
-          isAuthenticated: false, 
-          isAnonymous: true 
-        },
-        { status: 200 }
-      );
-
-      // Set cookie for future requests
-      response.cookies.set('onboarding_token', newToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 24 * 60 * 60 // 24 hours
-      });
-
-      return response;
-    }
-
-    console.log('Proceeding with anonymous access:', authState);
-    return handler(undefined, agentId, authState);
+    return response;
 
   } catch (error) {
     console.error('withCombinedAuth error:', error);

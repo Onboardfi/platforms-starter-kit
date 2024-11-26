@@ -502,61 +502,56 @@ case 'response.output_item.done':
                         const lastItem = data.response.output?.[data.response.output?.length - 1];
                         
                         if (lastItem) {
-                            // Save message with metadata
-                            const messageMetadata = {
-                                ...lastItem.metadata,
-                                promptTokens: usage.input_tokens,
-                                completionTokens: usage.output_tokens,
-                                totalTokens: usage.total_tokens,
-                                audioDurationSeconds: lastItem.metadata?.audioDurationSeconds || 0,
-                                input_token_details: usage.input_token_details,
-                                output_token_details: usage.output_token_details,
-                                isFinal: true
-                            };
-                
-                            await saveMessageToDatabase({
-                                ...lastItem,
-                                role: 'assistant',
-                                status: 'completed',
-                                metadata: messageMetadata
-                            }, conversationId);
-                
-                            // Get conversation details for user ID
-                            const conversation = await apiClient.get('/api/getConversation', {
-                                params: { conversationId }
-                            });
-                
-                            // Log usage with all available data
-                            await apiClient.post('/api/logUsage', {
-                                id: createId(),
-                                messageId: lastItem.id,
-                                sessionId: currentSessionId,
-                                conversationId,
-                                userId: conversation.data?.session?.userId,
-                                messageRole: 'assistant',
-                                durationSeconds: Math.round(messageMetadata.audioDurationSeconds),
-                                promptTokens: usage.input_tokens,
-                                completionTokens: usage.output_tokens,
-                                totalTokens: usage.total_tokens,
-                                reportingStatus: 'pending',
-                                stripeCustomerId: conversation.data?.session?.user?.stripeCustomerId,
-                                createdAt: new Date().toISOString(),
-                                // Include detailed token information
-                                metadata: {
+                            try {
+                                // Save message with metadata
+                                const messageMetadata = {
+                                    ...lastItem.metadata,
+                                    promptTokens: usage.input_tokens,
+                                    completionTokens: usage.output_tokens,
+                                    totalTokens: usage.total_tokens,
+                                    audioDurationSeconds: lastItem.metadata?.audioDurationSeconds || 0,
                                     input_token_details: usage.input_token_details,
-                                    output_token_details: usage.output_token_details
-                                }
-                            });
-                
-                            console.log('Usage logged:', {
-                                messageId: lastItem.id,
-                                duration: messageMetadata.audioDurationSeconds,
-                                tokens: {
-                                    prompt: usage.input_tokens,
-                                    completion: usage.output_tokens,
-                                    total: usage.total_tokens
-                                }
-                            });
+                                    output_token_details: usage.output_token_details,
+                                    isFinal: true
+                                };
+                    
+                                await saveMessageToDatabase({
+                                    ...lastItem,
+                                    role: 'assistant',
+                                    status: 'completed',
+                                    metadata: messageMetadata
+                                }, conversationId);
+                    
+                                // Log usage directly using apiClient
+                                await apiClient.post('/api/logUsage', {
+                                    messageId: lastItem.id,
+                                    sessionId: currentSessionId,
+                                    conversationId,
+                                    messageRole: 'assistant',
+                                    durationSeconds: Math.round(messageMetadata.audioDurationSeconds || 0),
+                                    promptTokens: usage.input_tokens,
+                                    completionTokens: usage.output_tokens,
+                                    totalTokens: usage.total_tokens,
+                                    reportingStatus: 'pending',
+                                    metadata: {
+                                        input_token_details: usage.input_token_details,
+                                        output_token_details: usage.output_token_details
+                                    }
+                                });
+                    
+                                console.log('Usage logged:', {
+                                    messageId: lastItem.id,
+                                    duration: messageMetadata.audioDurationSeconds,
+                                    tokens: {
+                                        prompt: usage.input_tokens,
+                                        completion: usage.output_tokens,
+                                        total: usage.total_tokens
+                                    }
+                                });
+                            } catch (error) {
+                                console.error('Failed to process completion:', error);
+                                toast.error('Failed to process assistant response');
+                            }
                         }
                         setIsResponseActive(false);
                     }
