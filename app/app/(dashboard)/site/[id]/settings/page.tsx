@@ -2,25 +2,30 @@
 import { updateSite } from "@/lib/actions";
 import db from "@/lib/db";
 import DeleteSiteForm from "@/components/form/delete-site-form";
+import { notFound } from "next/navigation";
+import { sites, SelectSite } from "@/lib/schema";
+import { eq } from "drizzle-orm";
 
-async function createFormAction(formData: FormData) {
+// Server action to handle form submissions - note we pass the full site object
+async function createFormAction(formData: FormData, site: SelectSite) {
   "use server";
   
-  const id = formData.get("id") as string;
   const key = formData.get("key") as string;
-  return updateSite(formData, id, key);
+  return updateSite(formData, site, key);
 }
 
-// Dream UI Form Component
+// Dream UI Form Component with type-safe form handling
 function DreamForm({
   title,
   description,
   helpText,
+  site,
   children,
 }: {
   title: string;
   description: string;
   helpText?: string;
+  site: SelectSite;
   children: React.ReactNode;
 }) {
   return (
@@ -34,7 +39,11 @@ function DreamForm({
           <p className="text-sm text-neutral-400">{description}</p>
         </div>
 
-        <form action={createFormAction} className="space-y-6">
+        <form 
+          // Bind the site to the form action
+          action={(formData: FormData) => createFormAction(formData, site)} 
+          className="space-y-6"
+        >
           {children}
           
           {helpText && (
@@ -64,7 +73,7 @@ function DreamForm({
   );
 }
 
-// Dream UI Input Component (rest remains the same)
+// Dream UI Input Component remains the same
 function DreamInput({
   type = "text",
   name,
@@ -119,9 +128,21 @@ export default async function SiteSettingsIndex({
 }: {
   params: { id: string };
 }) {
-  const data = await db.query.sites.findFirst({
+  // Fetch complete site data with all required relations
+  const site = await db.query.sites.findFirst({
     where: (sites, { eq }) => eq(sites.id, decodeURIComponent(params.id)),
+    with: {
+      organization: true,
+      creator: true,
+      posts: true,
+      agents: true
+    }
   });
+
+  // Handle case where site is not found
+  if (!site) {
+    notFound();
+  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">
@@ -130,14 +151,14 @@ export default async function SiteSettingsIndex({
         title="Site Name"
         description="The name of your site. This will be used as the meta title on Google as well."
         helpText="Please use 32 characters maximum."
+        site={site}
       >
         <DreamInput
           name="name"
-          defaultValue={data?.name}
+          defaultValue={site.name}
           placeholder="My Awesome Site"
           maxLength={32}
         />
-        <input type="hidden" name="id" value={params.id} />
         <input type="hidden" name="key" value="name" />
       </DreamForm>
 
@@ -146,19 +167,19 @@ export default async function SiteSettingsIndex({
         title="Site Description"
         description="The description of your site. This will be used as the meta description on Google as well."
         helpText="Include SEO-optimized keywords that you want to rank for."
+        site={site}
       >
         <DreamInput
           name="description"
-          defaultValue={data?.description}
+          defaultValue={site.description}
           placeholder="A blog about really interesting things."
         />
-        <input type="hidden" name="id" value={params.id} />
         <input type="hidden" name="key" value="description" />
       </DreamForm>
 
       {/* Delete Site Form */}
       <div className="pt-6 border-t border-white/[0.08]">
-        <DeleteSiteForm siteName={data?.name || ''} />
+        <DeleteSiteForm site={site} />
       </div>
     </div>
   );
