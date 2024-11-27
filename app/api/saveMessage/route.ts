@@ -11,7 +11,8 @@ import {
   MessageRole,
   MessageContent,
   MessageMetadata,
-  SelectMessage
+  SelectMessage,
+  ConversationStatus  // Add this import
 } from '@/lib/types';
 
 interface WebSocketMessageContent {
@@ -20,7 +21,33 @@ interface WebSocketMessageContent {
   transcript?: string;
   audioUrl?: string;
 }
-
+// At the top of the file, add this interface
+interface ConversationWithSession {
+  id: string;
+  sessionId: string;
+  status: ConversationStatus;
+  metadata: Record<string, any>;
+  session?: {
+    id: string;
+    organizationId: string;
+    userId?: string | null;
+    agent?: {
+      id: string;
+      userId: string | null;
+      creator?: {
+        id: string;
+        name: string | null;
+        email: string;
+      } | null;
+    } | null;
+  } | null;
+  startedAt: Date;
+  endedAt: Date | null;
+  lastMessageAt: Date | null;
+  messageCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
 /**
  * Convert WebSocket message content to expected format
  */
@@ -73,25 +100,35 @@ export async function POST(req: NextRequest) {
           { error: 'Conversation ID required' },
           { status: 400 }
         );
-      }
-
-      // First verify conversation with complete session details
-      const conversation = await db.query.conversations.findFirst({
+      }const conversation = await db.query.conversations.findFirst({
         where: eq(conversations.id, message.conversationId),
         with: {
           session: {
+            columns: {
+              id: true,
+              organizationId: true,
+              userId: true
+            },
             with: {
-              user: true,
               agent: {
+                columns: {
+                  id: true,
+                  createdBy: true  // Changed from userId to createdBy
+                },
                 with: {
-                  user: true
+                  creator: {
+                    columns: {
+                      id: true,
+                      name: true,
+                      email: true
+                    }
+                  }
                 }
               }
             }
           }
         }
-      });
-
+      }) as ConversationWithSession;
       if (!conversation) {
         console.warn(`POST /api/saveMessage: Conversation not found: ${message.conversationId}`);
         return NextResponse.json(
@@ -153,7 +190,6 @@ export async function POST(req: NextRequest) {
               }
             }
 
-            // Log usage for all users, including anonymous
             await db.insert(usageLogs).values({
               id: createId(),
               userId: dbUserId,
@@ -161,9 +197,13 @@ export async function POST(req: NextRequest) {
               conversationId: conversation.id,
               messageId: savedMessage.id,
               durationSeconds: Math.round(message.metadata.audioDurationSeconds),
+              promptTokens: 0,
+              completionTokens: 0,
+              totalTokens: 0,
               messageRole: message.role,
-              stripeCustomerId: null, // Don't store Stripe info for anonymous users
-              reportingStatus: 'pending'
+              stripeCustomerId: null,
+              reportingStatus: 'pending',
+              organizationId: conversation.session?.organizationId ?? '' // Add organization ID
             });
           } catch (error) {
             console.error('POST /api/saveMessage: Error tracking usage:', error);

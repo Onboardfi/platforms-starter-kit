@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { deleteSite } from "@/lib/actions";
 import va from "@vercel/analytics";
 import { Trash2 } from "lucide-react";
+import { SelectSite } from "@/lib/schema";
 
 // Dream UI Label
 const DreamLabel = ({ children }: { children: React.ReactNode }) => (
@@ -37,8 +38,7 @@ const DreamInput = ({ className = "", ...props }: React.InputHTMLAttributes<HTML
   />
 );
 
-export default function DeleteSiteForm({ siteName }: { siteName: string }) {
-  const { id } = useParams() as { id: string };
+export default function DeleteSiteForm({ site }: { site: SelectSite }) {
   const router = useRouter();
 
   const handleSubmit = async (formData: FormData) => {
@@ -47,15 +47,11 @@ export default function DeleteSiteForm({ siteName }: { siteName: string }) {
     }
 
     try {
-      const res = await deleteSite(formData, id, "delete");
-      if (res.error) {
-        toast.error(res.error);
-      } else {
-        va.track("Deleted Site");
-        router.refresh();
-        router.push("/sites");
-        toast.success(`Successfully deleted site!`);
-      }
+      await deleteSite(formData, site);
+      va.track("Deleted Site");
+      router.refresh();
+      router.push("/sites");
+      toast.success(`Successfully deleted site!`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to delete site");
     }
@@ -78,7 +74,7 @@ export default function DeleteSiteForm({ siteName }: { siteName: string }) {
             <div className="p-4 bg-red-500/10 rounded-xl border border-red-500/20">
               <DreamLabel>
                 Deletes your site and all posts associated with it. Type in the name
-                of your site <b className="text-red-400">{siteName}</b> to confirm.
+                of your site <b className="text-red-400">{site.name}</b> to confirm.
               </DreamLabel>
             </div>
 
@@ -88,8 +84,8 @@ export default function DeleteSiteForm({ siteName }: { siteName: string }) {
                 name="confirm"
                 type="text"
                 required
-                pattern={siteName}
-                placeholder={siteName}
+                pattern={site.name ?? ''}
+                placeholder={site.name ?? ''}
               />
             </div>
 
