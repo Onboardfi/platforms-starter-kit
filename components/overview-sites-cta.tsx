@@ -1,3 +1,4 @@
+// components/overview-sites-cta.tsx
 import { getSession } from "@/lib/auth";
 import CreateSiteButton from "./create-site-button";
 import CreateSiteModal from "./modal/create-site";
@@ -7,14 +8,17 @@ import { sites } from "@/lib/schema";
 import { count, eq } from "drizzle-orm";
 
 export default async function OverviewSitesCTA() {
+  // Get the session which includes the organization context
   const session = await getSession();
-  if (!session) {
-    return 0;
+  if (!session?.organizationId) {
+    return null; // Return null if there's no organization context
   }
+
+  // Query sites based on the organization ID rather than user ID
   const [sitesResult] = await db
     .select({ count: count() })
     .from(sites)
-    .where(eq(sites.userId, session.user.id));
+    .where(eq(sites.organizationId, session.organizationId));
 
   return sitesResult.count > 0 ? (
     <Link
