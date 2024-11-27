@@ -1,5 +1,4 @@
-///Users/bobbygilbert/Documents/Github/platforms-starter-kit/components/agents.tsx
-
+// components/agents.tsx
 import { getAgentsWithSessionCount } from '@/lib/actions';
 import AgentCard from '@/components/agent-card';
 import { Agent, Site } from '@/types/agent';
@@ -7,7 +6,7 @@ import { SelectAgent } from '@/lib/schema';
 
 interface AgentsProps {
   siteId: string;
-  createdBy: string;
+  organizationId: string;  // Add organizationId to props
 }
 
 function convertToAgent(selectAgent: SelectAgent): Agent {
@@ -17,7 +16,15 @@ function convertToAgent(selectAgent: SelectAgent): Agent {
     description: selectAgent.site.description,
     logo: selectAgent.site.logo,
     subdomain: selectAgent.site.subdomain,
-    customDomain: selectAgent.site.customDomain
+    customDomain: selectAgent.site.customDomain,
+    font: selectAgent.site.font,
+    message404: selectAgent.site.message404,
+    createdBy: selectAgent.site.createdBy,
+    createdAt: selectAgent.site.createdAt,
+    updatedAt: selectAgent.site.updatedAt,
+    organizationId: selectAgent.site.organizationId,
+    organization: selectAgent.site.organization!,  // We know this exists from the query
+    creator: selectAgent.site.creator
   } : null;
 
   return {
@@ -34,9 +41,9 @@ function convertToAgent(selectAgent: SelectAgent): Agent {
     _count: selectAgent._count
   };
 }
-
-export default async function Agents({ siteId, createdBy }: AgentsProps): Promise<JSX.Element | null> {
-  const selectAgents = await getAgentsWithSessionCount(siteId, createdBy);
+export default async function Agents({ siteId, organizationId }: AgentsProps): Promise<JSX.Element | null> {
+  // Pass both siteId and organizationId to include organization context
+  const selectAgents = await getAgentsWithSessionCount(siteId, organizationId);
   const agentsData = selectAgents.map(convertToAgent);
 
   return (

@@ -1,16 +1,28 @@
-//Users/bobbygilbert/Documents/GitHub/platforms-starter-kit/types/agent.ts
-
-import { AgentSettings } from '@/lib/schema';
-
+// types/agent.ts
 export interface Site {
   id: string;
   name: string | null;
   description: string | null;
   logo: string | null;
   subdomain: string | null;
-  customDomain?: string | null;
+  customDomain: string | null;
+  font?: string;
+  message404?: string | null;
+  createdBy?: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+  organizationId: string;
+  organization: {
+    id: string;
+    name: string;
+  };
+  creator?: {
+    id: string;
+    name: string | null;
+    email: string;
+  };
 }
-// /types/agent.ts
+
 export interface Agent {
   id: string;
   name: string | null;
@@ -21,7 +33,7 @@ export interface Agent {
   imageBlurhash: string | null;
   createdAt: Date;
   site: Site | null;
-  settings: AgentSettings;
+  settings: any;
   _count?: {
     sessions: number;
   };

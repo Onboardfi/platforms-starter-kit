@@ -1003,12 +1003,15 @@ export const editUser = async (
   }
 };
 
-
-export async function getAgentsWithSessionCount(siteId: string, createdBy: string): Promise<SelectAgent[]> {
+// lib/actions.ts
+export async function getAgentsWithSessionCount(siteId: string, organizationId: string): Promise<SelectAgent[]> {
   try {
     // Get the site to verify organization context
     const site = await db.query.sites.findFirst({
-      where: eq(sites.id, siteId),
+      where: and(
+        eq(sites.id, siteId),
+        eq(sites.organizationId, organizationId)
+      ),
       with: {
         organization: true,
         creator: true
@@ -1016,15 +1019,13 @@ export async function getAgentsWithSessionCount(siteId: string, createdBy: strin
     });
 
     if (!site) {
+      console.log('Site not found:', { siteId, organizationId });
       return [];
     }
 
-    // Get all agents for the site with their creator info
+    // Get all agents for the site without filtering by creator
     const agentsWithCreator = await db.query.agents.findMany({
-      where: and(
-        eq(agents.siteId, siteId),
-        eq(agents.createdBy, createdBy)
-      ),
+      where: eq(agents.siteId, siteId),
       with: {
         site: {
           with: {
@@ -1040,12 +1041,40 @@ export async function getAgentsWithSessionCount(siteId: string, createdBy: strin
     // For each agent, count their sessions
     const agentsWithCounts = await Promise.all(
       agentsWithCreator.map(async (agent) => {
-        // Get sessions count from database
         const sessionCount = await db
           .select({ count: sql<number>`count(*)::int` })
           .from(onboardingSessions)
           .where(eq(onboardingSessions.agentId, agent.id))
           .then(result => result[0].count);
+
+        // Make sure the creator is always properly typed
+        const creator = agent.creator ? {
+          id: agent.creator.id,
+          name: agent.creator.name,
+          username: agent.creator.username,
+          gh_username: agent.creator.gh_username,
+          email: agent.creator.email,
+          emailVerified: agent.creator.emailVerified,
+          image: agent.creator.image,
+          stripeCustomerId: agent.creator.stripeCustomerId,
+          stripeSubscriptionId: agent.creator.stripeSubscriptionId,
+          metadata: agent.creator.metadata || {},
+          createdAt: agent.creator.createdAt,
+          updatedAt: agent.creator.updatedAt
+        } : {
+          id: agent.createdBy || '', // Ensure id is never null
+          name: null,
+          username: null,
+          gh_username: null,
+          email: '',
+          emailVerified: null,
+          image: null,
+          stripeCustomerId: null,
+          stripeSubscriptionId: null,
+          metadata: {},
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
 
         const formattedAgent: SelectAgent = {
           ...agent,
@@ -1054,20 +1083,7 @@ export async function getAgentsWithSessionCount(siteId: string, createdBy: strin
             organization: agent.site.organization,
             creator: agent.site.creator
           } : undefined,
-          creator: agent.creator || {
-            id: createdBy,
-            name: null,
-            username: null,
-            gh_username: null,
-            email: '',
-            emailVerified: null,
-            image: null,
-            stripeCustomerId: null,
-            stripeSubscriptionId: null,
-            metadata: {},
-            createdAt: new Date(),
-            updatedAt: new Date()
-          },
+          creator, // Use our properly typed creator
           siteName: agent.site?.name ?? null,
           settings: agent.settings as AgentSettings,
           _count: {
@@ -1086,8 +1102,6 @@ export async function getAgentsWithSessionCount(siteId: string, createdBy: strin
     return [];
   }
 }
-
-
 // ===== Onboarding Session Management Functions =====
 
 // Create a new onboarding session, ensuring it belongs to the user's organization
