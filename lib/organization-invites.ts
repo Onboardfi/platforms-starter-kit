@@ -87,9 +87,10 @@ function getInviteUrl(token: string): string {
     (process.env.VERCEL_ENV === 'production' 
       ? 'https://app.onboardfi.com' 
       : 'http://app.localhost:3000');
-  return `${baseUrl}/invite/${token}`;
-}
 
+  // Use the onboarding page with the 'invite' query parameter
+  return `${baseUrl}/onboarding?invite=${token}`;
+}
 // Main Functions
 export async function createOrganizationInvite(
   organizationId: string,

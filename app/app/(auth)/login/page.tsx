@@ -1,5 +1,4 @@
-///Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/app/(auth)/login/page.tsx
-
+// app/(auth)/login/page.tsx
 import Image from "next/image";
 import LoginButton from "./login-button";
 import { Suspense } from "react";
@@ -11,6 +10,8 @@ interface LoginPageProps {
   searchParams?: {
     returnTo?: string;
     error?: string;
+    mode?: 'login' | 'signup';
+    invite?: string;
   };
 }
 
@@ -30,6 +31,8 @@ async function getAuthSession() {
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const session = await getAuthSession();
   const isDevelopment = process.env.NODE_ENV === 'development';
+  const mode = searchParams?.mode || 'both';
+  const invite = searchParams?.invite;
 
   if (session) {
     if (searchParams?.returnTo) {
@@ -56,6 +59,14 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   const error = searchParams?.error ? errorMessages[searchParams.error] || errorMessages.default : null;
 
+  const pageTitle = mode === 'signup' ? 'Create Account' : 
+                   mode === 'login' ? 'Welcome Back' : 
+                   'Welcome';
+  
+  const pageDescription = mode === 'signup' ? 'Create your account to get started' :
+                         mode === 'login' ? 'Sign in to continue your journey' :
+                         'Sign in or create a new account';
+
   return (
     <div className="fixed inset-0 flex items-center justify-center z-50">
       <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm" />
@@ -74,9 +85,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           </div>
 
           <div className="absolute top-8 left-8 text-white/80 max-w-[280px]">
-            <h2 className="text-xl font-light mb-2">Welcome Back</h2>
+            <h2 className="text-xl font-light mb-2">{pageTitle}</h2>
             <p className="text-sm font-light text-white/50">
-              Sign in to continue your journey with our AI-powered platform
+              {pageDescription}
             </p>
           </div>
         </div>
@@ -91,9 +102,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               className="mx-auto mb-4 rounded-xl border border-white/10 p-2 bg-white/5"
               priority
             />
-            <h3 className="text-xl font-light text-white mb-2">Sign In</h3>
+            <h3 className="text-xl font-light text-white mb-2">{pageTitle}</h3>
             <p className="text-sm text-white/50">
-              Use your GitHub account to continue
+              {mode === 'both' ? 'Choose how you want to continue' : 
+               mode === 'signup' ? 'Create your account with GitHub' : 
+               'Sign in with your GitHub account'}
             </p>
           </div>
 
@@ -108,11 +121,60 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               <div className="h-10 rounded-xl bg-white/5 animate-pulse" />
             }
           >
-            <LoginButton returnTo={searchParams?.returnTo} />
+            <div className="space-y-4">
+              {(mode === 'login' || mode === 'both') && (
+                <LoginButton 
+                  returnTo={searchParams?.returnTo} 
+                  isSignUp={false} 
+                />
+              )}
+
+              {(mode === 'signup' || mode === 'both') && (
+                <>
+                  {mode === 'both' && (
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <div className="w-full border-t border-white/10"></div>
+                      </div>
+                      <div className="relative flex justify-center text-sm">
+                        <span className="px-2 bg-neutral-800 text-white/50">or</span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <LoginButton 
+                    returnTo={searchParams?.returnTo} 
+                    isSignUp={true} 
+                  />
+                </>
+              )}
+            </div>
           </Suspense>
 
+          {mode !== 'both' && (
+            <p className="mt-6 text-center text-sm text-white/50">
+              {mode === 'login' ? (
+                <>
+                  Don't have an account?{' '}
+                  <a href={`/login?mode=signup${invite ? `&invite=${invite}` : ''}`} 
+                     className="text-purple-400 hover:text-purple-300">
+                    Sign up
+                  </a>
+                </>
+              ) : (
+                <>
+                  Already have an account?{' '}
+                  <a href="/login?mode=login" 
+                     className="text-purple-400 hover:text-purple-300">
+                    Sign in
+                  </a>
+                </>
+              )}
+            </p>
+          )}
+
           <p className="mt-6 text-center text-xs text-white/30">
-            By signing in, you agree to our Terms of Service and Privacy Policy
+            By continuing, you agree to our Terms of Service and Privacy Policy
           </p>
         </div>
       </div>

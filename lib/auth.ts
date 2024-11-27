@@ -14,12 +14,10 @@ import {
   organizations, 
   organizationMemberships, 
   organizationInvites,
-  SelectSite,       // Added import
-  SelectAgent       // Added import
+  SelectSite,
+  SelectAgent
 } from "./schema";
 import { eq, and } from "drizzle-orm";
-import { NextApiRequest, NextApiResponse } from "next";
-import { NextResponse } from "next/server";
 
 // Type declarations
 declare module "next-auth/jwt" {
@@ -39,6 +37,7 @@ declare module "next-auth/jwt" {
       role: 'owner' | 'admin' | 'member';
     }>;
     updatedAt?: number;
+    authType?: 'login' | 'signup';
   }
 }
 
@@ -52,6 +51,7 @@ declare module "next-auth" {
       image: string | null;
     };
     organizationId?: string | null;
+    organizationRole?: 'owner' | 'admin' | 'member'; // Add this line
     needsOnboarding?: boolean;
     hasInvite?: boolean;
   }
@@ -76,7 +76,7 @@ async function getOrganizationMembership(userId: string) {
   const membership = await db.query.organizationMemberships.findFirst({
     where: eq(organizationMemberships.userId, userId),
     with: {
-      organization: true // Include full organization
+      organization: true
     }
   });
   
@@ -114,7 +114,6 @@ async function refreshOrganizationContext(userId: string) {
   };
 }
 
-// Function to check if the user has any pending invites
 async function checkUserInvites(userId: string): Promise<boolean> {
   const user = await db.query.users.findFirst({
     where: eq(users.id, userId),
@@ -134,7 +133,7 @@ async function checkUserInvites(userId: string): Promise<boolean> {
 
 // Auth configuration
 export const authOptions: NextAuthOptions = {
-  secret: process.env.NEXTAUTH_SECRET, // Ensure this is set
+  secret: process.env.NEXTAUTH_SECRET,
   providers: [
     GitHubProvider({
       clientId: process.env.AUTH_GITHUB_ID as string,
@@ -183,306 +182,155 @@ export const authOptions: NextAuthOptions = {
   },
   
   callbacks: {
-    async signIn({ user, account, profile }) {
+    async signIn({ user, account, profile, credentials }) {
       try {
         if (!user.email) {
           user.email = `${(profile as any).login}@github.com`;
         }
   
-        // Fetch the existing user data to determine if the user is new
         const existingUser = await db.query.users.findFirst({
           where: eq(users.id, user.id),
         });
   
-        // Determine if the user is new by comparing createdAt and updatedAt
-        const isNewUser = existingUser
-          ? existingUser.createdAt.getTime() === existingUser.updatedAt.getTime()
-          : true;
+        const isNewUser = !existingUser || 
+          existingUser.createdAt.getTime() === existingUser.updatedAt.getTime();
   
-        // Only set needsOnboarding to true for new users
-        if (isNewUser) {
-          const metadata = {
-            needsOnboarding: true,
-            createdAt: new Date().toISOString(),
-            lastLoginAt: new Date().toISOString(),
-          };
+        const metadata = {
+          needsOnboarding: isNewUser,
+          lastLoginAt: new Date().toISOString(),
+          ...(isNewUser && { createdAt: new Date().toISOString() })
+        };
   
-          await updateUserMetadata(user.id, metadata);
-        }
-  
+        await updateUserMetadata(user.id, metadata);
         return true;
       } catch (error) {
         console.error('Error in signIn callback:', error);
-        return true; // Still allow sign in even if metadata update fails
+        return true;
       }
     },
 
-    // Updated Session Callback
     async session({ session, token }) {
       if (session.user && token) {
-        session.user.id = token.sub || token.id || '';  // Ensure user ID is set
+        session.user.id = token.sub || token.id || '';
         session.organizationId = token.organizationId;
         session.needsOnboarding = token.needsOnboarding;
         session.hasInvite = token.hasInvite;
       }
-      
-      console.log('Session Callback - Generated session:', {
-        hasUser: !!session.user,
-        userId: session.user?.id,
-        organizationId: session.organizationId,
-        needsOnboarding: session.needsOnboarding
-      });
 
       return session;
     },
 
-    // Updated JWT Callback
+  
+
+
+
     async jwt({ token, user, trigger, session }) {
-      console.log('JWT Callback - Input:', { trigger, hasUser: !!user, hasSession: !!session });
-  
       try {
-        // Case 1: Initial sign in or sign up
-        if (user || trigger === 'signIn') {
-          const userId = user?.id || token.sub;
+        // Case 1: Initial sign in
+        if (user) {
+          const userId = user.id || token.sub;
           if (!userId) return token;
-  
-          console.log('JWT Callback - Initial sign in/up for user:', userId);
   
           const context = await refreshOrganizationContext(userId);
           const hasInvite = await checkUserInvites(userId);
-          
-          const userEmail = user?.email || token.email;
-          if (!userEmail) return token;
   
-          const pendingInvites = await db.query.organizationInvites.findMany({
-            where: and(
-              eq(organizationInvites.email, userEmail),
-              eq(organizationInvites.status, 'pending')
-            )
-          });
-  
-          // Ensure these fields are always set
           return {
             ...token,
             id: userId,
             sub: userId,
-            email: userEmail,
-            name: user?.name || token.name,
-            image: user?.image || token.picture,
+            email: user.email,
+            name: user.name,
+            image: user.image,
             updatedAt: Date.now(),
             hasInvite,
-            hasPendingInvites: pendingInvites.length > 0,
-            pendingInviteCount: pendingInvites.length,
             ...context,
-            pendingInvites: pendingInvites.map(invite => ({
-              organizationId: invite.organizationId,
-              role: invite.role
-            }))
           };
         }
   
-        // Case 2: Explicit session update
+        // Case 2: Session update
         if (trigger === "update" && session) {
-          console.log('JWT Callback - Session update triggered');
-          
-          const updates: Record<string, any> = {}; // Type the updates object
+          const updates: Record<string, any> = {};
   
           if (session.organizationId !== token.organizationId) {
-            console.log('JWT Callback - Updating organization context:', {
-              current: token.organizationId,
-              new: session.organizationId
-            });
-  
             updates.organizationId = session.organizationId;
             updates.needsOnboarding = false;
           }
   
-          if (session.user?.email && session.user.email !== token.email) {
-            updates.email = session.user.email;
-          }
-  
           if (Object.keys(updates).length > 0) {
-            Object.assign(token, updates, {
-              updatedAt: Date.now()
-            });
-  
-            console.log('JWT Callback - Token updated with:', updates);
+            return { ...token, ...updates, updatedAt: Date.now() };
           }
         }
   
-        // Case 3: Periodic refresh
-        const shouldRefresh = !token.updatedAt || Date.now() - token.updatedAt > 5 * 60 * 1000;
-        if (shouldRefresh && token.sub) {
-          console.log('JWT Callback - Performing periodic refresh');
-  
-          const [context, hasInvite] = await Promise.all([
-            refreshOrganizationContext(token.sub),
-            checkUserInvites(token.sub)
-          ]);
-  
-          const hasChanges = 
-            context.organizationId !== token.organizationId ||
-            context.needsOnboarding !== token.needsOnboarding ||
-            hasInvite !== token.hasInvite;
-  
-          if (hasChanges) {
-            Object.assign(token, {
-              ...context,
-              hasInvite,
-              updatedAt: Date.now()
-            });
-  
-            console.log('JWT Callback - Token refreshed with:', {
-              organizationId: context.organizationId,
-              needsOnboarding: context.needsOnboarding,
-              hasInvite
-            });
-          }
-        }
-  
-        // Log final token state (with proper type checking for pendingInvites)
-        console.log('JWT Callback - Final token:', {
+        // Always refresh the token when token.sub exists
+        // Always refresh the token when token.sub exists
+      if (token.sub) {
+        const [context, hasInvite] = await Promise.all([
+          refreshOrganizationContext(token.sub),
+          checkUserInvites(token.sub),
+        ]);
+
+        return {
           ...token,
-          pendingInvites: token.pendingInvites ? 
-            Array.isArray(token.pendingInvites) ? 
-              `${token.pendingInvites.length} invites` : 
-              'Invalid invites format' : 
-            undefined
-        });
-  
-        return token;
-  
-      } catch (error) {
-        console.error('JWT Callback - Error:', error);
-        return token;
+          ...context,
+          hasInvite,
+          updatedAt: Date.now(),
+        };
       }
-    },
-  
-   
+
+      return token;
+    } catch (error) {
+      console.error('JWT Callback - Error:', error);
+      return token;
+    }
+  },
+
+
+
+
+
     async redirect({ url, baseUrl }) {
-      // Handle relative URLs
       if (url.startsWith('/')) {
-        // Redirect based on organization status after sign in
         if (url.includes('callback')) {
           const token = await getToken({ req: { cookies: url } as any });
-          if (token?.organizationId) {
-            return `${baseUrl}/`;
+          
+          if (!token?.organizationId) {
+            return `${baseUrl}/onboarding`;
           }
-          return `${baseUrl}/onboarding`;
+          
+          return `${baseUrl}/`;
         }
         return `${baseUrl}${url}`;
       }
       
-      // Allow same-origin URLs
       if (new URL(url).origin === baseUrl) {
         return url;
       }
-
+    
       return baseUrl;
     }
   }
 };
 
-// Helper functions for getting session and auth middleware
+// Auth Middleware Functions
 export async function getSession() {
   return getServerSession(authOptions) as Promise<Session | null>;
 }
 
-/**
- * Higher-Order Function to wrap actions with site authentication
- */
-export function withSiteAuth<
-  Args extends [FormData, SelectSite, ...any[]], // Enforce FormData and SelectSite as first two arguments
-  ReturnType
->(
+export function withAgentAuth<Args extends any[], ReturnType>(
   handler: (...args: Args) => Promise<ReturnType>
 ): (...args: Args) => Promise<ReturnType> {
   return async (...args: Args) => {
-    console.log("withSiteAuth: Starting authentication");
-    
-    const session = await getServerSession(authOptions) as Session | null;
-    
-    console.log("withSiteAuth: Session retrieved", {
-      hasSession: !!session,
-      organizationId: session?.organizationId
-    });
-
-    if (!session?.organizationId) {
-      console.error("withSiteAuth: Unauthorized - No organization context");
-      throw new Error("Unauthorized or no organization context");
-    }
-
-    const [formData, site, ...rest] = args;
-
-    // Debug log to help diagnose argument passing
-    console.log("withSiteAuth: Arguments:", {
-      hasFormData: formData instanceof FormData,
-      site: {
-        id: site?.id,
-        organizationId: site?.organizationId,
-        hasOrganization: !!site?.organization
-      },
-      additionalArgs: rest.length
-    });
-
-    // Enhanced validation for site object
-    if (!site || typeof site !== 'object') {
-      console.error("withSiteAuth: Site validation failed", { 
-        receivedSite: site 
-      });
-      throw new Error("Invalid site object - Site is required");
-    }
-
-    if (!site.organizationId) {
-      console.error("withSiteAuth: Missing organization ID", { 
-        site 
-      });
-      throw new Error("Invalid site object - Missing organization ID");
-    }
-
-    if (site.organizationId !== session.organizationId) {
-      console.error("withSiteAuth: Organization mismatch", {
-        siteOrgId: site.organizationId,
-        sessionOrgId: session.organizationId
-      });
-      throw new Error("Site does not belong to your organization");
-    }
-
-    try {
-      // Call handler with properly typed arguments
-      return await handler(...args);
-    } catch (error) {
-      console.error("withSiteAuth: Handler execution failed", error);
-      throw error;
-    }
-  };
-}
-/**
- * Higher-Order Function to wrap actions with agent authentication
- */
-export function withAgentAuth<
-  Args extends any[],
-  ReturnType
->(
-  handler: (...args: Args) => Promise<ReturnType>
-): (...args: Args) => Promise<ReturnType> {
-  return async (...args: Args) => {
-    console.log("withAgentAuth: Starting authentication");
     const session = await getSession();
-    console.log("withAgentAuth: Session retrieved", session);
-
     if (!session?.organizationId) {
-      console.error("withAgentAuth: Unauthorized - No organization context");
       throw new Error("Unauthorized or no organization context");
     }
 
-    // Assuming the second argument is the agent
-    const agent: SelectAgent & { site: SelectSite } = args[1];
-    console.log("withAgentAuth: Agent organizationId", agent.site.organizationId);
-    console.log("withAgentAuth: Session organizationId", session.organizationId);
+    const agent = args[1] as SelectAgent & { site: SelectSite };
+    if (!agent?.site?.organizationId) {
+      throw new Error("Invalid agent - Missing organization context");
+    }
 
     if (agent.site.organizationId !== session.organizationId) {
-      console.error("withAgentAuth: Agent does not belong to your organization");
       throw new Error("Agent does not belong to your organization");
     }
 
@@ -490,50 +338,55 @@ export function withAgentAuth<
   };
 }
 
-/**
- * Higher-Order Function to wrap actions with organization authentication
- */
-export function withOrgAuth<
-  Args extends any[],
+export function withSiteAuth<
+  Args extends [FormData, SelectSite, ...any[]],
   ReturnType
 >(
   handler: (...args: Args) => Promise<ReturnType>
 ): (...args: Args) => Promise<ReturnType> {
   return async (...args: Args) => {
-    console.log("withOrgAuth: Starting authentication");
-    const session = await getSession();
-    console.log("withOrgAuth: Session retrieved", session);
-
+    const session = await getServerSession(authOptions) as Session | null;
+    
     if (!session?.organizationId) {
-      console.error("withOrgAuth: Unauthorized - No organization context");
       throw new Error("Unauthorized or no organization context");
+    }
+
+    const [formData, site, ...rest] = args;
+
+    if (!site?.organizationId) {
+      throw new Error("Invalid site object - Missing organization ID");
+    }
+
+    if (site.organizationId !== session.organizationId) {
+      throw new Error("Site does not belong to your organization");
     }
 
     return handler(...args);
   };
 }
 
-/**
- * Higher-Order Function to wrap actions with organization role authentication
- */
-export function withOrgRoleAuth<
-  Args extends any[],
-  ReturnType
->(
+export function withOrgAuth<Args extends any[], ReturnType>(
+  handler: (...args: Args) => Promise<ReturnType>
+): (...args: Args) => Promise<ReturnType> {
+  return async (...args: Args) => {
+    const session = await getSession();
+    if (!session?.organizationId) {
+      throw new Error("Unauthorized or no organization context");
+    }
+    return handler(...args);
+  };
+}
+
+export function withOrgRoleAuth<Args extends any[], ReturnType>(
   requiredRole: 'owner' | 'admin' | 'member',
   handler: (...args: Args) => Promise<ReturnType>
 ): (...args: Args) => Promise<ReturnType> {
   return async (...args: Args) => {
-    console.log("withOrgRoleAuth: Starting role authentication");
     const session = await getSession();
-    console.log("withOrgRoleAuth: Session retrieved", session);
-
     if (!session?.organizationId) {
-      console.error("withOrgRoleAuth: Unauthorized - No organization context");
       throw new Error("Unauthorized or no organization context");
     }
 
-    // Fetch the user's role in the organization
     const membership = await db.query.organizationMemberships.findFirst({
       where: and(
         eq(organizationMemberships.userId, session.user.id),
@@ -542,20 +395,11 @@ export function withOrgRoleAuth<
     });
 
     if (!membership) {
-      console.error("withOrgRoleAuth: User is not a member of the organization");
       throw new Error("User is not a member of the organization");
     }
 
-    const userRole = membership.role;
-
-    const rolesHierarchy = {
-      'owner': 3,
-      'admin': 2,
-      'member': 1,
-    };
-
-    if (rolesHierarchy[userRole] < rolesHierarchy[requiredRole]) {
-      console.error(`withOrgRoleAuth: Insufficient role. Required: ${requiredRole}, Found: ${userRole}`);
+    const rolesHierarchy = { 'owner': 3, 'admin': 2, 'member': 1 };
+    if (rolesHierarchy[membership.role] < rolesHierarchy[requiredRole]) {
       throw new Error("Insufficient role");
     }
 

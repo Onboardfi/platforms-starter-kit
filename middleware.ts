@@ -17,6 +17,7 @@ export const config = {
   ],
 };
 
+
 async function getAuthState(req: NextRequest) {
   const token = await getToken({ req });
   return {
@@ -29,6 +30,7 @@ async function getAuthState(req: NextRequest) {
       : null
   };
 }
+
 
 export default async function middleware(req: NextRequest) {
   const url = req.nextUrl;
@@ -58,11 +60,11 @@ export default async function middleware(req: NextRequest) {
       if (!authState.isAuthenticated) {
         // Redirect to login while preserving the invite token
         const loginUrl = new URL('/login', req.url);
-        loginUrl.searchParams.set('inviteToken', authState.inviteToken!);
+        loginUrl.searchParams.set('invite', authState.inviteToken!); // Use 'invite' as the param
         return NextResponse.redirect(loginUrl);
       }
-      // Let the invite page handle the token verification and processing
-      return NextResponse.rewrite(new URL(`/app/invite/${authState.inviteToken}`, req.url));
+      // Allow the invite page to handle the token without rewriting
+      return NextResponse.next();
     }
 
     // Handle authentication states

@@ -6,6 +6,8 @@ import { organizationInvites, organizationMemberships } from "@/lib/schema";
 import { eq, and } from "drizzle-orm";
 import { InviteMemberForm } from "@/components/invite-member-form";
 import { UserCircle, Calendar, Mail, Shield, Clock } from "lucide-react";
+import { MemberActions } from "./member-actions";
+import { InviteActions } from "./invite-actions";
 
 export default async function TeamsPage() {
   const session = await getSession();
@@ -13,7 +15,6 @@ export default async function TeamsPage() {
     redirect("/login");
   }
 
-  // Fetch members with extended metadata
   const members = await db.query.organizationMemberships.findMany({
     where: eq(organizationMemberships.organizationId, session.organizationId),
     with: {
@@ -22,7 +23,6 @@ export default async function TeamsPage() {
     orderBy: (memberships, { desc }) => [desc(memberships.createdAt)],
   });
 
-  // Fetch pending invites
   const pendingInvites = await db.query.organizationInvites.findMany({
     where: and(
       eq(organizationInvites.organizationId, session.organizationId),
@@ -100,9 +100,11 @@ export default async function TeamsPage() {
                       </div>
                     </div>
 
-                    <button className="px-3 py-1.5 rounded-lg text-sm text-neutral-400 hover:text-white bg-white/[0.05] hover:bg-white/[0.1] transition-colors">
-                      Manage
-                    </button>
+                    <MemberActions 
+                      memberId={member.id}
+                      memberRole={member.role}
+                      currentUserRole={session.organizationRole || 'member'}
+                    />
                   </div>
                 </div>
               </div>
@@ -120,7 +122,7 @@ export default async function TeamsPage() {
             <h2 className="font-cal text-2xl font-bold mb-6">Pending Invites</h2>
             
             <div className="space-y-4">
-            {pendingInvites.map((invite) => (
+              {pendingInvites.map((invite) => (
                 <div key={invite.id} className="p-4 rounded-lg border border-white/[0.02] bg-white/[0.02] hover:bg-white/[0.04] transition-colors">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
@@ -156,24 +158,11 @@ export default async function TeamsPage() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        <button 
-                          className="px-3 py-1.5 rounded-lg text-sm text-yellow-400 hover:text-yellow-300 bg-yellow-400/10 hover:bg-yellow-400/20 transition-colors"
-                          onClick={() => {
-                            // Resend invite functionality
-                          }}
-                        >
-                          Resend
-                        </button>
-                        <button 
-                          className="px-3 py-1.5 rounded-lg text-sm text-red-400 hover:text-red-300 bg-red-400/10 hover:bg-red-400/20 transition-colors"
-                          onClick={() => {
-                            // Cancel invite functionality
-                          }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
+                      <InviteActions 
+                        inviteId={invite.id} 
+                        inviteEmail={invite.email}
+                        organizationId={session.organizationId}
+                      />
                     </div>
                   </div>
                 </div>

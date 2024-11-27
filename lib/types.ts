@@ -186,6 +186,28 @@ export interface ConversationMetadata {
 }
 
 
+export interface InviteResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    id: string;
+    email: string;
+  };
+}
+
+export interface OrganizationInvite {
+  id: string;
+  email: string;
+  organizationId: string;
+  role: string;
+  status: 'pending' | 'accepted' | 'cancelled';
+  invitedBy: string;
+  invitedAt: Date;
+  expiresAt: Date;
+  acceptedAt?: Date;
+  organizationName?: string;
+  inviterName?: string;
+}
 
 
 export interface ToolCall {
