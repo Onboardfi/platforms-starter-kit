@@ -1,42 +1,59 @@
-
 // lib/data/users.ts
 
-import { users, agents } from "../schema";
+import { users, agents, organizationMemberships } from "../schema";
 import { eq, and, sql, gte, lte } from "drizzle-orm";
 import db from "../db";
 import { z } from "zod";
 import { authenticateUser, validateInput } from "./safe-action";
+import { getSession } from "@/lib/auth";
 
 /**
- * Get user data for the authenticated user
+ * Get user data for the authenticated user with organization context
  */
 export async function getUserData() {
   "use server";
 
   const userId = await authenticateUser();
+  
+  const userData = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+    with: {
+      organizationMemberships: {
+        with: {
+          organization: true
+        }
+      },
+      createdOrganizations: true,
+      createdSites: true,
+      createdAgents: true,
+      createdPosts: true
+    }
+  });
 
-  const userData = await db
-    .select()
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-
-  if (!userData.length) {
+  if (!userData) {
     throw new Error("User not found.");
   }
 
-  const user = userData[0];
-
   const data = {
-    id: user.id,
-    name: user.name,
-    username: user.username,
-    gh_username: user.gh_username,
-    email: user.email,
-    emailVerified: user.emailVerified,
-    image: user.image,
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
+    id: userData.id,
+    name: userData.name,
+    username: userData.username,
+    gh_username: userData.gh_username,
+    email: userData.email,
+    emailVerified: userData.emailVerified,
+    image: userData.image,
+    createdAt: userData.createdAt,
+    updatedAt: userData.updatedAt,
+    organizations: userData.organizationMemberships.map(membership => ({
+      ...membership.organization,
+      role: membership.role
+    })),
+    created: {
+      organizations: userData.createdOrganizations,
+      sites: userData.createdSites,
+      agents: userData.createdAgents,
+      posts: userData.createdPosts
+    }
   };
 
   return { data };
@@ -60,67 +77,110 @@ export async function updateUserProfile(input: unknown) {
 
   const { name, username, gh_username, image } = parsedInput;
 
-  // Update the user
-  await db
-    .update(users)
-    .set({
-      name,
-      username,
-      gh_username,
-      image,
-      updatedAt: new Date(),
-    })
-    .where(eq(users.id, userId));
+  try {
+    await db
+      .update(users)
+      .set({
+        name,
+        username,
+        gh_username,
+        image,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId));
 
-  return { success: true };
+    return { success: true };
+  } catch (error: any) {
+    if (error.code === "P2002") {
+      throw new Error("Username already taken");
+    }
+    throw error;
+  }
 }
 
 /**
- * Get usage statistics for the user
+ * Get usage statistics for the user within their organization context
  */
 export async function getUsageForUser() {
   "use server";
 
-  const userId = await authenticateUser();
+  const session = await getSession();
+  if (!session?.organizationId) {
+    throw new Error("Organization context required");
+  }
 
-  // Define the date range (e.g., current month)
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
+  // Get all agents created by the user in their current organization
   const usageData = await db
     .select({
-      totalAgents: sql<number>`COUNT(*)`.as("totalAgents"),
+      totalAgents: sql<number>`COUNT(DISTINCT ${agents.id})`.as("totalAgents"),
     })
     .from(agents)
+    .innerJoin(
+      organizationMemberships,
+      and(
+        eq(organizationMemberships.userId, agents.createdBy),
+        eq(organizationMemberships.organizationId, session.organizationId)
+      )
+    )
     .where(
       and(
-        eq(agents.userId, userId),
+        eq(agents.createdBy, session.user.id),
         gte(agents.createdAt, startOfMonth),
         lte(agents.createdAt, endOfMonth)
       )
     );
 
-  const totalAgents = usageData[0]?.totalAgents || 0;
-
-  return { data: totalAgents };
+  return { data: usageData[0]?.totalAgents || 0 };
 }
 
 /**
- * Delete the authenticated user's account
+ * Delete the authenticated user's account and clean up organization memberships
  */
 export async function deleteUserAccount() {
   "use server";
 
+  const session = await getSession();
   const userId = await authenticateUser();
 
-  // Delete user-related data first (e.g., agents, sites, posts)
-  // Assuming you have cascading deletes set up in your database schema
+  try {
+    // Start a transaction to ensure all deletions succeed or none do
+    await db.transaction(async (tx) => {
+      // Delete organization memberships first
+      await tx
+        .delete(organizationMemberships)
+        .where(eq(organizationMemberships.userId, userId));
 
-  // Delete the user
-  await db.delete(users).where(eq(users.id, userId));
+      // Delete the user (this will cascade to their created content if configured)
+      await tx.delete(users).where(eq(users.id, userId));
+    });
 
-  // Optionally, invalidate the user's session here if necessary
+    // Optionally, invalidate the user's session here if necessary
 
-  return { success: true };
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to delete user account:', error);
+    throw new Error('Failed to delete user account');
+  }
+}
+
+/**
+ * Get user's membership details for an organization
+ */
+export async function getUserOrganizationRole(organizationId: string) {
+  "use server";
+
+  const userId = await authenticateUser();
+
+  const membership = await db.query.organizationMemberships.findFirst({
+    where: and(
+      eq(organizationMemberships.userId, userId),
+      eq(organizationMemberships.organizationId, organizationId)
+    )
+  });
+
+  return membership ? { role: membership.role } : null;
 }

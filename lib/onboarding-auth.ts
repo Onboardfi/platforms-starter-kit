@@ -1,4 +1,4 @@
-// lib/onboarding-auth.ts
+// /lib/onboarding-auth.ts
 
 import { cookies } from 'next/headers';
 import { getToken } from 'next-auth/jwt';
@@ -6,12 +6,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify, SignJWT, JWTPayload } from 'jose';
 import { nanoid } from 'nanoid';
 import { getAgentById } from '@/lib/actions';
+import { organizationMemberships } from '@/lib/schema';
+import { eq, and } from 'drizzle-orm';
+import db from './db';
+import { acceptOrganizationInvite } from './organization-invites'; // Import the accept function
 
 const JWT_SECRET = process.env.NEXTAUTH_SECRET || '';
 
 export interface TokenPayload {
   userId: string;
   agentId: string;
+  organizationId: string | null; // Update to allow null
+  organizationRole?: 'owner' | 'admin' | 'member';
   isAnonymous: boolean;
   isAuthenticated: boolean;
   sessionId?: string;
@@ -26,6 +32,36 @@ export interface OnboardingAuthResponse {
   error?: string;
   token?: string;
   authState?: TokenPayload;
+  requiresAuth?: boolean;
+}
+
+/**
+ * Verify organization access and get role
+ */
+async function verifyOrganizationAccess(
+  userId: string,
+  organizationId: string
+): Promise<{ hasAccess: boolean; role?: 'owner' | 'admin' | 'member' }> {
+  try {
+    if (userId === 'anonymous') {
+      return { hasAccess: true };
+    }
+
+    const membership = await db.query.organizationMemberships.findFirst({
+      where: and(
+        eq(organizationMemberships.userId, userId),
+        eq(organizationMemberships.organizationId, organizationId)
+      )
+    });
+
+    return {
+      hasAccess: !!membership,
+      role: membership?.role
+    };
+  } catch (error) {
+    console.error('Error verifying organization access:', error);
+    return { hasAccess: false };
+  }
 }
 
 /**
@@ -70,6 +106,7 @@ export async function verifyOnboardingToken(token: string): Promise<TokenPayload
         p !== null &&
         typeof p.userId === 'string' &&
         typeof p.agentId === 'string' &&
+        typeof p.organizationId === 'string' &&
         typeof p.isAuthenticated === 'boolean' &&
         typeof p.isAnonymous === 'boolean'
       );
@@ -83,6 +120,8 @@ export async function verifyOnboardingToken(token: string): Promise<TokenPayload
     return {
       userId: payload.userId,
       agentId: payload.agentId,
+      organizationId: payload.organizationId,
+      organizationRole: payload.organizationRole,
       isAuthenticated: payload.isAuthenticated,
       isAnonymous: payload.isAnonymous,
       sessionId: payload.sessionId
@@ -96,10 +135,11 @@ export async function verifyOnboardingToken(token: string): Promise<TokenPayload
 /**
  * Creates a new anonymous token
  */
-export async function createAnonymousToken(agentId: string): Promise<string> {
+export async function createAnonymousToken(agentId: string, organizationId: string): Promise<string> {
   return generateOnboardingToken({
     userId: 'anonymous',
     agentId,
+    organizationId,
     isAnonymous: true,
     isAuthenticated: false
   });
@@ -146,15 +186,35 @@ export async function processOnboardingAuth(
   try {
     // Get agent settings
     const agent = await getAgentById(agentId);
-    if (!agent) {
+    if (!agent || !agent.site) {
       return { success: false, error: 'Agent not found' };
     }
+
+    const organizationId = agent.site.organizationId;
 
     // Check existing token
     const token = req.cookies.get('onboarding_token')?.value;
     if (token) {
       const tokenState = await verifyOnboardingToken(token);
       if (tokenState && tokenState.agentId === agentId) {
+        // Verify organization access if authenticated
+        if (!tokenState.isAnonymous) {
+          const { hasAccess, role } = await verifyOrganizationAccess(
+            tokenState.userId,
+            organizationId
+          );
+
+          if (!hasAccess) {
+            return { 
+              success: false, 
+              error: 'Organization access denied',
+              requiresAuth: true
+            };
+          }
+
+          tokenState.organizationRole = role;
+        }
+
         return { 
           success: true, 
           token,
@@ -168,17 +228,22 @@ export async function processOnboardingAuth(
     const isAuthEnabled = agent.settings.authentication?.enabled;
 
     if (isInternalOnboarding && isAuthEnabled) {
-      return { success: false, error: 'Authentication required' };
+      return { 
+        success: false, 
+        error: 'Authentication required',
+        requiresAuth: true 
+      };
     }
 
     // Create anonymous token for external onboarding
-    const newToken = await createAnonymousToken(agentId);
+    const newToken = await createAnonymousToken(agentId, organizationId);
     return { 
       success: true, 
       token: newToken,
       authState: {
         userId: 'anonymous',
         agentId,
+        organizationId,
         isAnonymous: true,
         isAuthenticated: false
       }

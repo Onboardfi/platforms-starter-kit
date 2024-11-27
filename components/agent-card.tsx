@@ -1,3 +1,5 @@
+////Users/bobbygilbert/Documents/Github/platforms-starter-kit/components/agent-card.tsx
+
 /* eslint-disable @next/next/no-img-element */
 "use client";
 

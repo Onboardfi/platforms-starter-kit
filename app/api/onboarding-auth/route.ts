@@ -52,14 +52,19 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // 5. Generate onboarding token
+    const organizationId = agent.site?.organizationId;
+    if (!organizationId) {
+      return NextResponse.json({ error: 'Organization ID not found' }, { status: 400 });
+    }
+    
     const onboardingToken = await generateOnboardingToken({
       userId: token.sub,
       agentId,
       isAnonymous: false,
-      isAuthenticated: true
+      isAuthenticated: true,
+      organizationId,
     });
-
+    
     // 6. Create response with redirect
     const response = NextResponse.redirect(new URL(`/onboard/${agentId}`, req.url));
 

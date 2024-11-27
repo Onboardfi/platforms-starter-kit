@@ -1,3 +1,6 @@
+
+////Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/api/stripe/webhook/route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 import { stripe } from '@/lib/stripe';

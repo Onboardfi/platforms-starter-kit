@@ -1,3 +1,5 @@
+///Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/sitemap.ts
+
 import { headers } from "next/headers";
 import { getPostsForSite } from "@/lib/fetchers";
 

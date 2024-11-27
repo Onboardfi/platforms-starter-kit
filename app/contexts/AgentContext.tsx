@@ -1,9 +1,11 @@
+///Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/contexts/AgentContext.tsx
+
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { SelectAgent } from "@/lib/schema";
-import { useParams } from "next/navigation";
-import { getAgentById, updateAgent, updateAgentMetadata } from "@/lib/actions";
+import { useParams, redirect } from "next/navigation";
+import { getAgentById, updateAgentAPI, updateAgentMetadata } from "@/lib/actions";
 
 interface AgentContextProps {
   agent: SelectAgent | null;
@@ -41,11 +43,11 @@ function AgentProvider({ children }: { children: React.ReactNode }) {
 
   const setAgent = (newAgent: SelectAgent | null) => {
     setAgentState(newAgent);
-    if (newAgent) {
+    if (newAgent?.createdBy) { // Only update if we have a valid createdBy
       setIsPendingSaving(true);
-      updateAgent(newAgent)
+      updateAgentAPI(newAgent, newAgent.createdBy)
         .then(() => setIsPendingSaving(false))
-        .catch((error) => {
+        .catch((error: Error) => {
           console.error('Failed to update agent:', error);
           setIsPendingSaving(false);
         });
@@ -53,22 +55,45 @@ function AgentProvider({ children }: { children: React.ReactNode }) {
   };
 
   const handleTogglePublish = async () => {
-    if (!agent) return;
+    if (!agent?.site) return; // Make sure we have a valid agent with site
 
     setIsPendingPublishing(true);
     try {
-      const updatedAgent = { ...agent, published: !agent.published };
       const formData = new FormData();
-      formData.append('published', String(updatedAgent.published));
+      formData.append('published', (!agent.published).toString());
       
-      await updateAgentMetadata(formData, agent.id, 'published');
-      setAgentState(updatedAgent);
-    } catch (error) {
-      console.error('Failed to toggle publish:', error);
+      const response = await updateAgentMetadata(
+        formData,
+        {
+          ...agent,
+          site: {
+            ...agent.site,
+            organization: agent.site.organization || null,
+            creator: agent.site.creator || null
+          }
+        },
+        'published'
+      );
+
+      if (response.success && response.data) {
+        setAgentState({
+          ...agent,
+          published: !agent.published
+        });
+      }
+    } catch (error: unknown) {
+      console.error('Failed to toggle publish:', error instanceof Error ? error.message : 'Unknown error');
     } finally {
       setIsPendingPublishing(false);
     }
   };
+
+  // Redirect if we don't have a valid agent ID
+  useEffect(() => {
+    if (!id) {
+      redirect('/');
+    }
+  }, [id]);
 
   return (
     <AgentContext.Provider

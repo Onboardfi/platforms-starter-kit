@@ -1,3 +1,5 @@
+///Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/app/(dashboard)/agent/[id]/nav.tsx
+
 "use client";
 
 import { cn } from "@/lib/utils";

@@ -1,9 +1,49 @@
-// app/api/getConversation/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { withCombinedAuth } from "@/lib/combined-auth";
 import db from "@/lib/db";
 import { conversations, onboardingSessions } from "@/lib/schema";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+import type { SelectConversation, SelectOnboardingSession } from "@/lib/schema";
+
+interface ConversationResponse {
+  id: string;
+  status: string;
+  messageCount: number | null;
+  startedAt: Date;
+  endedAt: Date | null;
+  lastMessageAt: Date | null;
+  metadata: Record<string, any> | null;
+  onboardingSession?: {
+    id: string;
+    type: string;
+    status: string;
+    metadata: Record<string, any> | null;
+    stepProgress: {
+      steps: Array<{
+        id: string;
+        title: string;
+        description: string;
+        completed: boolean;
+        completedAt?: string;
+      }>;
+    } | null;
+    user?: {
+      id: string;
+      stripeCustomerId: string | null;
+      email: string;
+      name: string | null;
+    } | null;
+    agent?: {
+      id: string;
+      creator?: {
+        id: string;
+        stripeCustomerId: string | null;
+        email: string;
+        name: string | null;
+      } | null;
+    } | null;
+  };
+}
 
 export async function GET(req: NextRequest) {
   return withCombinedAuth(req, async (userId, agentId) => {
@@ -33,7 +73,7 @@ export async function GET(req: NextRequest) {
               },
               agent: {
                 with: {
-                  user: {
+                  creator: {
                     columns: {
                       id: true,
                       stripeCustomerId: true,
@@ -56,18 +96,15 @@ export async function GET(req: NextRequest) {
       }
 
       // If agentId is provided, verify conversation belongs to agent
-      if (agentId) {
-        const isValidAgent = conversation.session?.agent?.id === agentId;
-        if (!isValidAgent) {
-          return NextResponse.json(
-            { error: "Unauthorized access to conversation" },
-            { status: 403 }
-          );
-        }
+      if (agentId && conversation.session?.agent?.id !== agentId) {
+        return NextResponse.json(
+          { error: "Unauthorized access to conversation" },
+          { status: 403 }
+        );
       }
 
-      // Prepare response by transforming the data
-      const response = {
+      // Transform the data for the response
+      const response: ConversationResponse = {
         id: conversation.id,
         status: conversation.status,
         messageCount: conversation.messageCount,
@@ -75,7 +112,7 @@ export async function GET(req: NextRequest) {
         endedAt: conversation.endedAt,
         lastMessageAt: conversation.lastMessageAt,
         metadata: conversation.metadata,
-        session: conversation.session ? {
+        onboardingSession: conversation.session ? {
           id: conversation.session.id,
           type: conversation.session.type,
           status: conversation.session.status,
@@ -89,14 +126,14 @@ export async function GET(req: NextRequest) {
           } : null,
           agent: conversation.session.agent ? {
             id: conversation.session.agent.id,
-            user: conversation.session.agent.user ? {
-              id: conversation.session.agent.user.id,
-              stripeCustomerId: conversation.session.agent.user.stripeCustomerId,
-              email: conversation.session.agent.user.email,
-              name: conversation.session.agent.user.name
+            creator: conversation.session.agent.creator ? {
+              id: conversation.session.agent.creator.id,
+              stripeCustomerId: conversation.session.agent.creator.stripeCustomerId,
+              email: conversation.session.agent.creator.email,
+              name: conversation.session.agent.creator.name
             } : null
           } : null
-        } : null
+        } : undefined
       };
 
       return NextResponse.json(response);

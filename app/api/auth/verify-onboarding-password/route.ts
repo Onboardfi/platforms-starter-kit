@@ -18,6 +18,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     }
 
+    // Ensure agent.site exists
+    if (!agent.site) {
+      console.warn(`Agent ${agentId} does not have an associated site.`);
+      return NextResponse.json({ error: "Agent's site not found" }, { status: 400 });
+    }
+
+    // Retrieve organizationId from the agent's site
+    const organizationId = agent.site.organizationId;
+
     // Handle anonymous authentication request
     if (anonymous) {
       if (agent.settings.onboardingType === 'internal' && agent.settings.authentication?.enabled) {
@@ -27,6 +36,7 @@ export async function POST(req: NextRequest) {
       const anonymousToken = await generateOnboardingToken({
         userId: 'anonymous',
         agentId,
+        organizationId, // Added organizationId
         isAnonymous: true,
         isAuthenticated: false
       });
@@ -40,7 +50,7 @@ export async function POST(req: NextRequest) {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
-        maxAge: 24 * 60 * 60,
+        maxAge: 24 * 60 * 60, // 24 hours
         path: '/'
       });
 
@@ -69,6 +79,7 @@ export async function POST(req: NextRequest) {
     const token = await generateOnboardingToken({
       userId: `user-${Date.now()}`,
       agentId,
+      organizationId, // Added organizationId
       isAnonymous: false,
       isAuthenticated: true
     });
@@ -82,7 +93,7 @@ export async function POST(req: NextRequest) {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 24 * 60 * 60,
+      maxAge: 24 * 60 * 60, // 24 hours
       path: '/'
     });
 

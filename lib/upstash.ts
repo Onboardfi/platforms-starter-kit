@@ -2,16 +2,18 @@
 
 import { Redis } from '@upstash/redis';
 import { createId } from '@paralleldrive/cuid2';
-import { eq, desc, and, lt } from 'drizzle-orm';
-
-import { stripe } from '@/lib/stripe'; // Existing import
-import { users } from '@/lib/schema'; // Add this imp
+import { eq, desc, and, lt, sql } from 'drizzle-orm';
+import { stripe } from '@/lib/stripe';
+import { users } from '@/lib/schema';
 import db from '@/lib/db';
-import { 
-  onboardingSessions, 
-  conversations, 
+
+import {
+  onboardingSessions,
+  conversations,
   messages,
-  usageLogs,  // Add this
+  usageLogs,
+  organizations, // Add organizations table
+  organizationMemberships // Add memberships table
 } from '@/lib/schema';
 import {
   AgentState,
@@ -28,7 +30,59 @@ import {
   MessageRole,
   ConversationStatus,
   ToolCall,
+  ConversationWithSession,
 } from '@/lib/types';
+
+import {  count } from 'drizzle-orm';
+
+
+// Add these imports if not already present
+import { InferModel } from 'drizzle-orm';
+
+interface CreateUsageLog {
+  id: string;
+  userId: string | null;
+  sessionId: string | null;
+  conversationId: string | null;
+  messageId: string | null;
+  durationSeconds: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  messageRole: 'user' | 'assistant';
+  stripeCustomerId: string | null;
+  reportingStatus: 'pending' | 'reported';
+  organizationId: string;
+  createdAt: Date; // Added
+  // Optionally add other fields like stripeEventId if necessary
+}
+
+
+
+// Helper function to validate organization access
+async function validateOrganizationAccess(
+  organizationId: string, 
+  userId?: string
+): Promise<boolean> {
+  if (!userId) return false;
+
+  const membership = await db.query.organizationMemberships.findFirst({
+    where: and(
+      eq(organizationMemberships.organizationId, organizationId),
+      eq(organizationMemberships.userId, userId)
+    )
+  });
+
+  return !!membership;
+}
+type UsageLogMessageRole = 'user' | 'assistant';
+function isValidUsageLogRole(role: MessageRole): role is UsageLogMessageRole {
+  return role === 'user' || role === 'assistant';
+}
+// Helper function to get organization-specific Redis key
+function getOrgScopedKey(prefix: string, id: string, organizationId: string): string {
+  return `${ORGANIZATION_PREFIX}${organizationId}:${prefix}${id}`;
+}
 
 // Helper function to validate session exists
 async function validateSession(sessionId: string): Promise<boolean> {
@@ -53,13 +107,16 @@ export const redis = new Redis({
 /**
  * Constants
  */
+
+// Update Redis key patterns to include organization context
+const ORGANIZATION_PREFIX = 'org:';
 const AGENT_STATE_PREFIX = 'agent:';
 const SESSION_STATE_PREFIX = 'session:';
 const CONVERSATION_PREFIX = 'conversation:';
 const MESSAGE_PREFIX = 'message:';
 const STATE_SUFFIX = ':state';
-const DEFAULT_EXPIRY = 24 * 60 * 60; // 24 hours
-const CLEANUP_THRESHOLD = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+const DEFAULT_EXPIRY = 24 * 60 * 60;
+const CLEANUP_THRESHOLD = 24 * 60 * 60 * 1000;
 
 /**
  * Helper Functions and Default Values
@@ -107,20 +164,32 @@ const defaultConversationMetadata: ConversationMetadata = {
 /**
  * Agent State Management
  */
-export async function setAgentState(agentId: string, state: AgentState): Promise<void> {
+// Update setAgentState to include organization context
+export async function setAgentState(
+  agentId: string, 
+  state: AgentState & { organizationId: string }
+): Promise<void> {
   try {
-    const key = `${AGENT_STATE_PREFIX}${agentId}${STATE_SUFFIX}`;
+    const key = getOrgScopedKey(AGENT_STATE_PREFIX, agentId, state.organizationId) + STATE_SUFFIX;
     await redis.set(key, state, { ex: DEFAULT_EXPIRY });
-    console.log(`Agent state updated for ${agentId}`);
+    
+    // Set organization index
+    await redis.sadd(`${ORGANIZATION_PREFIX}${state.organizationId}:agents`, agentId);
+    
+    console.log(`Agent state updated for ${agentId} in org ${state.organizationId}`);
   } catch (error) {
     console.error('Failed to set agent state:', error);
     throw new Error('Failed to update agent state');
   }
 }
 
-export async function getAgentState(agentId: string): Promise<AgentState | null> {
+// Update getAgentState to be organization-aware
+export async function getAgentState(
+  agentId: string, 
+  organizationId: string
+): Promise<AgentState | null> {
   try {
-    const key = `${AGENT_STATE_PREFIX}${agentId}${STATE_SUFFIX}`;
+    const key = getOrgScopedKey(AGENT_STATE_PREFIX, agentId, organizationId) + STATE_SUFFIX;
     return await redis.get(key);
   } catch (error) {
     console.error('Failed to get agent state:', error);
@@ -131,14 +200,21 @@ export async function getAgentState(agentId: string): Promise<AgentState | null>
 /**
  * Session Management
  */
+// Update session creation to include organization context
 export async function createSession(
   agentId: string,
-  data: Partial<SessionState>
+  data: Partial<SessionState> & {
+    metadata: {
+      organizationId: string;
+      [key: string]: any;
+    };
+  }
 ): Promise<string> {
   try {
     const sessionId = createId();
+    const { organizationId } = data.metadata;
 
-    // Create session with complete steps
+    // Create session with complete steps and organization context
     const steps = data.steps?.map(ensureStepCompleteness) || [];
 
     const session: SessionState = {
@@ -148,14 +224,18 @@ export async function createSession(
       steps,
       context: {},
       lastActive: Date.now(),
-      metadata: data.metadata || {},
-      clientIdentifier: data.clientIdentifier,
+      metadata: data.metadata,
+      // Use nullish coalescing to provide a default value
+      clientIdentifier: data.clientIdentifier ?? `default-${sessionId}`
     };
-
-    const key = `${SESSION_STATE_PREFIX}${sessionId}${STATE_SUFFIX}`;
+   
+    const key = getOrgScopedKey(SESSION_STATE_PREFIX, sessionId, organizationId) + STATE_SUFFIX;
     await redis.set(key, session, { ex: DEFAULT_EXPIRY });
 
-    console.log(`Session created: ${sessionId} for agent: ${agentId}`);
+    // Set organization index
+    await redis.sadd(`${ORGANIZATION_PREFIX}${organizationId}:sessions`, sessionId);
+
+    console.log(`Session created: ${sessionId} for agent: ${agentId} in org: ${organizationId}`);
     return sessionId;
   } catch (error) {
     console.error('Failed to create session:', error);
@@ -163,26 +243,38 @@ export async function createSession(
   }
 }
 
+// Update getSessionState to validate organization access
 export async function getSessionState(sessionId: string): Promise<SessionState | null> {
   try {
-    const key = `${SESSION_STATE_PREFIX}${sessionId}${STATE_SUFFIX}`;
-    const session = await redis.get<SessionState>(key);
+    const session = await db.query.onboardingSessions.findFirst({
+      where: eq(onboardingSessions.id, sessionId),
+      columns: {
+        organizationId: true
+      }
+    });
 
     if (!session) {
       console.log(`Session not found: ${sessionId}`);
       return null;
     }
 
-    // Ensure all steps are complete
-    session.steps = session.steps.map(ensureStepCompleteness);
+    const key = getOrgScopedKey(SESSION_STATE_PREFIX, sessionId, session.organizationId) + STATE_SUFFIX;
+    const state = await redis.get<SessionState>(key);
 
-    return session;
+    if (!state) {
+      console.log(`Session state not found in Redis: ${sessionId}`);
+      return null;
+    }
+
+    // Ensure all steps are complete
+    state.steps = state.steps.map(ensureStepCompleteness);
+
+    return state;
   } catch (error) {
     console.error('Failed to get session state:', error);
     throw new Error('Failed to retrieve session state');
   }
 }
-
 export async function updateSessionState(
   sessionId: string,
   updates: Partial<SessionState>
@@ -191,15 +283,21 @@ export async function updateSessionState(
     const current = await getSessionState(sessionId);
     if (!current) throw new Error('Session not found');
 
-    // Update with complete steps
-    const steps = updates.steps?.map(ensureStepCompleteness) || current.steps;
+    // Add runtime check to ensure metadata and organizationId are defined
+    if (!current.metadata || !current.metadata.organizationId) {
+      throw new Error('Session metadata is incomplete: organizationId missing');
+    }
 
     const key = `${SESSION_STATE_PREFIX}${sessionId}${STATE_SUFFIX}`;
     const updated: SessionState = {
       ...current,
       ...updates,
-      steps,
-      metadata: updates.metadata || current.metadata || {},
+      steps: updates.steps?.map(ensureStepCompleteness) || current.steps,
+      metadata: {
+        ...current.metadata,
+        ...(updates.metadata || {}),
+        organizationId: current.metadata.organizationId // Now TypeScript knows it's a string
+      },
       lastActive: Date.now(),
     };
 
@@ -210,6 +308,7 @@ export async function updateSessionState(
     throw new Error('Failed to update session state');
   }
 }
+
 
 export async function deleteSession(sessionId: string): Promise<void> {
   try {
@@ -301,6 +400,7 @@ export async function syncSessionState(sessionId: string): Promise<void> {
   }
 }
 
+// Update initializeRedisFromPostgres to handle undefined clientIdentifier
 export async function initializeRedisFromPostgres(sessionId: string): Promise<void> {
   try {
     const session = await db.query.onboardingSessions.findFirst({
@@ -317,12 +417,16 @@ export async function initializeRedisFromPostgres(sessionId: string): Promise<vo
     const redisState: SessionState = {
       sessionId: session.id,
       agentId: session.agentId || '',
-      clientIdentifier: session.clientIdentifier || undefined,
+      // Provide a default value if clientIdentifier is undefined
+      clientIdentifier: session.clientIdentifier || `default-${session.id}`,
       currentStep: 0,
       steps: transformedSteps,
       context: {},
       lastActive: Date.now(),
-      metadata: session.metadata || {},
+      metadata: {
+        ...(session.metadata || {}),
+        organizationId: session.organizationId ?? ''
+      },
     };
 
     const key = `${SESSION_STATE_PREFIX}${sessionId}${STATE_SUFFIX}`;
@@ -334,30 +438,38 @@ export async function initializeRedisFromPostgres(sessionId: string): Promise<vo
     throw new Error('Failed to initialize Redis state');
   }
 }
-
 /**
  * Conversation Management
  */
 
+// Update conversation creation to include organization context
 export async function createConversation(
   sessionId: string,
-  metadata: Partial<ConversationMetadata> = {}
+  metadata: Partial<ConversationMetadata & { organizationId: string }> = {}
 ): Promise<SelectConversation> {
   try {
-    // Verify session exists
-    const sessionExists = await validateSession(sessionId);
-    if (!sessionExists) {
+    const session = await db.query.onboardingSessions.findFirst({
+      where: eq(onboardingSessions.id, sessionId),
+      columns: {
+        organizationId: true
+      }
+    });
+
+    if (!session) {
       throw new Error(`Session ${sessionId} not found`);
     }
 
-    const finalMetadata = ensureMetadata(metadata, defaultConversationMetadata);
+    const finalMetadata = {
+      ...defaultConversationMetadata,
+      ...metadata,
+      organizationId: session.organizationId
+    };
 
-    // Create conversation with guaranteed non-null sessionId
     const [conversation] = await db
       .insert(conversations)
       .values({
         id: createId(),
-        sessionId, // This is guaranteed to be non-null due to foreign key constraint
+        sessionId,
         status: 'active',
         metadata: finalMetadata,
         startedAt: new Date(),
@@ -365,10 +477,9 @@ export async function createConversation(
       })
       .returning();
 
-    // Create the result object with the correct type
     const result: SelectConversation = {
       id: conversation.id,
-      sessionId: conversation.sessionId!, // Assert non-null
+      sessionId: conversation.sessionId!,
       status: conversation.status,
       metadata: finalMetadata,
       startedAt: conversation.startedAt,
@@ -380,7 +491,8 @@ export async function createConversation(
       messageCount: conversation.messageCount || 0,
     };
 
-    const redisKey = `${CONVERSATION_PREFIX}${conversation.id}`;
+    // Use organization-scoped Redis keys
+    const redisKey = getOrgScopedKey(CONVERSATION_PREFIX, conversation.id, session.organizationId);
     await redis.set(
       redisKey,
       {
@@ -391,7 +503,8 @@ export async function createConversation(
       { ex: DEFAULT_EXPIRY }
     );
 
-    await redis.sadd('active_conversations', conversation.id);
+    // Add to organization's active conversations
+    await redis.sadd(`${ORGANIZATION_PREFIX}${session.organizationId}:active_conversations`, conversation.id);
 
     return result;
   } catch (error) {
@@ -399,6 +512,7 @@ export async function createConversation(
     throw error instanceof Error ? error : new Error('Failed to create conversation');
   }
 }
+
 
 export async function getSessionConversations(
   sessionId: string,
@@ -615,12 +729,9 @@ export async function cleanupCompletedConversations(
   }
 }
 
-/**
- * Message Management
- */
 export async function addMessage(
   messageData: {
-    id: string;  // Accept the WebSocket message ID
+    id: string;
     conversationId: string;
     type: MessageType;
     role: MessageRole;
@@ -642,37 +753,51 @@ export async function addMessage(
       stepId: messageData.stepId
     });
 
-    const finalMetadata = ensureMetadata(messageData.metadata || {}, defaultMessageMetadata);
-    console.log('addMessage: Prepared finalMetadata:', finalMetadata);
-
-    // Get conversation with complete session and user details
+    // Get conversation with complete session details
     const conversation = await db.query.conversations.findFirst({
       where: eq(conversations.id, messageData.conversationId),
       with: {
         session: {
+          columns: {
+            organizationId: true,
+            userId: true
+          },
           with: {
-            user: true,
             agent: {
+              columns: {
+                id: true,
+                createdBy: true
+              },
               with: {
-                user: true
+                creator: { // Correctly reference 'creator'
+                  columns: {
+                    id: true,
+                    name: true,
+                    email: true
+                  }
+                }
               }
             }
           }
         }
       }
-    });
+    }) as ConversationWithSession; 
+    
 
-    if (!conversation) {
-      console.error('addMessage: Conversation not found for ID:', messageData.conversationId);
-      throw new Error('Conversation not found');
+    if (!conversation?.session) {
+      throw new Error('Conversation or session not found');
     }
 
-    const effectiveUserId = conversation.session?.userId || 
-                          conversation.session?.agent?.userId || 
-                          conversation.session?.agent?.user?.id;
+    const organizationId = conversation.session.organizationId;
+    const effectiveUserId = conversation.session.userId || 
+    conversation.session.agent?.userId || 
+    conversation.session.agent?.creator?.id;
+    
+
 
     console.log('addMessage: Retrieved conversation:', {
       conversationId: conversation.id,
+      organizationId,
       effectiveUserId
     });
 
@@ -680,13 +805,14 @@ export async function addMessage(
       console.warn('addMessage: No user ID found for conversation:', messageData.conversationId);
     }
 
+    // Use organization-scoped Redis key for message count
     const orderIndex = (
-      await redis.incr(`${CONVERSATION_PREFIX}${messageData.conversationId}:message_count`)
+      await redis.incr(`${ORGANIZATION_PREFIX}${organizationId}:${CONVERSATION_PREFIX}${messageData.conversationId}:message_count`)
     ).toString();
 
     console.log(`addMessage: Retrieved orderIndex ${orderIndex} for conversation ${messageData.conversationId}`);
 
-    // First check if message already exists
+    // Check if message already exists
     const existingMessage = await db.query.messages.findFirst({
       where: eq(messages.id, messageData.id)
     });
@@ -695,12 +821,21 @@ export async function addMessage(
       console.log('addMessage: Message already exists:', messageData.id);
       return {
         ...existingMessage,
-        metadata: ensureMetadata(existingMessage.metadata, defaultMessageMetadata),
+        metadata: {
+          ...ensureMetadata(existingMessage.metadata, defaultMessageMetadata),
+          organizationId
+        },
         toolCalls: (existingMessage.toolCalls || []) as ToolCall[],
         stepId: existingMessage.stepId || undefined,
         parentMessageId: existingMessage.parentMessageId || undefined
       };
     }
+
+    // Include organization ID in metadata
+    const finalMetadata = {
+      ...ensureMetadata(messageData.metadata || {}, defaultMessageMetadata),
+      organizationId
+    };
 
     // Create message with provided ID
     const [dbMessage] = await db
@@ -729,122 +864,133 @@ export async function addMessage(
       parentMessageId: dbMessage.parentMessageId || undefined,
     };
 
-    // After logging usage in your database, send a meter event to Stripe
-    if (messageData.role === 'assistant' && finalMetadata.audioDurationSeconds && effectiveUserId) {
+    // Log usage and handle Stripe billing
+    if (messageData.role === 'assistant' && 
+      (finalMetadata.audioDurationSeconds || finalMetadata.promptTokens || finalMetadata.completionTokens)) {
       try {
-        console.log(`addMessage: Sending meter event to Stripe for user ${effectiveUserId}`);
-        const user = await db.query.users.findFirst({
+        console.log(`addMessage: Logging usage for message ${message.id}`);
+        
+        const user = effectiveUserId ? await db.query.users.findFirst({
           where: eq(users.id, effectiveUserId),
-        });
+        }) : null;
+
+        // Prepare usage log
+        const usageLog = {
+          userId: effectiveUserId,
+          sessionId: conversation.session.id,
+          conversationId: conversation.id,
+          messageId: message.id,
+          durationSeconds: Math.round(finalMetadata.audioDurationSeconds || 0),
+          promptTokens: finalMetadata.promptTokens || 0,
+          completionTokens: finalMetadata.completionTokens || 0,
+          totalTokens: finalMetadata.totalTokens || 0,
+          messageRole: messageData.role,
+          stripeCustomerId: user?.stripeCustomerId || null,
+          reportingStatus: 'pending' as const,
+          organizationId
+        };
+
+        const [logResult] = await db
+          .insert(usageLogs)
+          .values(usageLog)
+          .returning();
+
+        // Handle Stripe billing
         if (user?.stripeCustomerId) {
-          await stripe.billing.meterEvents.create({
-            event_name: 'api_requests',
-            payload: {
-              stripe_customer_id: user.stripeCustomerId,
-              value: Math.round(finalMetadata.audioDurationSeconds).toString(),
-            },
+          const timestamp = new Date().toISOString();
+          
+          // Create string metadata for Stripe
+          const stripeMetadata = JSON.stringify({
+            organizationId,
+            messageId: message.id,
+            sessionId: conversation.session.id
           });
-          console.log(`addMessage: Successfully sent meter event to Stripe for user ${effectiveUserId}`);
-        } else {
-          console.warn(`addMessage: User ${effectiveUserId} does not have a stripeCustomerId`);
+
+          const billingPromises = [];
+
+          if (finalMetadata.promptTokens) {
+            billingPromises.push(
+              stripe.billing.meterEvents.create({
+                event_name: 'input_tokens',
+                payload: {
+                  stripe_customer_id: user.stripeCustomerId,
+                  value: Math.ceil(finalMetadata.promptTokens / 1000).toString(),
+                  timestamp,
+                  metadata: stripeMetadata
+                }
+              })
+            );
+          }
+
+          if (finalMetadata.completionTokens) {
+            billingPromises.push(
+              stripe.billing.meterEvents.create({
+                event_name: 'output_tokens',
+                payload: {
+                  stripe_customer_id: user.stripeCustomerId,
+                  value: Math.ceil(finalMetadata.completionTokens / 1000).toString(),
+                  timestamp,
+                  metadata: stripeMetadata
+                }
+              })
+            );
+          }
+
+          if (finalMetadata.audioDurationSeconds) {
+            billingPromises.push(
+              stripe.billing.meterEvents.create({
+                event_name: 'audio_duration',
+                payload: {
+                  stripe_customer_id: user.stripeCustomerId,
+                  value: Math.round(finalMetadata.audioDurationSeconds).toString(),
+                  timestamp,
+                  metadata: stripeMetadata
+                }
+              })
+            );
+          }
+
+          await Promise.all(billingPromises);
         }
+
+        // Double log for agent user if different from session user
+        if (conversation.session?.userId && 
+            conversation.session.agent?.userId &&
+            conversation.session.userId !== conversation.session.agent.userId) {
+          await db
+            .insert(usageLogs)
+            .values({
+              ...usageLog,
+              id: createId(),
+              userId: conversation.session.agent.userId
+            })
+            .returning();
+        }
+
+        console.log(`addMessage: Successfully logged usage for message ${message.id}:`, {
+          duration: finalMetadata.audioDurationSeconds,
+          promptTokens: finalMetadata.promptTokens,
+          completionTokens: finalMetadata.completionTokens,
+          userId: effectiveUserId,
+          organizationId,
+          logId: logResult.id
+        });
       } catch (error) {
-        console.error('addMessage: Failed to send meter event to Stripe:', error);
+        console.error('addMessage: Failed to log usage:', error);
+        console.error('addMessage: Usage logging context:', {
+          userId: effectiveUserId,
+          organizationId,
+          sessionId: conversation.session.id,
+          messageId: message.id,
+          duration: finalMetadata.audioDurationSeconds,
+          tokens: {
+            prompt: finalMetadata.promptTokens,
+            completion: finalMetadata.completionTokens
+          }
+        });
       }
     }
 
-// In your addMessage function, modify the logging section:
-
-if (messageData.role === 'assistant' && 
-  (finalMetadata.audioDurationSeconds || finalMetadata.promptTokens || finalMetadata.completionTokens)) {
-try {
-  console.log(`addMessage: Logging usage for message ${message.id}`);
-  
-  const user = effectiveUserId ? await db.query.users.findFirst({
-    where: eq(users.id, effectiveUserId),
-  }) : null;
-
-  // Log both duration and tokens
-  const usageLog = {
-    userId: effectiveUserId,
-    sessionId: conversation.sessionId,
-    conversationId: conversation.id,
-    messageId: message.id,
-    durationSeconds: Math.round(finalMetadata.audioDurationSeconds || 0),
-    promptTokens: finalMetadata.promptTokens || 0,
-    completionTokens: finalMetadata.completionTokens || 0,
-    totalTokens: finalMetadata.totalTokens || 0,
-    messageRole: messageData.role,
-    stripeCustomerId: user?.stripeCustomerId || null,
-    reportingStatus: 'pending' as const
-  };
-
-  const [logResult] = await db
-    .insert(usageLogs)
-    .values(usageLog)
-    .returning();
-
-  // Send token-based billing events to Stripe (instead of duration-based)
-  if (user?.stripeCustomerId) {
-    // Bill for input tokens if present
-    if (finalMetadata.promptTokens) {
-      await stripe.billing.meterEvents.create({
-        event_name: 'input_tokens',
-        payload: {
-          stripe_customer_id: user.stripeCustomerId,
-          value: Math.ceil(finalMetadata.promptTokens / 1000).toString(), // Convert to thousands
-          timestamp: new Date().toISOString()
-        }
-      });
-    }
-
-    // Bill for completion tokens if present
-    if (finalMetadata.completionTokens) {
-      await stripe.billing.meterEvents.create({
-        event_name: 'output_tokens',
-        payload: {
-          stripe_customer_id: user.stripeCustomerId,
-          value: Math.ceil(finalMetadata.completionTokens / 1000).toString(), // Convert to thousands
-          timestamp: new Date().toISOString()
-        }
-      });
-    }
-  }
-
-  // Double log for agent user if different from session user
-  if (conversation.session?.userId && conversation.session.agent?.userId &&
-      conversation.session.userId !== conversation.session.agent.userId) {
-    await db
-      .insert(usageLogs)
-      .values({
-        ...usageLog,
-        id: createId(),
-        userId: conversation.session.agent.userId
-      })
-      .returning();
-  }
-
-  console.log(`addMessage: Successfully logged usage for message ${message.id}:`, {
-    duration: finalMetadata.audioDurationSeconds,
-    promptTokens: finalMetadata.promptTokens,
-    completionTokens: finalMetadata.completionTokens,
-    userId: effectiveUserId,
-    logId: logResult.id
-  });
-} catch (error) {
-  console.error('addMessage: Failed to log usage:', error);
-  console.error('addMessage: Usage logging context:', {
-    userId: effectiveUserId,
-    sessionId: conversation.sessionId,
-    messageId: message.id,
-    duration: finalMetadata.audioDurationSeconds,
-    tokens: {
-      prompt: finalMetadata.promptTokens,
-      completion: finalMetadata.completionTokens
-    }
-  });
-}
-}
     // Update conversation
     await db
       .update(conversations)
@@ -854,14 +1000,16 @@ try {
         metadata: {
           ...conversation.metadata,
           lastMessageId: message.id,
+          organizationId
         },
       })
       .where(eq(conversations.id, messageData.conversationId));
 
-    // Update Redis state
-    const messageKey = `${MESSAGE_PREFIX}${message.id}`;
-    const conversationKey = `${CONVERSATION_PREFIX}${messageData.conversationId}`;
+    // Use organization-scoped Redis keys
+    const messageKey = getOrgScopedKey(MESSAGE_PREFIX, message.id, organizationId);
+    const conversationKey = getOrgScopedKey(CONVERSATION_PREFIX, messageData.conversationId, organizationId);
 
+    // Update Redis state
     await Promise.all([
       redis.set(messageKey, message, { ex: DEFAULT_EXPIRY }),
       redis.zadd(`${conversationKey}:messages`, {
@@ -874,9 +1022,12 @@ try {
           lastMessageId: message.id,
           messageCount: parseInt(orderIndex),
           lastActive: Date.now(),
+          organizationId
         },
         { ex: DEFAULT_EXPIRY }
       ),
+      // Add to organization's message index
+      redis.sadd(`${ORGANIZATION_PREFIX}${organizationId}:messages`, message.id)
     ]);
 
     console.log('addMessage: Function completed successfully with message:', message);
@@ -886,7 +1037,71 @@ try {
     throw error instanceof Error ? error : new Error('Failed to add message');
   }
 }
+// Function to create a usage log with type safety
+async function createUsageLog(data: Omit<CreateUsageLog, 'id' | 'createdAt'>): Promise<CreateUsageLog> {
+  const [logResult] = await db
+    .insert(usageLogs)
+    .values({
+      id: createId(),
+      userId: data.userId,
+      sessionId: data.sessionId,
+      conversationId: data.conversationId,
+      messageId: data.messageId,
+      durationSeconds: data.durationSeconds,
+      promptTokens: data.promptTokens,
+      completionTokens: data.completionTokens,
+      totalTokens: data.totalTokens,
+      messageRole: data.messageRole,
+      stripeCustomerId: data.stripeCustomerId,
+      reportingStatus: data.reportingStatus,
+      organizationId: data.organizationId
+    })
+    .returning();
 
+  // Ensure createdAt is included and correctly typed
+  return {
+    ...logResult,
+    createdAt: logResult.createdAt, // Ensure this matches the interface
+  };
+}
+
+
+
+
+
+// Add new function to get organization statistics
+
+export async function getOrganizationStats(organizationId: string): Promise<{
+  activeSessionCount: number;
+  totalMessageCount: number;
+  activeConversationCount: number;
+}> {
+  try {
+    const activeSessionCount = await redis.scard(`${ORGANIZATION_PREFIX}${organizationId}:sessions`);
+    const activeConversationCount = await redis.scard(`${ORGANIZATION_PREFIX}${organizationId}:active_conversations`);
+
+    // Perform raw SQL query with type specification
+    const result = await db.execute<{ count: string }>(sql`
+      SELECT COUNT(*) AS count
+      FROM messages
+      JOIN conversations ON messages.conversationId = conversations.id
+      JOIN onboarding_sessions ON conversations.sessionId = onboardingSessions.id
+      WHERE onboarding_sessions.organizationId = ${organizationId}
+    `);
+
+    // Parse the count as an integer
+    const totalMessageCount = parseInt(result.rows[0].count, 10);
+
+    return {
+      activeSessionCount,
+      activeConversationCount,
+      totalMessageCount,
+    };
+  } catch (error) {
+    console.error('Failed to get organization stats:', error);
+    throw new Error('Failed to get organization stats');
+  }
+}
 export async function updateMessage(
   messageId: string,
   updates: Partial<{

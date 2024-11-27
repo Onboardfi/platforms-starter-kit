@@ -1,3 +1,5 @@
+/////Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/app/(dashboard)/layout.tsx
+
 import { ReactNode } from "react";
 import { SidebarProvider } from "@/components/sidebar/index";
 import { DashboardLayoutContent } from "./DashboardLayoutContent";

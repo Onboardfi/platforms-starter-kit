@@ -1,10 +1,13 @@
-// app/api/auth/verify-onboarding-token/route.ts
+///Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/api/auth/verify-onboarding-token/route.ts
 
 import { NextRequest, NextResponse } from "next/server";
 import { verifyOnboardingToken, generateOnboardingToken } from "@/lib/onboarding-auth";
 import { getAgentById } from "@/lib/actions";
+import { getToken } from "next-auth/jwt";
+import db from '@/lib/db';
+import { eq } from 'drizzle-orm';
+import { agents, sites } from '@/lib/schema';
 
-// Enable CORS for development
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -17,107 +20,101 @@ export async function OPTIONS() {
 
 export async function GET(req: NextRequest) {
   try {
-    // 1. Get and validate agent ID
     const agentId = req.headers.get('x-agent-id') || req.nextUrl.searchParams.get('agentId');
     if (!agentId) {
-      console.warn('No agent ID provided in verification request');
       return NextResponse.json({ 
         error: "Agent ID required",
-        success: false
+        success: false 
       }, { 
         status: 400,
         headers: corsHeaders 
       });
     }
 
-    // 2. Get agent to check settings
-    const agent = await getAgentById(agentId);
-    if (!agent) {
-      console.warn(`Agent not found: ${agentId}`);
+    // Try to verify existing token first
+    const token = req.cookies.get('onboarding_token')?.value;
+    if (token) {
+      try {
+        const verified = await verifyOnboardingToken(token);
+        if (verified && verified.agentId === agentId) {
+          return NextResponse.json({
+            success: true,
+            ...verified
+          }, { headers: corsHeaders });
+        }
+      } catch (e) {
+        // Token verification failed, continue to check agent authentication requirements
+        console.log('Token verification failed:', e);
+      }
+    }
+
+    // Get agent with full details
+    const agent = await db.query.agents.findFirst({
+      where: eq(agents.id, agentId),
+      with: {
+        site: {
+          with: {
+            organization: true,
+          }
+        }
+      }
+    });
+    
+    if (!agent || !agent.site || !agent.site.organizationId) {
+      console.log('Agent not found or missing data:', {
+        found: !!agent,
+        hasSite: !!agent?.site,
+        orgId: agent?.site?.organizationId
+      });
+      
       return NextResponse.json({ 
         error: "Agent not found",
-        success: false
+        success: false 
       }, { 
         status: 404,
         headers: corsHeaders 
       });
     }
 
-    // 3. Check for existing token
-    const token = req.cookies.get('onboarding_token')?.value;
-    const isInternalOnboarding = agent.settings.onboardingType === 'internal';
-    const isAuthEnabled = agent.settings.authentication?.enabled;
-
-    if (token) {
-      // 4. Verify existing token
-      const authState = await verifyOnboardingToken(token);
-      if (authState && authState.agentId === agentId) {
-        // Token is valid and matches agent
-        return NextResponse.json({ 
-          success: true, 
-          userId: authState.userId,
-          agentId: authState.agentId,
-          isAnonymous: authState.isAnonymous || false,
-          isAuthenticated: authState.isAuthenticated || false
-        }, { headers: corsHeaders });
-      }
-      
-      // Token is invalid or doesn't match agent - clear it
-      const response = NextResponse.json({ 
-        error: "Invalid token",
-        success: false,
-        requiresAuth: isInternalOnboarding && isAuthEnabled,
-        agentId: agent.id,
-        agentName: agent.name,
-        authMessage: agent.settings.authentication?.message
-      }, { 
-        status: 401,
-        headers: corsHeaders 
-      });
-      response.cookies.delete('onboarding_token');
-      return response;
-    }
-
-    // 5. No token exists - handle based on agent settings
-    console.log(`No token found for agent ${agentId}. Auth enabled: ${isAuthEnabled}`);
-
-    // For internal onboarding with auth enabled, require authentication
-    if (isInternalOnboarding && isAuthEnabled) {
-      return NextResponse.json({ 
-        error: "Authentication required",
+    // Check if agent requires password authentication
+    if (agent.settings?.authentication?.enabled) {
+      return NextResponse.json({
         success: false,
         requiresAuth: true,
         agentId: agent.id,
         agentName: agent.name,
-        authMessage: agent.settings.authentication.message
+        authMessage: agent.settings.authentication.message,
+        organizationId: agent.site.organizationId
       }, { 
         status: 401,
         headers: corsHeaders 
       });
     }
 
-    // 6. For external onboarding or when auth is disabled, create anonymous session
+    // If no authentication required, create anonymous token
+    const organizationId = agent.site.organizationId;
     const anonymousToken = await generateOnboardingToken({
       userId: 'anonymous',
       agentId,
+      organizationId,
       isAnonymous: true,
       isAuthenticated: false
     });
-    
-    const response = NextResponse.json({ 
-      success: true, 
+
+    const response = NextResponse.json({
+      success: true,
       userId: 'anonymous',
       agentId,
+      organizationId,
       isAnonymous: true,
       isAuthenticated: false,
       tokenCreated: true
     }, { headers: corsHeaders });
 
-    // Set the new anonymous token
     response.cookies.set('onboarding_token', anonymousToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      sameSite: 'lax',
       maxAge: 24 * 60 * 60,
       path: '/'
     });
@@ -125,10 +122,14 @@ export async function GET(req: NextRequest) {
     return response;
 
   } catch (error) {
-    console.error("Token verification error:", error);
-    return NextResponse.json(
-      { error: "Internal server error", success: false }, 
-      { status: 500, headers: corsHeaders }
-    );
+    console.error('Token verification error:', error);
+    console.error(error instanceof Error ? error.stack : 'Unknown error');
+    return NextResponse.json({ 
+      error: "Internal server error",
+      success: false 
+    }, { 
+      status: 500,
+      headers: corsHeaders 
+    });
   }
 }

@@ -8,6 +8,9 @@ import LoadingDots from "@/components/icons/loading-dots";
 import va from "@vercel/analytics";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
+import type { AgentSettings, SelectSite } from "@/lib/schema";
+import { useSession } from "next-auth/react";
+import { createId } from "@paralleldrive/cuid2";
 
 interface CreateAgentButtonProps {
   siteId: string;
@@ -16,12 +19,68 @@ interface CreateAgentButtonProps {
 export default function CreateAgentButton({ siteId }: CreateAgentButtonProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const { data: session } = useSession();
 
+  if (!session?.organizationId || !session?.user?.id) {
+    return null;
+  }
+
+  // Generate a unique ID for organization
+  const organizationId = session.organizationId;
+  const userId = session.user.id;
+  const orgSlug = `org-${createId()}`;
+  
   return (
     <button
       onClick={() =>
         startTransition(async () => {
-          const response = await createAgent(null, siteId, null);
+          const site: SelectSite = {
+            id: siteId,
+            name: null,
+            description: null,
+            logo: null,
+            font: "font-cal",
+            image: null,
+            imageBlurhash: null,
+            subdomain: null,
+            customDomain: null,
+            message404: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            organizationId,
+            createdBy: userId,
+            organization: {
+              id: organizationId,
+              name: "Default Organization",
+              slug: orgSlug,
+              createdBy: userId,
+              logo: null,
+              stripeCustomerId: null,
+              stripeSubscriptionId: null,
+              metadata: {
+                companySize: "small",
+                industry: "",
+              },
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            },
+            creator: {
+              id: userId,
+              name: session.user.name || null,
+              username: null,
+              gh_username: null,
+              email: session.user.email,
+              emailVerified: null,
+              image: session.user.image || null,
+              stripeCustomerId: null,
+              stripeSubscriptionId: null,
+              metadata: {},
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            },
+          };
+
+          const response = await createAgent(new FormData(), site);
           if (response.error) {
             toast.error(response.error);
           } else if (response.id) {

@@ -1,3 +1,5 @@
+//Users/bobbygilbert/Documents/Github/platforms-starter-kit/lib/fetchers.ts
+
 import { unstable_cache } from "next/cache";
 import db from "./db";
 import { and, desc, eq, not } from "drizzle-orm";
@@ -18,7 +20,7 @@ interface Agent {
   name: string | null;
   description: string | null;
   slug: string;
-  userId: string | null;
+  createdBy: string | null;
   siteId: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -78,7 +80,7 @@ export async function getAgentData(domain: string, slug: string) {
         })
         .from(agents)
         .leftJoin(sites, eq(sites.id, agents.siteId))
-        .leftJoin(users, eq(users.id, sites.userId))
+        .leftJoin(users, eq(users.id, sites.createdBy))
         .where(
           and(
             eq(agents.slug, slug),
@@ -97,7 +99,7 @@ export async function getAgentData(domain: string, slug: string) {
             name: res[0].agent.name,
             description: res[0].agent.description,
             slug: res[0].agent.slug,
-            userId: res[0].agent.userId,
+            createdBy: res[0].agent.createdBy,
             siteId: res[0].agent.siteId,
             createdAt: res[0].agent.createdAt,
             updatedAt: res[0].agent.updatedAt,
@@ -138,7 +140,7 @@ export async function getSiteData(domain: string) {
           ? eq(sites.subdomain, subdomain)
           : eq(sites.customDomain, domain),
         with: {
-          user: true,
+          creator: true,
         },
       });
     },
@@ -202,7 +204,7 @@ export async function getPostData(domain: string, slug: string) {
         })
         .from(posts)
         .leftJoin(sites, eq(sites.id, posts.siteId))
-        .leftJoin(users, eq(users.id, sites.userId))
+        .leftJoin(users, eq(users.id, sites.createdBy))
         .where(
           and(
             eq(posts.slug, slug),
@@ -225,6 +227,7 @@ export async function getPostData(domain: string, slug: string) {
               }
             : null,
         );
+
 
       if (!data) return null;
 

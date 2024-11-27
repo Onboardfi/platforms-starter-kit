@@ -5,6 +5,7 @@
 import { ConversationItem, WebSocketMessage } from '@/components/agent-console/utils/types';
 
 /**
+ * 
  * **EnhancedWebSocketHandler Interface**
  * 
  * Defines the public methods exposed by the EnhancedWebSocketHandler class.
@@ -100,13 +101,16 @@ class EnhancedWebSocketHandler implements IEnhancedWebSocketHandler {
 
         return new Promise<void>((resolve, reject) => {
             try {
-                this.ws = new WebSocket(this.url);
+                // Add authentication via query parameters
+                const wsUrlWithAuth = `${this.url}?agent_id=${encodeURIComponent(this.agentId)}`;
+                this.ws = new WebSocket(wsUrlWithAuth);
 
                 this.ws.onopen = () => {
                     console.log('WebSocket connected');
                     this.onConnectionChange(true);
                     this.reconnectAttempts = 0;
-                    this.sendAuthMessage();
+                    // Send initial session configuration
+                    this.sendInitialSessionConfig();
                     this.isReady = true;
                     this.processQueuedMessages();
                     resolve();
@@ -132,21 +136,43 @@ class EnhancedWebSocketHandler implements IEnhancedWebSocketHandler {
         });
     }
 
+
+
+
+
     /**
-     * **Send Authentication Message**
-     * Sends an authentication message to the server upon connection.
+     * **Send Initial Session Configuration**
+     * Sends the initial session configuration after connection is established.
      */
-    private sendAuthMessage(): void {
+    private sendInitialSessionConfig(): void {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
         try {
             this.ws.send(JSON.stringify({
-                type: 'authenticate',
-                agentId: this.agentId
+                type: 'session.update',
+                session: {
+                    modalities: ['text', 'audio'],
+                    voice: "alloy",
+                    input_audio_format: "pcm16",
+                    output_audio_format: "pcm16",
+                    input_audio_transcription: {
+                        model: "whisper-1"
+                    },
+                    turn_detection: {
+                        type: 'server_vad',
+                        threshold: 0.8,
+                        prefix_padding_ms: 300,
+                        silence_duration_ms: 800
+                    },
+                    instructions: "I am a helpful assistant.",
+                    tool_choice: "auto",
+                    temperature: 0.8,
+                    max_response_output_tokens: 4000
+                }
             }));
-            console.log('Authentication message sent');
+            console.log('Session configuration sent');
         } catch (error) {
-            console.error('Error sending auth message:', error);
+            console.error('Error sending session configuration:', error);
         }
     }
 

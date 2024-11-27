@@ -1,3 +1,5 @@
+///Users/bobbygilbert/Documents/Github/platforms-starter-kit/components/auth/PasswordAuthWrapper.tsx
+
 "use client";
 
 import { useState, useEffect } from "react";
