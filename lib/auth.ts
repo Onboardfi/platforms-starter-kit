@@ -222,18 +222,16 @@ export const authOptions: NextAuthOptions = {
 
   
 
-
-
     async jwt({ token, user, trigger, session }) {
       try {
         // Case 1: Initial sign in
         if (user) {
           const userId = user.id || token.sub;
           if (!userId) return token;
-  
+    
           const context = await refreshOrganizationContext(userId);
           const hasInvite = await checkUserInvites(userId);
-  
+    
           return {
             ...token,
             id: userId,
@@ -243,50 +241,37 @@ export const authOptions: NextAuthOptions = {
             image: user.image,
             updatedAt: Date.now(),
             hasInvite,
-            ...context,
+            organizationId: context.organizationId,
+            // Only set needsOnboarding true if it's a new session
+            needsOnboarding: context.needsOnboarding,
           };
         }
-  
+    
         // Case 2: Session update
         if (trigger === "update" && session) {
           const updates: Record<string, any> = {};
-  
+    
+          // Only update needsOnboarding if explicitly set in session
+          if ('needsOnboarding' in session) {
+            updates.needsOnboarding = session.needsOnboarding;
+          }
+    
           if (session.organizationId !== token.organizationId) {
             updates.organizationId = session.organizationId;
-            updates.needsOnboarding = false;
+            // Don't automatically set needsOnboarding to false
           }
-  
+    
           if (Object.keys(updates).length > 0) {
             return { ...token, ...updates, updatedAt: Date.now() };
           }
         }
-  
-        // Always refresh the token when token.sub exists
-        // Always refresh the token when token.sub exists
-      if (token.sub) {
-        const [context, hasInvite] = await Promise.all([
-          refreshOrganizationContext(token.sub),
-          checkUserInvites(token.sub),
-        ]);
-
-        return {
-          ...token,
-          ...context,
-          hasInvite,
-          updatedAt: Date.now(),
-        };
+    
+        return token;
+      } catch (error) {
+        console.error('JWT Callback - Error:', error);
+        return token;
       }
-
-      return token;
-    } catch (error) {
-      console.error('JWT Callback - Error:', error);
-      return token;
-    }
-  },
-
-
-
-
+    },
 
     async redirect({ url, baseUrl }) {
       if (url.startsWith('/')) {

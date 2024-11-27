@@ -15,7 +15,6 @@ const OnboardingPage = () => {
   const [showInviteAcceptance, setShowInviteAcceptance] = useState(false);
 
   useEffect(() => {
-    // Access window inside useEffect to ensure it's on the client
     const url = new URL(window.location.href);
     const token = url.searchParams.get('invite');
     setInviteToken(token);
@@ -26,21 +25,17 @@ const OnboardingPage = () => {
 
     // If user is not authenticated, redirect to login
     if (status === 'unauthenticated') {
-      console.log('OnboardingPage - User is unauthenticated. Redirecting to /login.');
       router.push(`/login${token ? `?invite=${token}` : ''}`);
       return;
     }
 
-    // If user already has an organization, redirect to dashboard
-    if (session?.organizationId) {
-      console.log('OnboardingPage - User has organizationId. Redirecting to /app/dashboard.');
+    // Important: Check both organizationId AND needsOnboarding
+    if (session?.organizationId && session?.needsOnboarding === false) {
       router.push('/');
       return;
     }
 
-    // Check for pending invites
     if (session?.hasInvite) {
-      console.log('OnboardingPage - User has pending invites. Showing invite acceptance.');
       setShowInviteAcceptance(true);
     }
   }, [session, status, router]);

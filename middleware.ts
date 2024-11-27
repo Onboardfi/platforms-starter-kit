@@ -82,8 +82,9 @@ export default async function middleware(req: NextRequest) {
         return NextResponse.redirect(new URL('/', req.url));
       }
 
+      
       // Handle different authenticated states
-      if (authState.needsOnboarding) {
+      if (authState.needsOnboarding === true) { // Changed from if (authState.needsOnboarding)
         // Don't redirect if already on onboarding
         if (pathname !== '/onboarding') {
           return NextResponse.redirect(new URL('/onboarding', req.url));
@@ -93,6 +94,9 @@ export default async function middleware(req: NextRequest) {
         if (pathname !== '/onboarding') {
           return NextResponse.redirect(new URL('/onboarding', req.url));
         }
+      } else if (pathname === '/onboarding' && !authState.needsOnboarding && authState.organizationId) {
+        // If onboarding is complete and user tries to access onboarding page, redirect to home
+        return NextResponse.redirect(new URL('/', req.url));
       }
     }
 

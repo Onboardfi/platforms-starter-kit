@@ -26,6 +26,9 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
     industry: '',
   });
 
+  // Ensure the root domain is available
+  const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'yourdomain.com';
+
   useEffect(() => {
     if (session?.user?.name) {
       const defaultOrgName = session.user.name.split(' ')[0].toLowerCase().replace(/[^a-z0-9-]/g, '');
@@ -34,7 +37,12 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
         organizationName: defaultOrgName
       }));
     }
-  }, [session?.user?.name]);
+
+    // If user already has an organization, move to step 2
+    if (session?.organizationId) {
+      setStep(2);
+    }
+  }, [session?.user?.name, session?.organizationId]);
 
   const waitForSessionUpdate = async (organizationId: string) => {
     let attempts = 0;
@@ -45,7 +53,7 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
       await new Promise(resolve => setTimeout(resolve, delay));
       await updateSession();
       const updatedSession = await fetch('/api/auth/session').then(res => res.json());
-      
+
       if (updatedSession?.organizationId === organizationId) {
         return true;
       }
@@ -56,8 +64,15 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
 
   const handleSubmitOrganization = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (loading || !formData.organizationName.trim()) {
+      return;
+    }
+
+    // Check if user already has an organization
+    if (session?.organizationId) {
+      // Move to step 2 if they already have an organization
+      setStep(2);
       return;
     }
 
@@ -119,12 +134,14 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
 
       va.track("Created Organization");
       toast.success('Organization created successfully!', { id: toastId });
+
+      // Immediately move to step 2 after successful org creation
       setStep(2);
 
     } catch (error: any) {
       console.error('Organization creation error:', error);
       toast.error(error.message || 'Failed to create organization', { id: toastId });
-      
+
       if (retryCount >= 2) {
         toast.error(
           'Having trouble creating your organization. Please refresh the page and try again.',
@@ -142,9 +159,8 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
     e.preventDefault();
     setLoading(true);
     const toastId = toast.loading('Creating your site...');
-
+  
     try {
-      // Create site with organization name
       const siteFormData = new FormData();
       const siteName = formData.organizationName.toLowerCase();
       
@@ -153,21 +169,32 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
       siteFormData.append('description', `Official site for ${siteName}`);
       siteFormData.append('font', 'font-cal');
       siteFormData.append('message404', 'This page does not exist.');
-
+  
       const siteId = await createSite(siteFormData);
       
       if (!siteId) {
         throw new Error('Failed to create site');
       }
-
-      // Update session to complete onboarding only after site is created
+  
+      // Update session and wait for the change to be reflected
       await updateSession({
         needsOnboarding: false
       });
-
+  
+      // Wait for session update to propagate
+      for (let i = 0; i < 5; i++) {
+        const session = await fetch('/api/auth/session').then(res => res.json());
+        if (!session.needsOnboarding) {
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+  
       va.track("Created Site");
       toast.success('Setup completed successfully!', { id: toastId });
-      router.push('/'); // Only redirect after both org and site are created
+      
+      // Force a full page reload to ensure middleware sees the new state
+      window.location.href = '/';
     } catch (error: any) {
       console.error('Site creation error:', error);
       toast.error(error.message || 'Failed to create site', { id: toastId });
@@ -175,7 +202,6 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
       setLoading(false);
     }
   };
-
   if (status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-neutral-950">
@@ -207,7 +233,7 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
             </span>
           </div>
           <div className="h-2 bg-white/[0.02] rounded-full overflow-hidden">
-            <div 
+            <div
               className="h-full bg-custom-green transition-all duration-500"
               style={{ width: step === 1 ? '50%' : '100%' }}
             />
@@ -226,15 +252,15 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
             {step === 1 ? "Name your organization" : "Complete setup"}
           </h2>
           <p className="text-sm text-white/60">
-            {step === 1 
+            {step === 1
               ? "Choose a simple, one-word name for your organization"
-              : `Create your first site at ${formData.organizationName.toLowerCase()}.vercel.app`}
+              : `Create your first site at ${formData.organizationName.toLowerCase()}.${ROOT_DOMAIN}`}
           </p>
         </div>
 
         <div className="relative group p-8 rounded-xl border border-white/[0.02] bg-neutral-900/50 backdrop-blur-md shine shadow-dream">
           <div className="absolute inset-0 bg-gradient-to-br from-custom-green/5 via-custom-green-light/5 to-custom-green-light/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl" style={{ filter: "blur(40px)" }} />
-          
+
           {step === 1 ? (
             <form onSubmit={handleSubmitOrganization} className="relative space-y-8">
               <div className="grid grid-cols-1 gap-8">
@@ -343,7 +369,7 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
                       <p>
                         <span className="text-white/40">URL:</span>{' '}
                         <span className="text-white">
-                          {formData.organizationName.toLowerCase()}.vercel.app
+                          {formData.organizationName.toLowerCase()}.{ROOT_DOMAIN}
                         </span>
                       </p>
                       <p>
@@ -357,7 +383,7 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
                 </div>
 
                 <div className="text-sm text-white/60 text-center px-6">
-                <p>
+                  <p>
                     Want to change the organization name?{' '}
                     <button 
                       type="button"
