@@ -1,5 +1,3 @@
-///Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/app/(dashboard)/agent/[id]/nav.tsx
-
 "use client";
 
 import { cn } from "@/lib/utils";
@@ -17,7 +15,6 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 
-
 export default function AgentNav() {
   const { id } = useParams() as { id?: string };
   const segment = useSelectedLayoutSegment();
@@ -29,21 +26,15 @@ export default function AgentNav() {
   } = useAgent();
 
   const url = agent?.site?.subdomain
-  ? `https://${agent.site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}/${agent.slug}`
-  : "#";
+    ? `https://${agent.site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}/${agent.slug}`
+    : "#";
 
-  // Determine if we should show the tab switcher
-  const shouldShowTabs = !segment || segment === "tab2"; // Only show on main page and steps page
-
-  const navItems = [
-    { name: "Basic Info", href: `/agent/${id}`, segment: null },
-    { name: "Steps", href: `/agent/${id}/tab2`, segment: "steps" },
-  ];
+  const shouldShowTabs = !segment || segment === "tab2";
 
   return (
     <div className="space-y-4">
       <div className="relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine">
-      <div className="absolute inset-0 -z-10">
+        <div className="absolute inset-0 -z-10">
           <div className="absolute inset-0 bg-[url('/grid.svg')] bg-repeat opacity-30" />
           <div className="absolute inset-0 bg-gradient-to-r from-transparent to-neutral-900/80" />
         </div>
@@ -55,16 +46,16 @@ export default function AgentNav() {
             <BreadcrumbList>
               <BreadcrumbItem>
                 <BreadcrumbLink
-                  href="/sites"
+                  href={`/site/${agent?.site?.id}/settings`}
                   className="text-neutral-400 hover:text-white transition-colors"
                 >
-                  Sites
+                  Site Settings
                 </BreadcrumbLink>
               </BreadcrumbItem>
               <BreadcrumbSeparator />
               <BreadcrumbItem>
                 <BreadcrumbLink
-                  href="/agents"
+                  href={`/site/${agent?.site?.id}`}
                   className="text-neutral-400 hover:text-white transition-colors"
                 >
                   Agents
@@ -77,6 +68,8 @@ export default function AgentNav() {
                 </BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>
+
+            {/* Rest of the component remains the same */}
             <div className="flex items-center space-x-3">
               {agent?.published && (
                 <a
@@ -117,7 +110,6 @@ export default function AgentNav() {
         </div>
       </div>
 
-      {/* Only render the nav tabs if we should show them */}
       {shouldShowTabs && (
         <nav className="flex space-x-2 px-2">
           <Link

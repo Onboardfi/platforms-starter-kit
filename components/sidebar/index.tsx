@@ -16,19 +16,25 @@ import {
     Settings,
     ChevronLeft,
     ChevronRight,
-    Sparkles,
-    Plus,
-    ArrowUpRight,
     Users,
     Boxes
 } from "lucide-react";
 import { FaFacebook, FaTwitter, FaLinkedin } from "react-icons/fa"; // Import social media icons
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
+
+import { UpgradeCTA } from "@/components/UpgradeCTA";
 import { SidebarHoverCard } from "@/components/sidebar/hover-card";
 import { SidebarGroupLabel } from "@/components/sidebar/group-label";
 import { SidebarSearch } from "@/components/sidebar/search";
 import { SidebarAccount } from "@/components/sidebar/account";
+import { SubscriptionTier } from "@/lib/stripe-config";
+
+// Import SWR for data fetching
+import useSWR from 'swr';
+
+// Fetcher function for SWR
+const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 // Context Types
 interface SidebarContextProps {
@@ -191,21 +197,21 @@ export function SidebarContent() {
   const pathname = usePathname();
   const { siteId, id: agentId } = useParams() as { siteId?: string; id?: string };
 
+  // Fetch the user's sites
+  const { data: sites, error } = useSWR('/api/sites', fetcher);
+
+  // Always call hooks at the top
+  const hasSite = sites && sites.length > 0;
+  const userSiteId = hasSite ? sites[0].id : null;
+
   const tabs = React.useMemo(() => {
 
     if (segments[0] === "agent" && agentId) {
       return [
-        {
-          id: "back",
-          name: "Back to Site",
-          href: siteId ? `/site/${siteId}` : "/sites", // Use siteId correctly
-          icon: <ArrowLeft className="h-4 w-4" />,
-          description: "Return to site overview",
-          isActive: false
-        },
+        
         {
           id: "agent-overview",
-          name: "Overview",
+          name: "Editor",
           href: `/agent/${agentId}`,
           isActive: segments.length === 2,
           icon: <Users className="h-4 w-4" />,
@@ -268,14 +274,23 @@ export function SidebarContent() {
         icon: <LayoutDashboard className="h-4 w-4" />,
         description: "Dashboard overview"
       },
-      {
-        id: "sites",
-        name: "Sites",
-        href: "/sites",
-        isActive: pathname === "/sites",
-        icon: <Globe className="h-4 w-4" />,
-        description: "Manage your sites"
-      },
+      hasSite
+        ? {
+            id: "onboards",
+            name: "Onboards",
+            href: `/site/${userSiteId}`,
+            isActive: pathname === `/site/${userSiteId}`,
+            icon: <Newspaper className="h-4 w-4" />,
+            description: "Manage your onboarding flows"
+          }
+        : {
+            id: "sites",
+            name: "Sites",
+            href: "/sites",
+            isActive: pathname === "/sites",
+            icon: <Globe className="h-4 w-4" />,
+            description: "Manage your sites"
+          },
       {
         id: "integrations",
         name: "Integrations",
@@ -293,7 +308,40 @@ export function SidebarContent() {
         description: "Manage your storage",
       }
     ];
-  }, [segments, siteId, agentId, pathname]);
+  }, [segments, siteId, agentId, pathname, hasSite, userSiteId]);
+
+  // Handle loading and error states after hooks
+  if (error) {
+    return <div className="p-4 text-red-500">Error loading sidebar</div>;
+  }
+
+  if (!sites) {
+    return (
+      <div className="flex items-center justify-center p-4">
+        <svg
+          className="animate-spin h-5 w-5 text-neutral-400"
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+        >
+          <circle
+            className="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="4"
+          ></circle>
+          <path
+            className="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8v8H4z"
+          ></path>
+        </svg>
+        <span className="ml-2 text-neutral-400">Loading sidebar...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4">
@@ -387,31 +435,37 @@ export function SidebarContent() {
 // Sidebar Footer Component
 export function SidebarFooter() {
   const { isCollapsed } = useSidebar();
-  
+  const [currentTier, setCurrentTier] = React.useState<SubscriptionTier>('BASIC');
+
+  // Fetch subscription data
+  React.useEffect(() => {
+    const fetchSubscriptionData = async () => {
+      try {
+        const response = await fetch('/api/stripe/billing');
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        const data = await response.json();
+        setCurrentTier(data.currentTier);
+      } catch (error) {
+        console.error('Error fetching subscription data:', error);
+      }
+    };
+
+    fetchSubscriptionData();
+  }, []);
+
   return (
     <div className={cn(
       "flex flex-col items-start space-y-4 p-4",
       isCollapsed ? "items-center justify-center" : "space-y-4"
     )}>
-      {/* Upgrade to Pro Component */}
+      {/* Dynamic Upgrade CTA */}
       {!isCollapsed && (
-        <div className="relative rounded-xl border border-custom-green/20 bg-gradient-to-br from-custom-green/10 to-custom-green-light/10 p-4 w-full">
-          <div className="absolute -top-3 right-4 rounded-full bg-custom-green px-2 py-0.5 text-xs font-medium text-white">
-            Pro
-          </div>
-
-          <Sparkles className="mb-3 h-6 w-6 text-custom-green-light" />
-
-          <h4 className="mb-1 text-sm font-medium text-white">Upgrade to Pro</h4>
-          <p className="mb-3 text-xs text-neutral-400">
-            Get access to advanced features and priority support.
-          </p>
-          <button className="flex w-full items-center justify-center gap-2 rounded-lg bg-custom-green px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-custom-green-light">
-            <Plus className="h-4 w-4" />
-            Upgrade Now
-            <ArrowUpRight className="h-4 w-4" />
-          </button>
-        </div>
+        <UpgradeCTA 
+          currentTier={currentTier} 
+          isCollapsed={isCollapsed} 
+        />
       )}
 
       {/* Profile Component */}

@@ -20,6 +20,18 @@ export const config = {
 
 async function getAuthState(req: NextRequest) {
   const token = await getToken({ req });
+  
+  // Add verification for valid user ID
+  if (token && (!token.sub || token.sub === '')) {
+    return {
+      isAuthenticated: false,
+      organizationId: null,
+      needsOnboarding: false,
+      hasInvite: false,
+      inviteToken: null
+    };
+  }
+
   return {
     isAuthenticated: !!token,
     organizationId: token?.organizationId,
@@ -30,7 +42,6 @@ async function getAuthState(req: NextRequest) {
       : null
   };
 }
-
 
 export default async function middleware(req: NextRequest) {
   const url = req.nextUrl;

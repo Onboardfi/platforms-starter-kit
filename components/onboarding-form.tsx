@@ -28,21 +28,27 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
 
   // Ensure the root domain is available
   const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'yourdomain.com';
-
   useEffect(() => {
-    if (session?.user?.name) {
-      const defaultOrgName = session.user.name.split(' ')[0].toLowerCase().replace(/[^a-z0-9-]/g, '');
-      setFormData(prev => ({
-        ...prev,
-        organizationName: defaultOrgName
-      }));
-    }
-
-    // If user already has an organization, move to step 2
+    // Whenever organization is created and session updates
     if (session?.organizationId) {
-      setStep(2);
+      // Fetch organization details to get the correct name
+      const fetchOrgDetails = async () => {
+        try {
+          const response = await fetch('/api/organizations/current');
+          const data = await response.json();
+          if (data.organization?.name) {
+            setFormData(prev => ({
+              ...prev,
+              organizationName: data.organization.name
+            }));
+          }
+        } catch (error) {
+          console.error('Error fetching organization details:', error);
+        }
+      };
+      fetchOrgDetails();
     }
-  }, [session?.user?.name, session?.organizationId]);
+  }, [session?.organizationId]);
 
   const waitForSessionUpdate = async (organizationId: string) => {
     let attempts = 0;
@@ -64,84 +70,92 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
 
   const handleSubmitOrganization = async (e: React.FormEvent) => {
     e.preventDefault();
-
+  
     if (loading || !formData.organizationName.trim()) {
       return;
     }
-
+  
     // Check if user already has an organization
     if (session?.organizationId) {
-      // Move to step 2 if they already have an organization
       setStep(2);
       return;
     }
-
+  
     // Validate organization name
     const cleanName = formData.organizationName.trim().toLowerCase();
     if (!/^[a-z0-9-]+$/.test(cleanName)) {
       toast.error('Organization name can only contain lowercase letters, numbers, and hyphens');
       return;
     }
-
+  
     setLoading(true);
     const toastId = toast.loading('Creating your organization...');
-
+  
     try {
       const response = await fetch('/api/organizations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: cleanName,
+          name: cleanName, // Use the cleaned form data name
           metadata: {
             companySize: formData.companySize,
             industry: formData.industry.trim(),
           }
         }),
       });
-
+  
       const data = await response.json();
-
+  
       if (!response.ok) {
         throw new Error(data.error || 'Failed to create organization');
       }
-
+  
       const organizationId = data.organization?.id;
       if (!organizationId) {
         throw new Error('No organization ID received from server');
       }
-
+  
       await updateSession({
         organizationId,
-        needsOnboarding: true // Keep onboarding true until site is created
+        needsOnboarding: true
       });
-
+  
       const sessionUpdated = await waitForSessionUpdate(organizationId);
       if (!sessionUpdated) {
         throw new Error('Session update timeout - please refresh the page');
       }
-
+  
       if (inviteToken) {
         const acceptResponse = await fetch('/api/organizations/invites', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: inviteToken }),
         });
-
+  
         if (!acceptResponse.ok) {
           throw new Error('Failed to accept invite token');
         }
       }
-
+  
       va.track("Created Organization");
       toast.success('Organization created successfully!', { id: toastId });
+  
+      // Update the form data to ensure the organization name persists
+    
+    // Ensure form data matches what we just created
+    setFormData(prev => ({
+      ...prev,
+      organizationName: cleanName
+    }));
 
-      // Immediately move to step 2 after successful org creation
+  
+      // Move to step 2
       setStep(2);
-
+  
     } catch (error: any) {
       console.error('Organization creation error:', error);
       toast.error(error.message || 'Failed to create organization', { id: toastId });
-
+  
       if (retryCount >= 2) {
         toast.error(
           'Having trouble creating your organization. Please refresh the page and try again.',
@@ -157,12 +171,20 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
 
   const handleCreateSite = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!formData.organizationName) {
+      toast.error('Organization name is required');
+      return;
+    }
     setLoading(true);
     const toastId = toast.loading('Creating your site...');
   
     try {
       const siteFormData = new FormData();
+      // Use the current form data organization name, not the session data
       const siteName = formData.organizationName.toLowerCase();
+      
+      console.log('Creating site with name:', siteName); // Add logging
       
       siteFormData.append('name', siteName);
       siteFormData.append('subdomain', siteName);
@@ -193,6 +215,12 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
       va.track("Created Site");
       toast.success('Setup completed successfully!', { id: toastId });
       
+      // Add logging before redirect
+      console.log('Site created successfully:', {
+        name: siteName,
+        siteId
+      });
+      
       // Force a full page reload to ensure middleware sees the new state
       window.location.href = '/';
     } catch (error: any) {
@@ -202,6 +230,8 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
       setLoading(false);
     }
   };
+
+
   if (status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-neutral-950">

@@ -21,14 +21,72 @@ export type MessageRole = 'user' | 'assistant' | 'system';
 export type ConversationStatus = 'active' | 'completed' | 'archived';
 
 
+// Subscription tier limits (non-usage related)
+export interface TierFeatureLimits {
+  AGENTS: number;              // Number of agents allowed
+  ONBOARDING_SESSIONS: number; // Number of onboarding sessions allowed
+  INTEGRATIONS_PER_AGENT: number;
+  // Add other feature-based limits here
+  CUSTOM_DOMAIN: boolean;
+  ADVANCED_ANALYTICS: boolean;
+  TEAM_COLLABORATION: boolean;
+}
+
+
+
+// Subscription metadata - focused only on feature access
+export interface SubscriptionMetadata {
+  tier: 'BASIC' | 'PRO' | 'GROWTH';
+  interval: 'MONTHLY' | 'YEARLY';
+  status: 'active' | 'canceled' | 'past_due' | 'incomplete';
+  currentPeriodEnd?: string;
+  // Feature limits for the current tier
+  limits: TierFeatureLimits;
+  // Current usage of limited features
+  currentUsage: {
+    agentCount: number;
+    sessionCount: number;
+  };
+}
+
+// Metered usage metadata - completely separate from subscription
+export interface MeteredUsageMetadata {
+  tokenRates: {
+    INPUT_TOKENS: number;  // Current rate per 1K tokens
+    OUTPUT_TOKENS: number;
+  };
+  stripeMeters: {
+    inputTokens: {
+      meterId: string;
+      priceId: string;
+    };
+    outputTokens: {
+      meterId: string;
+      priceId: string;
+    };
+  };
+}
+
 
 
 export interface OrganizationMetadata {
   companySize?: 'small' | 'medium' | 'large' | 'enterprise';
   industry?: string;
+  stripe?: {
+    stripeEnabled: boolean;
+    // Separate subscription and usage tracking
+    subscription: {
+      id: string | null;     // Base subscription ID
+      metadata: SubscriptionMetadata;
+    };
+    metered: {
+      id: string | null;     // Metered subscription ID
+      metadata: MeteredUsageMetadata;
+    };
+  };
+  createdAt?: string;
   [key: string]: any;
 }
-
 
 export const organizationInvites = pgTable(
   'organization_invites',
@@ -415,6 +473,88 @@ export const conversations = pgTable(
     statusIdx: index('conversations_status_idx').on(table.status),
     timeframeIdx: index('conversations_timeframe_idx').on(table.startedAt, table.endedAt),
   })
+);
+
+
+
+// Add a table specifically for tracking organization tier usage
+export const organizationTierUsage = pgTable(
+  'organization_tier_usage',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId()),
+    organizationId: text('organizationId')
+      .references(() => organizations.id, { onDelete: 'cascade' })
+      .notNull(),
+    // Track actual database entity counts
+    currentAgentCount: integer('currentAgentCount').default(0),
+    currentSessionCount: integer('currentSessionCount').default(0),
+    // Token usage
+    currentInputTokens: integer('currentInputTokens').default(0),
+    currentOutputTokens: integer('currentOutputTokens').default(0),
+    // Limits based on current tier
+    maxAgents: integer('maxAgents').notNull(),
+    maxSessions: integer('maxSessions').notNull(),
+    maxInputTokens: integer('maxInputTokens').notNull(),
+    maxOutputTokens: integer('maxOutputTokens').notNull(),
+    // Billing period tracking
+    billingPeriodStart: timestamp('billingPeriodStart', { mode: 'date' }).notNull(),
+    billingPeriodEnd: timestamp('billingPeriodEnd', { mode: 'date' }).notNull(),
+    // Track when usage was last updated
+    lastUpdated: timestamp('lastUpdated', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => ({
+    organizationIdx: index('org_tier_usage_org_idx').on(table.organizationId),
+    periodIdx: index('org_tier_usage_period_idx').on(
+      table.billingPeriodStart, 
+      table.billingPeriodEnd
+    ),
+  })
+);
+
+
+
+// Subscription feature usage tracking
+export const subscriptionFeatureUsage = pgTable(
+  'subscription_feature_usage',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId()),
+    organizationId: text('organizationId')
+      .references(() => organizations.id, { onDelete: 'cascade' })
+      .notNull(),
+    // Feature limits tracking
+    agentCount: integer('agentCount').default(0),
+    sessionCount: integer('sessionCount').default(0),
+    integrationsCount: jsonb('integrationsCount').$type<Record<string, number>>().default({}),
+    // Limit information
+    tier: text('tier').$type<'BASIC' | 'PRO' | 'GROWTH'>().notNull(),
+    maxAgents: integer('maxAgents').notNull(),
+    maxSessions: integer('maxSessions').notNull(),
+    // Track when usage was last calculated
+    lastUpdated: timestamp('lastUpdated', { mode: 'date' }).defaultNow().notNull(),
+    // Billing period tracking
+    billingPeriodStart: timestamp('billingPeriodStart', { mode: 'date' }).notNull(),
+    billingPeriodEnd: timestamp('billingPeriodEnd', { mode: 'date' }).notNull(),
+  }
+);
+
+// Track feature access events
+export const featureAccessEvents = pgTable(
+  'feature_access_events',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId()),
+    organizationId: text('organizationId')
+      .references(() => organizations.id, { onDelete: 'cascade' })
+      .notNull(),
+    feature: text('feature').notNull(),
+    action: text('action').$type<'granted' | 'denied'>().notNull(),
+    reason: text('reason').notNull(),
+    metadata: jsonb('metadata').$type<{
+      tier?: string;
+      limit?: number;
+      currentUsage?: number;
+    }>().default({}),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+  }
 );
 /**
  * Messages Table with Step Reference

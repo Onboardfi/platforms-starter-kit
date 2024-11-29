@@ -1,8 +1,7 @@
-// components/site-header.tsx
-
 import { ExternalLink } from "lucide-react";
 import CreateAgentButton from "@/components/create-agent-button";
 import { Site } from "@/types/site";
+import Link from "next/link";
 
 interface SiteHeaderProps {
   site: Site;
@@ -25,12 +24,12 @@ export default function SiteHeader({ site, url }: SiteHeaderProps) {
 
       <div className="relative flex items-center justify-between p-6 z-10">
         <div className="flex items-center space-x-2">
-          <a
-            href="/sites"
+          <Link
+            href={`/site/${site.id}/settings`}
             className="text-neutral-400 hover:text-white transition-colors"
           >
-            Sites
-          </a>
+            Site Settings
+          </Link>
           <span className="text-neutral-600">/</span>
           <span className="px-3 py-1 rounded-xl bg-dream-cyan/20 text-white border border-dream-cyan/20 shine">
             {site.name}

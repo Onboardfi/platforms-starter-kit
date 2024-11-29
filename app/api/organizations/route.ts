@@ -1,4 +1,4 @@
-//Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/api/organizations/route.ts
+// /Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/api/organizations/route.ts
 
 import { NextResponse } from 'next/server';
 import { getServerSession } from "next-auth/next";
@@ -10,6 +10,7 @@ import { stripe } from '@/lib/stripe';
 import { eq } from 'drizzle-orm';
 import { OrganizationMetadata } from '@/lib/schema';
 import { revalidatePath } from 'next/cache';
+import { STRIPE_CONFIG, SubscriptionTier } from '@/lib/stripe-config';
 
 // Helper function to merge and update user metadata
 async function updateUserMetadata(userId: string, newMetadata: Partial<Record<string, any>>) {
@@ -219,6 +220,75 @@ async function setupStripeMetersAndPricing() {
   }
 }
 
+// Helper function to create both subscriptions
+async function setupCombinedSubscriptions(
+  customerId: string,
+  organizationId: string,
+  organizationName: string,
+) {
+  // Start with Basic tier
+  const tier: SubscriptionTier = 'BASIC';
+  
+  try {
+    // 1. Create base subscription (free for Basic tier)
+    const baseSubscription = await stripe.subscriptions.create({
+      customer: customerId,
+      items: [{
+        price: STRIPE_CONFIG.TIERS.BASIC.MONTHLY,
+      }],
+      metadata: {
+        organizationId,
+        type: 'base_tier',
+        tier
+      }
+    });
+
+    // 2. Get metered pricing resources
+    const stripeResources = await setupStripeMetersAndPricing();
+
+    // 3. Create metered subscription with usage limits from tier
+    const meteredSubscription = await stripe.subscriptions.create({
+      customer: customerId,
+      items: [
+        {
+          price: stripeResources.inputTokens.price.id,
+          metadata: {
+            type: 'input_tokens',
+            limit: STRIPE_CONFIG.TIERS.BASIC.LIMITS.INPUT_TOKENS,
+            rate: STRIPE_CONFIG.METERED.RATES.BASIC.INPUT_TOKENS
+          }
+        },
+        {
+          price: stripeResources.outputTokens.price.id,
+          metadata: {
+            type: 'output_tokens',
+            limit: STRIPE_CONFIG.TIERS.BASIC.LIMITS.OUTPUT_TOKENS,
+            rate: STRIPE_CONFIG.METERED.RATES.BASIC.OUTPUT_TOKENS
+          }
+        }
+      ],
+      metadata: {
+        organizationId,
+        type: 'metered_usage',
+        tier
+      },
+      payment_behavior: 'default_incomplete',
+      collection_method: 'charge_automatically',
+      description: `Metered usage subscription for ${organizationName}`
+    });
+
+    return {
+      baseSubscription,
+      meteredSubscription,
+      resources: stripeResources,
+      tier
+    };
+  } catch (error) {
+    console.error('Failed to setup subscriptions:', error);
+    throw error;
+  }
+}
+
 // Main API handler
 export async function POST(req: Request) {
   console.log('Organizations API - Received create organization request');
@@ -331,9 +401,6 @@ export async function POST(req: Request) {
         try {
           console.log('Setting up Stripe billing...');
 
-          // Setup meters and prices
-          const stripeResources = await setupStripeMetersAndPricing();
-          
           // Create Stripe customer
           const customer = await stripe.customers.create({
             email: user.email,
@@ -344,49 +411,38 @@ export async function POST(req: Request) {
             name: org.name,
           });
 
-          // Create subscription
-          const subscription = await stripe.subscriptions.create({
-            customer: customer.id,
-            items: [
-              {
-                price: stripeResources.inputTokens.price.id,
-                metadata: {
-                  meter_id: stripeResources.inputTokens.meter.id
-                }
-              },
-              {
-                price: stripeResources.outputTokens.price.id,
-                metadata: {
-                  meter_id: stripeResources.outputTokens.meter.id
-                }
-              }
-            ],
-            metadata: {
-              organizationId: org.id
-            },
-            payment_behavior: 'default_incomplete',
-            collection_method: 'charge_automatically',
-            description: `Metered billing subscription for ${org.name}`
-          });
+          // Setup both subscription types
+          const subscriptionSetup = await setupCombinedSubscriptions(
+            customer.id,
+            org.id,
+            org.name
+          );
 
-          // Update organization with Stripe details
+          // Update organization with all Stripe details
           await tx
             .update(organizations)
             .set({ 
               stripeCustomerId: customer.id,
-              stripeSubscriptionId: subscription.id,
+              stripeSubscriptionId: subscriptionSetup.baseSubscription.id,
               updatedAt: now,
               metadata: {
                 ...org.metadata,
                 stripeEnabled: true,
+                subscriptions: {
+                  base: subscriptionSetup.baseSubscription.id,
+                  metered: subscriptionSetup.meteredSubscription.id
+                },
+                currentTier: subscriptionSetup.tier,
+                limits: STRIPE_CONFIG.TIERS[subscriptionSetup.tier].LIMITS,
+                rates: STRIPE_CONFIG.METERED.RATES[subscriptionSetup.tier],
                 stripeMeters: {
                   inputTokens: {
-                    meterId: stripeResources.inputTokens.meter.id,
-                    priceId: stripeResources.inputTokens.price.id
+                    meterId: subscriptionSetup.resources.inputTokens.meter.id,
+                    priceId: subscriptionSetup.resources.inputTokens.price.id
                   },
                   outputTokens: {
-                    meterId: stripeResources.outputTokens.meter.id,
-                    priceId: stripeResources.outputTokens.price.id
+                    meterId: subscriptionSetup.resources.outputTokens.meter.id,
+                    priceId: subscriptionSetup.resources.outputTokens.price.id
                   }
                 }
               }
@@ -394,16 +450,16 @@ export async function POST(req: Request) {
             .where(eq(organizations.id, org.id));
             
           org.stripeCustomerId = customer.id;
-          org.stripeSubscriptionId = subscription.id;
+          org.stripeSubscriptionId = subscriptionSetup.baseSubscription.id;
 
           console.log('Stripe setup completed:', {
             organizationId: org.id,
             customerId: customer.id,
-            subscriptionId: subscription.id,
-            meters: {
-              inputTokens: stripeResources.inputTokens.meter.id,
-              outputTokens: stripeResources.outputTokens.meter.id
-            }
+            subscriptions: {
+              base: subscriptionSetup.baseSubscription.id,
+              metered: subscriptionSetup.meteredSubscription.id
+            },
+            tier: subscriptionSetup.tier
           });
         } catch (error) {
           console.error('Failed to setup Stripe billing:', error);

@@ -34,7 +34,6 @@ module.exports = {
           DEFAULT: '#00C078', // Default/darker shade
         },
 
-        
         // Dark Theme Accents
         'dark-accent-1': '#111111',
         'dark-accent-2': '#333333',
@@ -42,7 +41,7 @@ module.exports = {
         'dark-accent-5': '#888888',
         'gray-1100': 'rgb(10,10,11)',
 
-        // Theme Colors
+        // Theme Colors (Ensure these are defined correctly)
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
@@ -107,7 +106,7 @@ module.exports = {
             inverted: "#000000",
           },
         },
-        
+    
         // Light Tremor Colors
         "light-tremor": {
           brand: {
@@ -144,6 +143,7 @@ module.exports = {
         'dream-conic': 'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))',
         'dream-radial': 'radial-gradient(at center center, var(--tw-gradient-stops))',
         'dream-shine': 'linear-gradient(to right, transparent, rgba(255,255,255,0.1) 50%, transparent)',
+        'grid-pattern': "url('/grid.svg')",
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -154,6 +154,18 @@ module.exports = {
         "tremor-full": "9999px",
       },
       keyframes: {
+        rotate: {
+          '0%': { transform: 'rotate(0deg)' },
+          '100%': { transform: 'rotate(360deg)' },
+        },
+        'rotate-reverse': {
+          '0%': { transform: 'rotate(360deg)' },
+          '100%': { transform: 'rotate(0deg)' },
+        },
+        pulse: {
+          '0%, 100%': { opacity: 0.2 },
+          '50%': { opacity: 0.4 },
+        },
         "accordion-down": {
           from: { height: 0 },
           to: { height: "var(--radix-accordion-content-height)" },
@@ -167,55 +179,46 @@ module.exports = {
           "0%": { opacity: 0 },
           "100%": { opacity: 1 },
         },
+        "dream-fade-down": {
+          "0%": { opacity: 0, transform: "translateY(-20px)" },
+          "100%": { opacity: 1, transform: "translateY(0)" },
+        },
         "dream-fade-up": {
-          "0%": {
-            opacity: 0,
-            transform: "translateY(10px)",
-          },
-          "100%": {
-            opacity: 1,
-            transform: "translateY(0)",
-          },
+          "0%": { opacity: 0, transform: "translateY(10px)" },
+          "100%": { opacity: 1, transform: "translateY(0)" },
         },
         "dream-scale": {
           "0%": { transform: "scale(0.95)" },
           "100%": { transform: "scale(1)" },
         },
-        "dream-shine": {
-          "0%": { backgroundPosition: "-200%" },
-          "100%": { backgroundPosition: "200%" },
+        "dream-blur-up": {
+          from: { opacity: 0, filter: "blur(10px)" },
+          to: { opacity: 1, filter: "blur(0)" },
         },
         "dream-pulse": {
-          "0%, 100%": { opacity: 1 },
-          "50%": { opacity: 0.5 },
+          "0%, 100%": { opacity: 0.8 },
+          "50%": { opacity: 1 },
         },
-        "dream-spin": {
-          "0%": { transform: "rotate(0deg)" },
-          "100%": { transform: "rotate(360deg)" },
-        },
-        // Add your "border-beam" keyframes here
         "border-beam": {
-          "0%": {
-            transform: "translateX(-100%)",
-          },
-          "100%": {
-            transform: "translateX(100%)",
-          },
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(100%)" },
         },
       },
-     
       animation: {
-
-       "border-beam": "border-beam var(--duration, 15s) linear infinite",
+        rotate: 'rotate 20s linear infinite',
+        'rotate-reverse': 'rotate-reverse 25s linear infinite',
+        pulse: 'pulse 2s infinite',
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         // DreamUI Animations
-        "dream-fade-in": "dream-fade-in 0.5s ease-out",
-        "dream-fade-up": "dream-fade-up 0.5s ease-out",
-        "dream-scale": "dream-scale 0.3s ease-out",
-        "dream-shine": "dream-shine 8s ease-in-out infinite",
-        "dream-pulse": "dream-pulse 2s ease-in-out infinite",
-        "dream-spin": "dream-spin 1s linear infinite",
+        "dream-fade-in": "dream-fade-in 0.5s ease-out forwards",
+        "dream-fade-down": "dream-fade-down 0.7s ease-out forwards",
+        "dream-fade-up": "dream-fade-up 0.5s ease-out forwards",
+        "dream-scale": "dream-scale 0.3s ease-out forwards",
+        "dream-blur-up": "dream-blur-up 1s ease-out forwards",
+        "dream-pulse": "dream-pulse 2s infinite",
+        // Border Beam Animation
+        "border-beam": "border-beam 15s linear infinite",
       },
       boxShadow: {
         // DreamUI Shadows (Dark Mode Optimized)
@@ -244,6 +247,12 @@ module.exports = {
       },
       backdropBlur: {
         'dream': '20px',
+      },
+      backgroundBlendMode: {
+        'overlay': 'overlay',
+      },
+      backgroundSize: {
+        '200%': '200%',
       },
     },
   },

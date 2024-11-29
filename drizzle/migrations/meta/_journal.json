@@ -148,6 +148,13 @@
       "when": 1732463607771,
       "tag": "0020_gifted_winter_soldier",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1732730491815,
+      "tag": "0021_outstanding_nighthawk",
+      "breakpoints": true
     }
   ]
 }

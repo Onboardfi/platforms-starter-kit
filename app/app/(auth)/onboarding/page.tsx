@@ -18,13 +18,13 @@ const OnboardingPage = () => {
     const url = new URL(window.location.href);
     const token = url.searchParams.get('invite');
     setInviteToken(token);
-
+  
     console.log('OnboardingPage - Session:', session);
     console.log('OnboardingPage - Status:', status);
     console.log('OnboardingPage - Has Invite:', session?.hasInvite);
-
-    // If user is not authenticated, redirect to login
-    if (status === 'unauthenticated') {
+  
+    // If user is not authenticated or has an invalid session
+    if (status === 'unauthenticated' || (session?.user?.id === '')) {
       router.push(`/login${token ? `?invite=${token}` : ''}`);
       return;
     }

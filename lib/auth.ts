@@ -1,10 +1,21 @@
 // lib/auth.ts
-
-import { getServerSession, type NextAuthOptions, Session, User } from "next-auth";
-import { getToken } from "next-auth/jwt";
+import { 
+  getServerSession, 
+  type NextAuthOptions, 
+  Session, 
+  User,
+  Account,     // Add this
+  Profile,     // Add this
+} from "next-auth";
+import { 
+  getToken, 
+  JWT         // Just keep this
+} from "next-auth/jwt";
 import GitHubProvider from "next-auth/providers/github";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
-import { Adapter } from "next-auth/adapters";
+import { Adapter, AdapterUser } from "next-auth/adapters";
+
+
 import db from "./db";
 import { 
   accounts, 
@@ -14,6 +25,7 @@ import {
   organizations, 
   organizationMemberships, 
   organizationInvites,
+  sites,  // Add this import
   SelectSite,
   SelectAgent
 } from "./schema";
@@ -96,24 +108,56 @@ async function updateUserMetadata(userId: string, metadata: any) {
   }
 }
 
+// lib/auth.ts - update refreshOrganizationContext
 async function refreshOrganizationContext(userId: string) {
-  const membership = await getOrganizationMembership(userId);
-  
-  if (membership?.organization) {
+  try {
+    console.log('Refreshing context for user:', userId);
+    
+    // First check organization membership
+    const membership = await db.query.organizationMemberships.findFirst({
+      where: eq(organizationMemberships.userId, userId),
+      with: {
+        organization: true
+      }
+    });
+    
+    if (!membership?.organization) {
+      console.log('No organization found for user');
+      return {
+        organizationId: null,
+        needsOnboarding: true,
+        role: null
+      };
+    }
+
+    // Check if organization has any sites - Add logging
+    const site = await db.query.sites.findFirst({
+      where: eq(sites.organizationId, membership.organization.id)
+    });
+
+    console.log('Organization context refresh:', {
+      organizationId: membership.organization.id,
+      hasSite: !!site,
+      role: membership.role
+    });
+
+    // Change the return to set needsOnboarding false if we have both org and site
     return {
       organizationId: membership.organization.id,
-      needsOnboarding: false,
-      role: membership.role
+      needsOnboarding: !site, // This should be false if site exists
+      role: membership.role,
+      siteId: site?.id // Add siteId to the context
+    };
+
+  } catch (error) {
+    console.error('Error refreshing organization context:', error);
+    return {
+      organizationId: null,
+      needsOnboarding: true,
+      role: null
     };
   }
-  
-  return {
-    organizationId: null,
-    needsOnboarding: true,
-    role: null
-  };
 }
-
 async function checkUserInvites(userId: string): Promise<boolean> {
   const user = await db.query.users.findFirst({
     where: eq(users.id, userId),
@@ -187,20 +231,28 @@ export const authOptions: NextAuthOptions = {
         if (!user.email) {
           user.email = `${(profile as any).login}@github.com`;
         }
-  
-        const existingUser = await db.query.users.findFirst({
-          where: eq(users.id, user.id),
+    
+        // Check for existing organization membership first
+        const membership = await db.query.organizationMemberships.findFirst({
+          where: eq(organizationMemberships.userId, user.id),
+          with: {
+            organization: {
+              with: {
+                sites: true
+              }
+            }
+          }
         });
-  
-        const isNewUser = !existingUser || 
-          existingUser.createdAt.getTime() === existingUser.updatedAt.getTime();
-  
+    
+        // Determine onboarding state based on organization and site existence
+        const needsOnboarding = !membership?.organization || 
+                              !membership.organization.sites?.length;
+    
         const metadata = {
-          needsOnboarding: isNewUser,
+          needsOnboarding,
           lastLoginAt: new Date().toISOString(),
-          ...(isNewUser && { createdAt: new Date().toISOString() })
         };
-  
+    
         await updateUserMetadata(user.id, metadata);
         return true;
       } catch (error) {
@@ -210,69 +262,90 @@ export const authOptions: NextAuthOptions = {
     },
 
     async session({ session, token }) {
+      // If token is null or invalid, return minimal session
+      if (!token || !token.sub) {
+        return {
+          expires: session.expires,
+          user: { id: '', name: null, email: '', image: null }
+        };
+      }
+    
       if (session.user && token) {
         session.user.id = token.sub || token.id || '';
         session.organizationId = token.organizationId;
         session.needsOnboarding = token.needsOnboarding;
         session.hasInvite = token.hasInvite;
       }
-
+    
       return session;
     },
 
   
 
-    async jwt({ token, user, trigger, session }) {
-      try {
-        // Case 1: Initial sign in
-        if (user) {
-          const userId = user.id || token.sub;
-          if (!userId) return token;
-    
-          const context = await refreshOrganizationContext(userId);
-          const hasInvite = await checkUserInvites(userId);
-    
-          return {
-            ...token,
-            id: userId,
-            sub: userId,
-            email: user.email,
-            name: user.name,
-            image: user.image,
-            updatedAt: Date.now(),
-            hasInvite,
-            organizationId: context.organizationId,
-            // Only set needsOnboarding true if it's a new session
-            needsOnboarding: context.needsOnboarding,
-          };
-        }
-    
-        // Case 2: Session update
-        if (trigger === "update" && session) {
-          const updates: Record<string, any> = {};
-    
-          // Only update needsOnboarding if explicitly set in session
-          if ('needsOnboarding' in session) {
-            updates.needsOnboarding = session.needsOnboarding;
-          }
-    
-          if (session.organizationId !== token.organizationId) {
-            updates.organizationId = session.organizationId;
-            // Don't automatically set needsOnboarding to false
-          }
-    
-          if (Object.keys(updates).length > 0) {
-            return { ...token, ...updates, updatedAt: Date.now() };
-          }
-        }
-    
-        return token;
-      } catch (error) {
-        console.error('JWT Callback - Error:', error);
-        return token;
-      }
-    },
+// Then update the jwt callback to include site information
+async jwt({ token, user, trigger, session }: {
+  token: JWT;
+  user?: User | AdapterUser;
+  trigger?: "signIn" | "signUp" | "update";
+  session?: any;
+}): Promise<JWT> {
+  try {
+    // CRITICAL: Always verify user exists in database first
+    const userExists = await db.query.users.findFirst({
+      where: eq(users.id, token.sub || ''),
+    });
 
+    if (!userExists) {
+      return {} as JWT;
+    }
+
+    // Rest of your existing jwt callback logic
+    if (user) {
+      const userId = user.id || token.sub;
+      if (!userId) return token;
+
+      const context = await refreshOrganizationContext(userId);
+      const hasInvite = await checkUserInvites(userId);
+
+      // Add debug logging
+      console.log('JWT Context Update:', context);
+
+      return {
+        ...token,
+        id: userId,
+        sub: userId,
+        email: user.email,
+        name: user.name,
+        image: user.image,
+        updatedAt: Date.now(),
+        hasInvite,
+        organizationId: context.organizationId,
+        needsOnboarding: context.needsOnboarding, // This should now be false if site exists
+        organizationRole: context.role,
+        siteId: context.siteId // Include site ID in token
+      } as JWT;
+    }
+
+    // Case 2: Session update (after onboarding steps)
+    if (trigger === "update" && session) {
+      const context = await refreshOrganizationContext(token.sub!);
+      
+      return {
+        ...token,
+        organizationId: context.organizationId,
+        needsOnboarding: context.needsOnboarding,
+        organizationRole: context.role,
+        siteId: context.siteId,
+        updatedAt: Date.now(),
+      } as JWT;
+    }
+
+    return token;
+  } catch (error) {
+    console.error('JWT Callback - Error:', error);
+    return {} as JWT;
+  }
+},
     async redirect({ url, baseUrl }) {
       if (url.startsWith('/')) {
         if (url.includes('callback')) {
