@@ -18,6 +18,7 @@ export const config = {
 };
 
 
+
 async function getAuthState(req: NextRequest) {
   const token = await getToken({ req });
   

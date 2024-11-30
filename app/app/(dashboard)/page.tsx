@@ -4,14 +4,14 @@ import { Header } from "@/components/parts/header";
 import { Chart } from "@/components/dashboard/chart";
 import { PageWrapper } from "@/components/parts/page-wrapper";
 import { getAgentAndSiteCounts } from "@/lib/data/dashboard";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getAgents } from "@/lib/data/agents";
 import { getSites } from "@/lib/data/sites";
-import { getUsageForUser } from "@/lib/data/users";
+import { getUsageForUser, getCurrentSubscriptionTier } from "@/lib/data/users";
 import { Usage } from "@/components/parts/usage";
 import { AgentsDataTable } from "@/components/groups/agents/data-table";
 import { SitesDataTable } from "@/components/groups/sites/data-table";
-import { AgentWithRelations, SelectSite } from "@/lib/schema";
+import { getSession } from "@/lib/auth";
 
 const pageData = {
   name: "Dashboard",
@@ -20,11 +20,18 @@ const pageData = {
 };
 
 export default async function Page() {
+  // Check authentication first
+  const session = await getSession();
+  if (!session?.user.id || !session.organizationId) {
+    redirect('/login');
+  }
+
   // Fetch all required data
   const charts = await getAgentAndSiteCounts();
   const agents = await getAgents();
   const sites = await getSites();
   const usage = await getUsageForUser();
+  const currentTier = await getCurrentSubscriptionTier(session.organizationId); // Fetch current tier
 
   // Destructure with type safety
   const { data: chartData } = charts || {};
@@ -39,24 +46,22 @@ export default async function Page() {
   // Take only the 5 most recent entries
   const recentAgents = agentsData.slice(0, 5);
   const recentSites = sitesData.slice(0, 5);
-  
-  const userPlan = 'Pro';
 
   return (
     <div className="space-y-6">
       <Breadcrumbs pageName={pageData.name} />
-      
+
       <PageWrapper>
         <div className="space-y-8">
           <Header title={pageData.title}>{pageData.description}</Header>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Chart 
+            <Chart
               chartData={chartData}
-              className="col-span-2 rounded-xl border border-white/[0.02] bg-neutral-900/50 backdrop-blur-md p-6 shine shadow-dream" 
+              className="col-span-2 rounded-xl border border-white/[0.02] bg-neutral-900/50 backdrop-blur-md p-6 shine shadow-dream"
             />
             <Suspense fallback={<div>Loading usage data...</div>}>
-              <Usage plan={userPlan} />
+              <Usage currentTier={currentTier} />
             </Suspense>
           </div>
 
@@ -66,14 +71,13 @@ export default async function Page() {
               {/* @ts-expect-error - Type mismatch is handled by AgentsDataTable component */}
               <AgentsDataTable data={recentAgents} />
             </div>
-            
+
             <div className="rounded-xl border border-white/[0.02] bg-neutral-900/50 backdrop-blur-md p-6 shine shadow-dream">
               <h2 className="text-xl font-cal text-white mb-6">Recent Sites</h2>
               <SitesDataTable data={recentSites} />
             </div>
           </div>
         </div>
-        
       </PageWrapper>
     </div>
   );

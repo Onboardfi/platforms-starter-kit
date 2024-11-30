@@ -351,6 +351,7 @@ async jwt({ token, user, trigger, session }: {
         if (url.includes('callback')) {
           const token = await getToken({ req: { cookies: url } as any });
           
+          
           if (!token?.organizationId) {
             return `${baseUrl}/onboarding`;
           }
