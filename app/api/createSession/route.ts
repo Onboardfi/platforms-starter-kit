@@ -1,11 +1,8 @@
 ///Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/api/createSession/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
 import { createOnboardingSession, getAgentById } from "@/lib/actions";
 import { verifyOnboardingToken } from "@/lib/onboarding-auth";
-import db from "@/lib/db";
-import { users } from "@/lib/schema";
-import { eq } from "drizzle-orm";
+import { checkSessionLimits, incrementSessionCount } from "@/lib/usage-limits";
 
 export async function POST(req: NextRequest) {
   try {
@@ -30,21 +27,23 @@ export async function POST(req: NextRequest) {
     }
 
     const organizationId = agent.site.organizationId;
-    console.log('Retrieved organization context:', { 
-      agentId, 
-      organizationId,
-      hasSite: !!agent.site
-    });
+    
+    // Check session limits before creating
+    const limits = await checkSessionLimits(organizationId);
+    
+    if (!limits.canCreate) {
+      return NextResponse.json({
+        error: `Session limit reached. Your ${limits.tier} plan allows ${limits.maxAllowed} sessions. Please upgrade to create more sessions.`,
+        success: false,
+        limits
+      }, { status: 403 });
+    }
 
     // Get the onboarding token to check authentication state
     const onboardingToken = req.cookies.get('onboarding_token')?.value;
     let authState = null;
     if (onboardingToken) {
       authState = await verifyOnboardingToken(onboardingToken);
-      console.log('Verified onboarding token:', { 
-        tokenExists: !!onboardingToken,
-        authState 
-      });
     }
 
     try {
@@ -54,33 +53,34 @@ export async function POST(req: NextRequest) {
         authState: {
           isAuthenticated: authState?.isAuthenticated || false,
           isAnonymous: authState?.isAnonymous || true,
-          organizationId // Pass the organization ID from the agent
+          organizationId
         }
       });
+
+      // Increment session count after successful creation
+      await incrementSessionCount(organizationId);
 
       console.log('Session created successfully:', {
         sessionId,
         agentId,
         organizationId,
-        authState: {
-          isAuthenticated: authState?.isAuthenticated || false,
-          isAnonymous: authState?.isAnonymous || true,
-          organizationId
-        }
+        currentCount: limits.currentCount + 1
       });
 
       return NextResponse.json({ 
         sessionId,
-        success: true 
+        success: true,
+        usage: {
+          current: limits.currentCount + 1,
+          max: limits.maxAllowed
+        }
       });
 
     } catch (error) {
       console.error('Failed to create session:', {
         error,
         agentId,
-        organizationId,
-        tokenExists: !!onboardingToken,
-        authState
+        organizationId
       });
 
       return NextResponse.json({
