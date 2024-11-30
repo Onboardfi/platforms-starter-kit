@@ -32,7 +32,15 @@ interface UsageData {
   };
 }
 
-export function Usage({ className }: { className?: string }) {
+interface UsageProps {
+  className?: string;
+  plan?: string;  // Add the plan prop
+}
+
+
+
+
+export function Usage({ className, plan }: UsageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<UsageData | null>(null);
@@ -57,29 +65,24 @@ export function Usage({ className }: { className?: string }) {
           },
           sessions: {
             total: rawData.usage.sessions?.total || 0,
-            limit:
-              rawData.usage.subscription?.tier === "BASIC"
-                ? 50
-                : null, // Limit only for BASIC plan
-            isUnlimited:
-              rawData.usage.subscription?.tier !== "BASIC", // Unlimited for PRO and GROWTH
+            limit: rawData.usage.subscription?.tier === "BASIC" ? 50 : null,
+            isUnlimited: rawData.usage.subscription?.tier !== "BASIC",
           },
           subscription: {
-            tier: rawData.usage.subscription?.tier || "BASIC",
+            tier: plan?.toUpperCase() as "BASIC" | "PRO" | "GROWTH" || rawData.usage.subscription?.tier || "BASIC",
             status: rawData.usage.subscription?.status || "inactive",
           },
         });
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Failed to load usage data"
-        );
+        setError(err instanceof Error ? err.message : "Failed to load usage data");
       } finally {
         setLoading(false);
       }
     }
 
     fetchData();
-  }, []);
+  }, [plan]); // Add plan to dependency array
+
 
   if (loading) {
     return (
