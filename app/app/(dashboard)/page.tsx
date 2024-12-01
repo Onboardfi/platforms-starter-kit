@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { Breadcrumbs } from "@/components/parts/breadcrumbs";
 import { Header } from "@/components/parts/header";
 import { Chart } from "@/components/dashboard/chart";
@@ -12,28 +13,61 @@ import { Usage } from "@/components/parts/usage";
 import { AgentsDataTable } from "@/components/groups/agents/data-table";
 import { SitesDataTable } from "@/components/groups/sites/data-table";
 import { getSession } from "@/lib/auth";
+import { CreateAgentBanner } from "@/components/CreateAgentBanner";
+import type { SelectAgent } from "@/lib/schema";
 
 const pageData = {
   name: "Dashboard",
   title: "Dashboard",
-  description: "Snapshot of your onboards and sites usage",
+  description: "Snapshot of your onboards and usage",
 };
 
+function transformToSelectAgent(agent: any): SelectAgent {
+  return {
+    ...agent,
+    site: agent.site ? {
+      ...agent.site,
+      organization: agent.site.organization || null,
+      creator: agent.site.creator || null
+    } : undefined,
+    creator: agent.creator || {
+      id: agent.createdBy,
+      name: null,
+      username: null,
+      gh_username: null,
+      email: '',
+      emailVerified: null,
+      image: null,
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      metadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date()
+    },
+    siteName: agent.site?.name ?? null,
+    settings: agent.settings || {
+      onboardingType: "external",
+      allowMultipleSessions: false,
+      authentication: {
+        enabled: false,
+        message: ""
+      }
+    }
+  };
+}
+
 export default async function Page() {
-  // Check authentication first
   const session = await getSession();
   if (!session?.user.id || !session.organizationId) {
     redirect('/login');
   }
 
-  // Fetch all required data
   const charts = await getAgentAndSiteCounts();
   const agents = await getAgents();
   const sites = await getSites();
   const usage = await getUsageForUser();
-  const currentTier = await getCurrentSubscriptionTier(session.organizationId); // Fetch current tier
+  const currentTier = await getCurrentSubscriptionTier(session.organizationId);
 
-  // Destructure with type safety
   const { data: chartData } = charts || {};
   const { data: agentsData } = agents || {};
   const { data: sitesData } = sites || {};
@@ -43,9 +77,10 @@ export default async function Page() {
     notFound();
   }
 
-  // Take only the 5 most recent entries
-  const recentAgents = agentsData.slice(0, 5);
-  const recentSites = sitesData.slice(0, 5);
+  const transformedAgents: SelectAgent[] = agentsData.map(transformToSelectAgent);
+  const hasNoAgents = transformedAgents.length === 0;
+  const hasSites = sitesData.length > 0;
+  const recentAgents = transformedAgents.slice(0, 5);
 
   return (
     <div className="space-y-6">
@@ -53,7 +88,12 @@ export default async function Page() {
 
       <PageWrapper>
         <div className="space-y-8">
-          <Header title={pageData.title}>{pageData.description}</Header>
+          <div className="flex items-start justify-between gap-6">
+            <Header title={pageData.title}>{pageData.description}</Header>
+            {hasNoAgents && hasSites && (
+              <CreateAgentBanner className="flex-1 max-w-2xl" />
+            )}
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Chart
@@ -61,20 +101,39 @@ export default async function Page() {
               className="col-span-2 rounded-xl border border-white/[0.02] bg-neutral-900/50 backdrop-blur-md p-6 shine shadow-dream"
             />
             <Suspense fallback={<div>Loading usage data...</div>}>
-            <Usage initialTier={currentTier} />
+              <Usage initialTier={currentTier} chartData={chartData} />
             </Suspense>
           </div>
 
           <div className="space-y-8">
             <div className="rounded-xl border border-white/[0.02] bg-neutral-900/50 backdrop-blur-md p-6 shine shadow-dream">
-              <h2 className="text-xl font-cal text-white mb-6">Recent Onboards</h2>
-              {/* @ts-expect-error - Type mismatch is handled by AgentsDataTable component */}
-              <AgentsDataTable data={recentAgents} />
-            </div>
-
-            <div className="rounded-xl border border-white/[0.02] bg-neutral-900/50 backdrop-blur-md p-6 shine shadow-dream">
-              <h2 className="text-xl font-cal text-white mb-6">Recent Sites</h2>
-              <SitesDataTable data={recentSites} />
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-cal text-white">Recent Onboards</h2>
+                {hasSites && transformedAgents.length > 0 && (
+                  <Link
+                    href="/agents"
+                    className="text-sm text-neutral-400 hover:text-white transition-colors"
+                  >
+                    View All Onboards →
+                  </Link>
+                )}
+              </div>
+              {transformedAgents.length > 0 ? (
+                <AgentsDataTable data={recentAgents} />
+              ) : (
+                <div className="w-full">
+                  {hasSites ? (
+   
+                   
+                      <CreateAgentBanner className="w-full max-w-xl" />
+                  
+                  ) : (
+                    <Link href="/sites" className="text-dream-cyan hover:text-dream-cyan/90 transition-colors">
+                      Create a site first to start creating onboards
+                    </Link>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

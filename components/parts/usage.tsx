@@ -1,9 +1,11 @@
 "use client"
+
 import React, { useEffect, useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { Loader2, CircleAlert, MessageSquare, Users } from "lucide-react";
+import { Loader2, CircleAlert, MessageSquare, Users, Bot } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { SubscriptionTier } from "@/lib/stripe-config";
+import type { ChartDataPoint } from "@/components/dashboard/chart";
 
 interface UsageData {
   tokens: {
@@ -15,6 +17,9 @@ interface UsageData {
       total: number;
       ratePerThousand: number;
     };
+  };
+  agents: {
+    total: number;
   };
   sessions: {
     total: number;
@@ -28,26 +33,22 @@ interface UsageData {
 interface UsageProps {
   className?: string;
   initialTier?: SubscriptionTier;
+  chartData?: ChartDataPoint[];
 }
 
-export function Usage({ className, initialTier = 'BASIC' }: UsageProps) {
+export function Usage({ className, initialTier = 'BASIC', chartData = [] }: UsageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<UsageData | null>(null);
   const [currentTier, setCurrentTier] = useState<SubscriptionTier>(initialTier);
 
-  // Debug log for initial props
-  console.log('Usage Component Props:', { initialTier, className });
-  console.log('Current active tier:', currentTier);
-
   const tierConfig = useMemo(() => {
-    console.log('Calculating tierConfig for:', currentTier);
-    
     const config = (() => {
       switch (currentTier) {
         case 'BASIC':
           return {
             sessionLimit: 50,
+            agentLimit: 5,
             isUnlimited: false,
             badge: null,
             inputTokenLimit: 100_000,
@@ -56,6 +57,7 @@ export function Usage({ className, initialTier = 'BASIC' }: UsageProps) {
         case 'PRO':
           return {
             sessionLimit: null,
+            agentLimit: null,
             isUnlimited: true,
             badge: 'Unlimited',
             inputTokenLimit: 500_000,
@@ -64,6 +66,7 @@ export function Usage({ className, initialTier = 'BASIC' }: UsageProps) {
         case 'GROWTH':
           return {
             sessionLimit: null,
+            agentLimit: null,
             isUnlimited: true,
             badge: 'Unlimited',
             inputTokenLimit: 2_000_000,
@@ -73,6 +76,7 @@ export function Usage({ className, initialTier = 'BASIC' }: UsageProps) {
           console.warn('Unknown tier:', currentTier);
           return {
             sessionLimit: 50,
+            agentLimit: 5,
             isUnlimited: false,
             badge: null,
             inputTokenLimit: 100_000,
@@ -81,65 +85,52 @@ export function Usage({ className, initialTier = 'BASIC' }: UsageProps) {
       }
     })();
 
-    console.log('Calculated tierConfig:', config);
     return config;
   }, [currentTier]);
 
-  // Fetch current tier data
-  useEffect(() => {
-    async function fetchTierData() {
-      try {
-        const response = await fetch('/api/stripe/billing');
-        if (!response.ok) throw new Error('Failed to fetch subscription data');
-        const data = await response.json();
-        console.log('Fetched tier data:', data);
-        setCurrentTier(data.currentTier);
-      } catch (err) {
-        console.error('Error fetching tier data:', err);
-      }
-    }
-
-    fetchTierData();
-  }, []);
-
-  // Fetch usage data
   useEffect(() => {
     async function fetchData() {
-      console.log('Fetching usage data for tier:', currentTier);
       try {
-        const response = await fetch("/api/stripe/usage");
-        console.log('API Response status:', response.status);
-        
-        if (!response.ok) throw new Error("Failed to fetch usage data");
-        
-        const rawData = await response.json();
-        console.log('Raw API Response:', rawData);
+        const [usageResponse, billingResponse] = await Promise.all([
+          fetch("/api/stripe/usage"),
+          fetch("/api/stripe/billing")
+        ]);
+          
+        if (!usageResponse.ok || !billingResponse.ok) 
+          throw new Error("Failed to fetch data");
+          
+        const [usageData, billingData] = await Promise.all([
+          usageResponse.json(),
+          billingResponse.json()
+        ]);
         
         const formattedData: UsageData = {
           tokens: {
             input: {
-              total: rawData.usage?.input_tokens?.total || 0,
-              ratePerThousand: rawData.usage?.input_tokens?.ratePerThousand || 0,
+              total: usageData.usage?.input_tokens?.total || 0,
+              ratePerThousand: usageData.usage?.input_tokens?.ratePerThousand || 0,
             },
             output: {
-              total: rawData.usage?.output_tokens?.total || 0,
-              ratePerThousand: rawData.usage?.output_tokens?.ratePerThousand || 0,
+              total: usageData.usage?.output_tokens?.total || 0,
+              ratePerThousand: usageData.usage?.output_tokens?.ratePerThousand || 0,
             },
           },
+          agents: {
+            total: billingData.usageData.agents,
+          },
           sessions: {
-            total: rawData.usage?.sessions?.total || 0,
+            total: billingData.usageData.sessions,
           },
           subscription: {
-            status: rawData.usage?.subscription?.status || "inactive",
+            status: usageData.usage?.subscription?.status || "inactive",
             tier: currentTier,
           },
         };
 
-        console.log('Formatted Data:', formattedData);
         setData(formattedData);
       } catch (err) {
-        console.error('Error fetching usage data:', err);
-        setError(err instanceof Error ? err.message : "Failed to load usage data");
+        console.error('Error fetching data:', err);
+        setError(err instanceof Error ? err.message : "Failed to load data");
       } finally {
         setLoading(false);
       }
@@ -148,13 +139,7 @@ export function Usage({ className, initialTier = 'BASIC' }: UsageProps) {
     fetchData();
   }, [currentTier]);
 
-  // Log state changes
-  useEffect(() => {
-    console.log('Component State:', { loading, error, data, currentTier });
-  }, [loading, error, data, currentTier]);
-
   if (loading) {
-    console.log('Rendering loading state');
     return (
       <div className={cn(
         "flex items-center justify-center p-8",
@@ -167,8 +152,7 @@ export function Usage({ className, initialTier = 'BASIC' }: UsageProps) {
     );
   }
 
-  if (error) {
-    console.log('Rendering error state:', error);
+  if (error || !data) {
     return (
       <div className={cn(
         "p-6 border border-red-500/20 rounded-xl",
@@ -183,23 +167,13 @@ export function Usage({ className, initialTier = 'BASIC' }: UsageProps) {
     );
   }
 
-  if (!data) {
-    console.log('No data available');
-    return null;
-  }
-
   const totalTokens = data.tokens.input.total + data.tokens.output.total;
   const sessionPercentage = tierConfig.sessionLimit 
     ? Math.min((data.sessions.total / tierConfig.sessionLimit) * 100, 100)
     : 100;
-
-  console.log('Calculated Values:', { 
-    totalTokens, 
-    sessionPercentage,
-    isUnlimited: tierConfig.isUnlimited,
-    sessionLimit: tierConfig.sessionLimit,
-    currentTier
-  });
+  const agentPercentage = tierConfig.agentLimit
+    ? Math.min((data.agents.total / tierConfig.agentLimit) * 100, 100)
+    : 100;
 
   return (
     <div className={cn(
@@ -244,47 +218,96 @@ export function Usage({ className, initialTier = 'BASIC' }: UsageProps) {
         </div>
       </div>
 
-      {/* Session Usage Section */}
+      {/* Usage Limits Section */}
       <div className="border-t border-white/[0.02] p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-dream-cyan" />
-            <h3 className="text-lg font-medium text-white">Monthly Sessions</h3>
-          </div>
-          {tierConfig.isUnlimited && (
-            <Badge variant="secondary" className="bg-dream-cyan/10 text-dream-cyan">
-              {tierConfig.badge}
-            </Badge>
-          )}
-        </div>
-
-        <div className="space-y-4">
-          <div className="flex justify-between items-baseline">
-            <p className="text-3xl font-semibold text-white">
-              {data.sessions.total.toLocaleString()}
-            </p>
-            {tierConfig.isUnlimited ? (
-              <p className="text-sm text-neutral-400">Unlimited Access</p>
-            ) : (
-              <p className="text-sm text-neutral-400">
-                of {tierConfig.sessionLimit} sessions
-              </p>
-            )}
-          </div>
-
-          {!tierConfig.isUnlimited && (
-            <div>
-              <div className="h-2 bg-white/[0.02] rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-dream-cyan rounded-full transition-all duration-500"
-                  style={{ width: `${sessionPercentage}%` }}
-                />
+        <div className="grid grid-cols-2 gap-6">
+          {/* Agent Usage */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Bot className="w-5 h-5 text-dream-cyan" />
+                <h3 className="text-lg font-medium text-white">Agents</h3>
               </div>
-              <p className="mt-2 text-sm text-neutral-400">
-                {tierConfig.sessionLimit! - data.sessions.total} sessions remaining this month
-              </p>
+              {tierConfig.isUnlimited && (
+                <Badge variant="secondary" className="bg-dream-cyan/10 text-dream-cyan">
+                  {tierConfig.badge}
+                </Badge>
+              )}
             </div>
-          )}
+
+            <div className="space-y-4">
+              <div className="flex justify-between items-baseline">
+                <p className="text-3xl font-semibold text-white">
+                  {data.agents.total.toLocaleString()}
+                </p>
+                {tierConfig.isUnlimited ? (
+                  <p className="text-sm text-neutral-400">Unlimited Access</p>
+                ) : (
+                  <p className="text-sm text-neutral-400">
+                    of {tierConfig.agentLimit} agents
+                  </p>
+                )}
+              </div>
+
+              {!tierConfig.isUnlimited && (
+                <div>
+                  <div className="h-2 bg-white/[0.02] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-dream-cyan rounded-full transition-all duration-500"
+                      style={{ width: `${agentPercentage}%` }}
+                    />
+                  </div>
+                  <p className="mt-2 text-sm text-neutral-400">
+                    {tierConfig.agentLimit! - data.agents.total} agents remaining
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Session Usage */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-dream-cyan" />
+                <h3 className="text-lg font-medium text-white">Sessions</h3>
+              </div>
+              {tierConfig.isUnlimited && (
+                <Badge variant="secondary" className="bg-dream-cyan/10 text-dream-cyan">
+                  {tierConfig.badge}
+                </Badge>
+              )}
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex justify-between items-baseline">
+                <p className="text-3xl font-semibold text-white">
+                  {data.sessions.total.toLocaleString()}
+                </p>
+                {tierConfig.isUnlimited ? (
+                  <p className="text-sm text-neutral-400">Unlimited Access</p>
+                ) : (
+                  <p className="text-sm text-neutral-400">
+                    of {tierConfig.sessionLimit} sessions
+                  </p>
+                )}
+              </div>
+
+              {!tierConfig.isUnlimited && (
+                <div>
+                  <div className="h-2 bg-white/[0.02] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-dream-cyan rounded-full transition-all duration-500"
+                      style={{ width: `${sessionPercentage}%` }}
+                    />
+                  </div>
+                  <p className="mt-2 text-sm text-neutral-400">
+                    {tierConfig.sessionLimit! - data.sessions.total} sessions remaining
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>

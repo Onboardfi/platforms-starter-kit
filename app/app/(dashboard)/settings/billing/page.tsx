@@ -108,12 +108,20 @@ function useBillingData() {
   useEffect(() => {
     const fetchBillingData = async () => {
       try {
+        console.log('Fetching billing data...');
         const response = await axios.get<BillingApiResponse>('/api/stripe/billing');
+        console.log('Billing API Response:', response.data);
         
         // Validate the tier data
         if (!isValidTier(response.data.currentTier)) {
           throw new Error('Invalid tier data received from API');
         }
+
+        console.log('Processed billing data:', {
+          currentTier: response.data.currentTier,
+          sessions: response.data.usageData.sessions,
+          agents: response.data.usageData.agents
+        });
 
         setData(response.data);
       } catch (err) {
@@ -132,6 +140,17 @@ function useBillingData() {
 }
 
 function UsageCard({ icon: Icon, title, current, limit, unlimited, type = 'usage', feature = false, label = '' }: UsageCardProps) {
+  
+  
+  React.useEffect(() => {
+    if (title === 'Sessions') {
+      console.log('UsageCard Sessions Data:', {
+        current,
+        limit,
+        unlimited
+      });
+    }
+  }, [title, current, limit, unlimited]);
   return (
     <div className="p-4 rounded-lg border border-white/[0.02] bg-white/[0.02]">
       <div className="flex items-center justify-between mb-2">
@@ -198,6 +217,22 @@ interface BillingPageProps {
 
 export default function BillingPage() {
   const { data, loading, error } = useBillingData();
+
+    // Add logging when data is received
+    React.useEffect(() => {
+      if (data) {
+        console.log('BillingPage Data:', {
+          currentTier: data.currentTier,
+          sessions: data.usageData.sessions,
+          agents: data.usageData.agents,
+          subscription: {
+            status: data.subscription.status,
+            interval: data.subscription.interval
+          }
+        });
+      }
+    }, [data]);
+
   
   if (loading) {
     return (
@@ -215,7 +250,13 @@ export default function BillingPage() {
     );
   }
 
-  const { currentTier, usageData, subscription, billingHistory, paymentMethod } = data;
+const { currentTier, usageData, subscription, billingHistory, paymentMethod } = data;
+  console.log('Rendering with usage data:', {
+    sessions: usageData.sessions,
+    agents: usageData.agents,
+    tier: currentTier
+  });
+
   const tierConfig = STRIPE_CONFIG.TIERS[currentTier];
   const rates = STRIPE_CONFIG.METERED.RATES[currentTier];
 

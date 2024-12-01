@@ -1,12 +1,16 @@
+///Users/bobbygilbert/Documents/Github/platforms-starter-kit/components/site-header.tsx
+
 'use client';
 
-import { ExternalLink, AlertTriangle } from "lucide-react";
+import { ExternalLink, AlertTriangle, Sparkles } from "lucide-react";
 import CreateAgentButton from "@/components/create-agent-button";
 import { Site } from "@/types/site";
 import Link from "next/link";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import useSWR from 'swr/immutable';
 import { STRIPE_CONFIG } from "@/lib/stripe-config";
+import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 
 interface SiteHeaderProps {
   site: Site;
@@ -14,6 +18,8 @@ interface SiteHeaderProps {
 }
 
 export default function SiteHeader({ site, url }: SiteHeaderProps) {
+  const router = useRouter();
+  
   // Fetch agent count using SWR
   const { data: usageData } = useSWR(
     `/api/tierUsage?organizationId=${site.organizationId}`
@@ -84,7 +90,24 @@ export default function SiteHeader({ site, url }: SiteHeaderProps) {
               <span>{url}</span>
               <ExternalLink className="h-4 w-4 transition-transform group-hover:scale-110" />
             </a>
-            <CreateAgentButton siteId={site.id} />
+            {isAtLimit ? (
+              <button
+                onClick={() => router.push('/settings/upgrade')}
+                className={cn(
+                  "group relative inline-flex items-center justify-center gap-2",
+                  "px-4 py-2 rounded-lg",
+                  "text-black font-medium text-sm",
+                  "bg-dream-cyan hover:bg-dream-cyan/90",
+                  "transition-all duration-200",
+                  "shadow-lg shadow-dream-cyan/20"
+                )}
+              >
+                <Sparkles className="w-4 h-4" />
+                Upgrade to Pro
+              </button>
+            ) : (
+              <CreateAgentButton siteId={site.id} />
+            )}
           </div>
         </div>
       </div>

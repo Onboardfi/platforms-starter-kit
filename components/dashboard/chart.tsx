@@ -1,3 +1,6 @@
+////Users/bobbygilbert/Documents/Github/platforms-starter-kit/components/dashboard/chart.tsx
+
+
 "use client";
 
 import * as React from "react";
@@ -26,14 +29,13 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import { DateRangeSelector, DateRange } from "@/components/ui/date-range-selector";
-
-interface ChartDataPoint {
+// Add this to chart.tsx
+export interface ChartDataPoint {
   date: string;
   agents: number;
   sites: number;
   sessions: number;
 }
-
 interface ChartProps {
   chartData: ChartDataPoint[];
   className?: string;
@@ -122,17 +124,7 @@ export function Chart({ chartData: initialData, className }: ChartProps) {
               {totalAgents.toLocaleString()}
             </span>
           </div>
-          <div
-            data-active={true}
-            className="flex flex-1 flex-col justify-center gap-1 border-l border-t px-4 py-2 text-left sm:border-t-0 sm:px-6 sm:py-5"
-          >
-            <span className="text-xs text-muted-foreground">
-              {chartConfig.sites.label}
-            </span>
-            <span className="text-lg font-bold leading-none sm:text-3xl">
-              {totalSites.toLocaleString()}
-            </span>
-          </div>
+        
           <div
             data-active={true}
             className="flex flex-1 flex-col justify-center gap-1 border-l border-t px-4 py-2 text-left sm:border-t-0 sm:px-6 sm:py-5"
@@ -198,16 +190,7 @@ export function Chart({ chartData: initialData, className }: ChartProps) {
                 strokeWidth={2}
                 dot={false}
               />
-              <Line
-                dataKey="sites"
-                name="Sites"
-                type="monotone"
-                stroke={chartConfig.sites.color}
-                strokeWidth={2}
-                dot={false}
-                isAnimationActive={false}
-                connectNulls={true}
-              />
+           
               <Line
                 dataKey="sessions"
                 name="Sessions"

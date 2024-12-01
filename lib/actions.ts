@@ -7,7 +7,11 @@ import { addDomainToVercel, removeDomainFromVercelProject, validDomainRegex } fr
 import { getBlurDataURL } from "@/lib/utils";
 import { put } from "@vercel/blob";
 import { eq, InferModel, desc, asc, and, exists, } from "drizzle-orm";
-
+import { 
+  checkAgentLimits,
+  incrementAgentCount,
+  decrementAgentCount 
+} from './usage-limits';
 import { customAlphabet } from "nanoid";
 import { revalidateTag } from "next/cache";
 import { withSiteAuth, withAgentAuth } from "./auth";
@@ -523,8 +527,7 @@ export const getAgentById = async (agentId: string): Promise<SelectAgent | null>
     return null;
   }
 }
-// Create a new agent within a site, ensuring the site belongs to the user's organization
-
+// Updated createAgent function
 export const createAgent = withSiteAuth(
   async (_: FormData, site: SelectSite): Promise<CreateAgentResponse> => {
     const session = await getSession();
@@ -533,6 +536,12 @@ export const createAgent = withSiteAuth(
     }
 
     try {
+      // Check agent limits before creating
+      const limits = await checkAgentLimits(session.organizationId);
+      if (!limits.canCreate) {
+        return { error: limits.error || "Agent limit reached" };
+      }
+
       const result = await db
         .insert(agents)
         .values({
@@ -557,6 +566,9 @@ export const createAgent = withSiteAuth(
         .returning();
 
       const agent = result[0];
+
+      // Update the agent count in organization metadata
+      await incrementAgentCount(session.organizationId);
 
       await setAgentState(agent.id, {
         agentId: agent.id,
@@ -819,17 +831,20 @@ export const deleteAgent = async (
     return;
   }
 
+  // Get the agent with site to verify organization ownership
   const agent = await db.query.agents.findFirst({
-    where: and(
-      eq(agents.id, agentId),
-      eq(sites.organizationId, session.organizationId)
-    ),
+    where: eq(agents.id, agentId),
     with: {
-      site: true,
-    },
-  }) as AgentWithSite | undefined;
+      site: true
+    }
+  });
 
-  if (!agent || agent.createdBy !== session.user.id) {
+  if (!agent || !agent.site || agent.createdBy !== session.user.id) {
+    redirect("/not-found");
+    return;
+  }
+
+  if (agent.site.organizationId !== session.organizationId) {
     redirect("/not-found");
     return;
   }
@@ -843,23 +858,37 @@ export const deleteAgent = async (
   }
 
   try {
+    // Delete the agent with a subquery to verify organization ownership
     await db.delete(agents)
       .where(and(
         eq(agents.id, agentId),
-        eq(sites.organizationId, session.organizationId)
+        exists(
+          db.select()
+            .from(sites)
+            .where(and(
+              eq(sites.id, agents.siteId),
+              eq(sites.organizationId, session.organizationId)
+            ))
+        )
       ))
       .returning();
 
-    revalidateTag(
-      `${agent.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-agents`
-    );
-    revalidateTag(
-      `${agent.site?.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-${agent.slug}`
-    );
+    // Decrement the agent count
+    await decrementAgentCount(session.organizationId);
 
-    if (agent.site?.customDomain) {
-      revalidateTag(`${agent.site.customDomain}-agents`);
-      revalidateTag(`${agent.site.customDomain}-${agent.slug}`);
+    // Revalidate tags
+    if (agent.site) {
+      revalidateTag(
+        `${agent.site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-agents`
+      );
+      revalidateTag(
+        `${agent.site.subdomain}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN}-${agent.slug}`
+      );
+
+      if (agent.site.customDomain) {
+        revalidateTag(`${agent.site.customDomain}-agents`);
+        revalidateTag(`${agent.site.customDomain}-${agent.slug}`);
+      }
     }
   } catch (error: any) {
     redirect(
