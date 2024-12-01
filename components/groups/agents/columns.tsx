@@ -1,12 +1,10 @@
-"use client";
-
 import { ColumnDef } from "@tanstack/react-table";
 import Link from "next/link";
-import { SelectAgent, Step } from "@/lib/schema";
-import { Button } from "@/components/ui/button";
+import { SelectAgent } from "@/lib/schema";
 import { DataTableColumnHeader } from "@/components/data-table/header";
 import OptionsDropdown from "./options-dropdown";
 import { cn } from "@/lib/utils";
+import { MessageCircle, Share2, User } from "lucide-react";
 
 export const columns: ColumnDef<SelectAgent>[] = [
   {
@@ -15,45 +13,72 @@ export const columns: ColumnDef<SelectAgent>[] = [
       <DataTableColumnHeader 
         column={column} 
         title="Progress" 
-        className="min-w-[200px]"
+        className="min-w-[300px]"
       />
     ),
     cell: ({ row }) => {
-      // Calculate progress from agent settings
+      // Calculate progress
       const steps = row.original.settings?.steps || [];
       const completedSteps = steps.filter(step => step.completed).length;
       const totalSteps = steps.length;
       const progress = totalSteps > 0 ? (completedSteps / totalSteps) * 100 : 0;
       
+      // Get configuration
+      const isExternal = row.original.settings.onboardingType === "external";
+      const isOneToMany = row.original.settings.allowMultipleSessions;
+      const sessionCount = row.original._count?.sessions || 0;
+
       return (
-        <div className="flex items-center gap-2">
-          <div className="w-32 h-2 bg-neutral-800 rounded-full overflow-hidden">
-            <div 
-              className={cn(
-                "h-full rounded-full transition-all duration-500",
-                progress === 100 ? "bg-green-500" : "bg-white"
-              )}
-              style={{ width: `${progress}%` }}
-            />
+        <div className="flex items-center gap-4">
+          {/* Progress/Sessions Section */}
+          <div className="flex items-center gap-2 min-w-[140px]">
+            {!isOneToMany ? (
+              <>
+                <div className="w-32 h-2 bg-neutral-800 rounded-full overflow-hidden">
+                  <div 
+                    className={cn(
+                      "h-full rounded-full transition-all duration-500",
+                      progress === 100 ? "bg-green-500" : "bg-white"
+                    )}
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <span className="text-xs text-neutral-400 whitespace-nowrap">
+                  {completedSteps}/{totalSteps} Steps {Math.round(progress)}%
+                </span>
+              </>
+            ) : (
+              <span className="text-xs px-2 py-1 rounded-lg bg-dream-blue/20 text-dream-blue border border-dream-blue/20 flex items-center gap-1">
+                <MessageCircle className="h-3 w-3" />
+                {sessionCount} Sessions
+              </span>
+            )}
           </div>
-          <span className="text-xs text-neutral-400">
-            {completedSteps}/{totalSteps} Steps
-          </span>
-          <span className="text-xs text-neutral-500">
-            {Math.round(progress)}%
-          </span>
+
+          {/* Type Badges */}
+          <div className="flex gap-2">
+            <span className={cn(
+              "px-2 py-1 rounded-lg text-xs border border-white/10 flex items-center gap-1",
+              isExternal 
+                ? "bg-dream-purple/20 text-dream-purple border-dream-purple/20"
+                : "bg-dream-pink/20 text-dream-pink border-dream-pink/20"
+            )}>
+              <Share2 className="h-3 w-3" />
+              {isExternal ? "External" : "Internal"}
+            </span>
+
+            <span className={cn(
+              "px-2 py-1 rounded-lg text-xs border border-white/10 flex items-center gap-1",
+              isOneToMany
+                ? "bg-dream-orange/20 text-dream-orange border-dream-orange/20"
+                : "bg-dream-cyan/20 text-dream-cyan border-dream-cyan/20"
+            )}>
+              <User className="h-3 w-3" />
+              {isOneToMany ? "One-to-Many" : "One-to-One"}
+            </span>
+          </div>
         </div>
       );
-    },
-    filterFn: (row, id, filterValue) => {
-      const steps = row.original.settings?.steps || [];
-      const completedSteps = steps.filter(step => step.completed).length;
-      const totalSteps = steps.length;
-      const progress = totalSteps > 0 ? (completedSteps / totalSteps) * 100 : 0;
-      
-      // Allow filtering by percentage ranges (e.g., "0-25", "25-50", "50-75", "75-100")
-      const [min, max] = filterValue.split("-").map(Number);
-      return progress >= min && progress <= max;
     },
   },
   {
@@ -71,10 +96,6 @@ export const columns: ColumnDef<SelectAgent>[] = [
           {name}
         </Link>
       );
-    },
-    filterFn: (row, id, value) => {
-      const name = row.original.name || "Untitled";
-      return name.toLowerCase().includes(value.toLowerCase());
     },
   },
   {
@@ -105,22 +126,6 @@ export const columns: ColumnDef<SelectAgent>[] = [
           }
         </span>
       );
-    },
-    filterFn: (row, id, value) => {
-      if (!value) return true;
-      const date = row.original.createdAt;
-      const dateStr = date instanceof Date 
-        ? date.toISOString()
-        : new Date(date).toISOString();
-      
-      // Support filtering by date ranges
-      if (value.includes("to")) {
-        const [start, end] = value.split(" to ");
-        return dateStr >= start && dateStr <= end;
-      }
-      
-      // Support filtering by specific dates
-      return dateStr.startsWith(value);
     },
   },
   {

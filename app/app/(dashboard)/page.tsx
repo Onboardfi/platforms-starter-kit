@@ -1,3 +1,5 @@
+// /Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/app/(dashboard)/page.tsx
+
 import { Suspense } from "react";
 import Link from "next/link";
 import { Breadcrumbs } from "@/components/parts/breadcrumbs";
@@ -25,24 +27,26 @@ const pageData = {
 function transformToSelectAgent(agent: any): SelectAgent {
   return {
     ...agent,
-    site: agent.site ? {
-      ...agent.site,
-      organization: agent.site.organization || null,
-      creator: agent.site.creator || null
-    } : undefined,
+    site: agent.site
+      ? {
+          ...agent.site,
+          organization: agent.site.organization || null,
+          creator: agent.site.creator || null,
+        }
+      : undefined,
     creator: agent.creator || {
       id: agent.createdBy,
       name: null,
       username: null,
       gh_username: null,
-      email: '',
+      email: "",
       emailVerified: null,
       image: null,
       stripeCustomerId: null,
       stripeSubscriptionId: null,
       metadata: {},
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
     },
     siteName: agent.site?.name ?? null,
     settings: agent.settings || {
@@ -50,16 +54,16 @@ function transformToSelectAgent(agent: any): SelectAgent {
       allowMultipleSessions: false,
       authentication: {
         enabled: false,
-        message: ""
-      }
-    }
+        message: "",
+      },
+    },
   };
 }
 
 export default async function Page() {
   const session = await getSession();
   if (!session?.user.id || !session.organizationId) {
-    redirect('/login');
+    redirect("/login");
   }
 
   const charts = await getAgentAndSiteCounts();
@@ -80,6 +84,7 @@ export default async function Page() {
   const transformedAgents: SelectAgent[] = agentsData.map(transformToSelectAgent);
   const hasNoAgents = transformedAgents.length === 0;
   const hasSites = sitesData.length > 0;
+  const userSiteId = hasSites ? sitesData[0].id : null; // Extract the first site's ID
   const recentAgents = transformedAgents.slice(0, 5);
 
   return (
@@ -90,7 +95,7 @@ export default async function Page() {
         <div className="space-y-8">
           <div className="flex items-start justify-between gap-6">
             <Header title={pageData.title}>{pageData.description}</Header>
-            {hasNoAgents && hasSites && (
+            {hasNoAgents && hasSites && userSiteId && (
               <CreateAgentBanner className="flex-1 max-w-2xl" />
             )}
           </div>
@@ -109,9 +114,9 @@ export default async function Page() {
             <div className="rounded-xl border border-white/[0.02] bg-neutral-900/50 backdrop-blur-md p-6 shine shadow-dream">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-cal text-white">Recent Onboards</h2>
-                {hasSites && transformedAgents.length > 0 && (
+                {hasSites && transformedAgents.length > 0 && userSiteId && (
                   <Link
-                    href="/agents"
+                    href={`/site/${userSiteId}`} // Updated href to include siteId
                     className="text-sm text-neutral-400 hover:text-white transition-colors"
                   >
                     View All Onboards →
@@ -123,12 +128,12 @@ export default async function Page() {
               ) : (
                 <div className="w-full">
                   {hasSites ? (
-   
-                   
-                      <CreateAgentBanner className="w-full max-w-xl" />
-                  
+                    <CreateAgentBanner className="w-full max-w-xl" />
                   ) : (
-                    <Link href="/sites" className="text-dream-cyan hover:text-dream-cyan/90 transition-colors">
+                    <Link
+                      href="/sites"
+                      className="text-dream-cyan hover:text-dream-cyan/90 transition-colors"
+                    >
                       Create a site first to start creating onboards
                     </Link>
                   )}

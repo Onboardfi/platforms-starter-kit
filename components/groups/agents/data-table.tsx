@@ -13,116 +13,15 @@ import {
   useReactTable,
   getFacetedRowModel,
   getFacetedUniqueValues,
-  Row,
-  Table,
-  ColumnDef,
 } from "@tanstack/react-table";
 import { SelectAgent } from "@/lib/schema";
-import { ArrowUp, ArrowDown, Search, MoreHorizontal } from "lucide-react";
-
-// Extend RowData type to include processed progress data
-type RowData = SelectAgent & {
-  progress: {
-    currentStep: number;
-    totalSteps: number;
-    completedSteps: string[];
-  };
-};
+import { ArrowUp, ArrowDown, Search, MoreHorizontal, MessageCircle, Share2, User } from "lucide-react";
+import { columns } from "./columns";
+import { cn } from "@/lib/utils";
 
 interface DataTableProps {
   data: SelectAgent[];
 }
-
-// Transform agent data to include progress information
-const processAgentData = (agent: SelectAgent): RowData => {
-  const steps = agent.settings?.steps || [];
-  const completedSteps = steps.filter(step => step.completed).map(step => step.id);
-  
-  return {
-    ...agent,
-    progress: {
-      currentStep: completedSteps.length,
-      totalSteps: steps.length || 1, // Minimum of 1 to avoid division by zero
-      completedSteps
-    }
-  };
-};
-
-// Define columns
-const columns: ColumnDef<RowData>[] = [
-  {
-    accessorKey: "progress",
-    header: "Progress",
-    cell: ({ row }: { row: Row<RowData> }) => {
-      const { currentStep, totalSteps } = row.original.progress;
-      const progress = totalSteps > 0 ? (currentStep / totalSteps) * 100 : 0;
-
-      return (
-        <div className="flex items-center gap-2">
-          <div className="w-32 h-2 bg-neutral-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-white rounded-full transition-all duration-300"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          <span className="text-xs text-neutral-400">
-            {currentStep}/{totalSteps} Steps
-          </span>
-          <span className="text-xs text-neutral-500">{progress.toFixed(0)}%</span>
-        </div>
-      );
-    },
-  },
-  {
-    accessorKey: "name",
-    header: "Onboard Name",
-    cell: ({ row }: { row: Row<RowData> }) => (
-      <div className="flex flex-col">
-        <span className="text-sm text-white hover:text-white/80 transition-colors">
-          {row.original.name || "Untitled"}
-        </span>
-        {row.original.description && (
-          <span className="text-xs text-neutral-400">
-            {row.original.description}
-          </span>
-        )}
-      </div>
-    ),
-  },
-  {
-    accessorKey: "createdAt",
-    header: "Date Created",
-    cell: ({ row }: { row: Row<RowData> }) => {
-      const date = new Date(row.original.createdAt);
-      return (
-        <span className="text-sm text-neutral-400">
-          {date instanceof Date
-            ? date.toLocaleString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-                hour: "numeric",
-                minute: "numeric",
-                hour12: true,
-              })
-            : "Unknown date"}
-        </span>
-      );
-    },
-  },
-  {
-    id: "actions",
-    header: "Options",
-    cell: ({ row }) => (
-      <button 
-        className="p-2 hover:bg-white/5 rounded-lg transition-colors group relative"
-        title={`Options for ${row.original.name}`}
-      >
-        <MoreHorizontal className="w-4 h-4 text-neutral-400 group-hover:text-neutral-300" />
-      </button>
-    ),
-  },
-];
 
 // Dream UI Table Header Component
 const DreamTableHeader = ({ children }: { children: React.ReactNode }) => (
@@ -152,23 +51,13 @@ const DreamSearch = ({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder="Search agents..."
-      className="
-        h-10 w-[250px] rounded-xl 
-        bg-neutral-900/50 pl-9 pr-4 
-        text-sm text-neutral-300 
-        placeholder:text-neutral-500
-        border border-white/[0.08]
-        focus:border-dream-purple/50 
-        focus:ring-dream-purple/20
-        transition-all duration-300
-        backdrop-blur-md
-      "
+      className="h-10 w-[250px] rounded-xl bg-neutral-900/50 pl-9 pr-4 text-sm text-neutral-300 placeholder:text-neutral-500 border border-white/[0.08] focus:border-dream-purple/50 focus:ring-dream-purple/20 transition-all duration-300 backdrop-blur-md"
     />
   </div>
 );
 
 // Dream UI Toolbar Component
-const DreamToolbar = ({ table }: { table: Table<RowData> }) => {
+const DreamToolbar = ({ table }: { table: any }) => {
   const isFiltered = table.getState().columnFilters.length > 0;
 
   return (
@@ -192,7 +81,7 @@ const DreamToolbar = ({ table }: { table: Table<RowData> }) => {
 };
 
 // Dream UI Pagination Component
-const DreamPagination = ({ table }: { table: Table<RowData> }) => {
+const DreamPagination = ({ table }: { table: any }) => {
   return (
     <div className="flex items-center justify-between px-4 py-3">
       <div className="flex items-center gap-2 text-sm text-neutral-400">
@@ -206,26 +95,14 @@ const DreamPagination = ({ table }: { table: Table<RowData> }) => {
         <button
           onClick={() => table.previousPage()}
           disabled={!table.getCanPreviousPage()}
-          className="
-            px-3 py-1.5 rounded-xl 
-            bg-neutral-900/50 text-neutral-300 
-            text-sm hover:bg-neutral-800/50 
-            disabled:opacity-50 disabled:cursor-not-allowed 
-            transition-colors duration-300 shine
-          "
+          className="px-3 py-1.5 rounded-xl bg-neutral-900/50 text-neutral-300 text-sm hover:bg-neutral-800/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-300 shine"
         >
           Previous
         </button>
         <button
           onClick={() => table.nextPage()}
           disabled={!table.getCanNextPage()}
-          className="
-            px-3 py-1.5 rounded-xl 
-            bg-neutral-900/50 text-neutral-300 
-            text-sm hover:bg-neutral-800/50 
-            disabled:opacity-50 disabled:cursor-not-allowed 
-            transition-colors duration-300 shine
-          "
+          className="px-3 py-1.5 rounded-xl bg-neutral-900/50 text-neutral-300 text-sm hover:bg-neutral-800/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-300 shine"
         >
           Next
         </button>
@@ -240,14 +117,8 @@ export function AgentsDataTable({ data }: DataTableProps) {
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = React.useState({});
 
-  // Transform the data to include progress information
-  const transformedData: RowData[] = React.useMemo(
-    () => data.map(processAgentData),
-    [data]
-  );
-
-  const table = useReactTable<RowData>({
-    data: transformedData,
+  const table = useReactTable({
+    data,
     columns,
     enableRowSelection: true,
     getCoreRowModel: getCoreRowModel(),
@@ -292,15 +163,12 @@ export function AgentsDataTable({ data }: DataTableProps) {
                         {header.column.getCanSort() && (
                           <button
                             onClick={header.column.getToggleSortingHandler()}
-                            className={`
-                              ml-auto h-4 w-4 
-                              transition-colors duration-300
-                              ${
-                                header.column.getIsSorted()
-                                  ? "text-dream-purple"
-                                  : "text-neutral-500 hover:text-neutral-300"
-                              }
-                            `}
+                            className={cn(
+                              "ml-auto h-4 w-4 transition-colors duration-300",
+                              header.column.getIsSorted()
+                                ? "text-dream-purple"
+                                : "text-neutral-500 hover:text-neutral-300"
+                            )}
                           >
                             {header.column.getIsSorted() === "desc" ? (
                               <ArrowDown className="h-3 w-3" />
@@ -338,7 +206,7 @@ export function AgentsDataTable({ data }: DataTableProps) {
               ) : (
                 <tr>
                   <td
-                    colSpan={table.getAllColumns().length}
+                    colSpan={columns.length}
                     className="h-24 text-center text-sm text-neutral-500"
                   >
                     No results found.
