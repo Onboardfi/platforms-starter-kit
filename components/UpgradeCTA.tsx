@@ -1,6 +1,8 @@
+///Users/bobbygilbert/Documents/Github/platforms-starter-kit/components/UpgradeCTA.tsx
+
 import { Sparkles, Plus, ArrowUpRight } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import type { SubscriptionTier } from "@/lib/stripe-config";
 import { cn } from "@/lib/utils";
 
@@ -12,30 +14,56 @@ interface UpgradeCTAProps {
 export function UpgradeCTA({ currentTier, isCollapsed }: UpgradeCTAProps) {
   const router = useRouter();
 
+  // Debug log for initial props
+  console.log('UpgradeCTA Props:', { currentTier, isCollapsed });
+
   const upgradeContent = useMemo(() => {
-    switch (currentTier) {
-      case 'BASIC':
-        return {
-          badge: 'Pro',
-          title: 'Upgrade to Pro',
-          description: 'Get access to advanced features and priority support.',
-          buttonText: 'Upgrade to Pro',
-          isBasic: true
-        };
-      case 'PRO':
-        return {
-          badge: 'Growth',
-          title: 'Upgrade to Growth',
-          description: 'Scale your business with our most powerful features.',
-          buttonText: 'Upgrade to Growth',
-          isBasic: false
-        };
-      default:
-        return null;
-    }
+    console.log('Calculating upgradeContent for tier:', currentTier);
+    
+    const content = (() => {
+      switch (currentTier) {
+        case 'BASIC':
+          return {
+            badge: 'Pro',
+            title: 'Upgrade to Pro',
+            description: 'Get access to advanced features and priority support.',
+            buttonText: 'Upgrade to Pro',
+            isBasic: true
+          };
+        case 'PRO':
+          return {
+            badge: 'Growth',
+            title: 'Upgrade to Growth',
+            description: 'Scale your business with our most powerful features.',
+            buttonText: 'Upgrade to Growth',
+            isBasic: false
+          };
+        default:
+          console.warn('Unknown or unsupported tier:', currentTier);
+          return null;
+      }
+    })();
+
+    console.log('Calculated upgradeContent:', content);
+    return content;
   }, [currentTier]);
 
-  if (!upgradeContent || isCollapsed) return null;
+  // Log when component exits early
+  if (!upgradeContent || isCollapsed) {
+    console.log('UpgradeCTA early return:', { 
+      hasUpgradeContent: !!upgradeContent, 
+      isCollapsed 
+    });
+    return null;
+  }
+
+  // Log render state
+  console.log('UpgradeCTA rendering with:', {
+    currentTier,
+    isCollapsed,
+    upgradeContent,
+    isBasic: upgradeContent.isBasic
+  });
 
   return (
     <div className={cn(
@@ -68,7 +96,10 @@ export function UpgradeCTA({ currentTier, isCollapsed }: UpgradeCTAProps) {
         {upgradeContent.description}
       </p>
       <button 
-        onClick={() => router.push('/settings/upgrade')}
+        onClick={() => {
+          console.log('Upgrade button clicked, navigating to:', '/settings/upgrade');
+          router.push('/settings/upgrade');
+        }}
         className={cn(
           "flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2",
           "text-xs font-medium text-black transition-colors",

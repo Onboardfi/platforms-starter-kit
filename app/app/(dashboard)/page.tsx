@@ -61,7 +61,7 @@ export default async function Page() {
               className="col-span-2 rounded-xl border border-white/[0.02] bg-neutral-900/50 backdrop-blur-md p-6 shine shadow-dream"
             />
             <Suspense fallback={<div>Loading usage data...</div>}>
-              <Usage currentTier={currentTier} />
+            <Usage initialTier={currentTier} />
             </Suspense>
           </div>
 

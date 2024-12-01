@@ -1,8 +1,9 @@
 "use client"
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { Loader2, CircleAlert, MessageSquare, Users, Sparkles, Crown } from "lucide-react";
+import { Loader2, CircleAlert, MessageSquare, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import type { SubscriptionTier } from "@/lib/stripe-config";
 
 interface UsageData {
   tokens: {
@@ -17,31 +18,94 @@ interface UsageData {
   };
   sessions: {
     total: number;
-    limit: number | null;
-    isUnlimited: boolean;
   };
   subscription: {
-    tier: "BASIC" | "PRO" | "GROWTH";
     status: string;
+    tier: SubscriptionTier;
   };
 }
 
 interface UsageProps {
   className?: string;
-  currentTier: "BASIC" | "PRO" | "GROWTH";
+  initialTier?: SubscriptionTier;
 }
 
-export function Usage({ className, currentTier }: UsageProps) {
+export function Usage({ className, initialTier = 'BASIC' }: UsageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<UsageData | null>(null);
+  const [currentTier, setCurrentTier] = useState<SubscriptionTier>(initialTier);
 
-  // Log the initial props
-  console.log('Usage Component Props:', { currentTier, className });
+  // Debug log for initial props
+  console.log('Usage Component Props:', { initialTier, className });
+  console.log('Current active tier:', currentTier);
 
+  const tierConfig = useMemo(() => {
+    console.log('Calculating tierConfig for:', currentTier);
+    
+    const config = (() => {
+      switch (currentTier) {
+        case 'BASIC':
+          return {
+            sessionLimit: 50,
+            isUnlimited: false,
+            badge: null,
+            inputTokenLimit: 100_000,
+            outputTokenLimit: 50_000
+          };
+        case 'PRO':
+          return {
+            sessionLimit: null,
+            isUnlimited: true,
+            badge: 'Unlimited',
+            inputTokenLimit: 500_000,
+            outputTokenLimit: 250_000
+          };
+        case 'GROWTH':
+          return {
+            sessionLimit: null,
+            isUnlimited: true,
+            badge: 'Unlimited',
+            inputTokenLimit: 2_000_000,
+            outputTokenLimit: 1_000_000
+          };
+        default:
+          console.warn('Unknown tier:', currentTier);
+          return {
+            sessionLimit: 50,
+            isUnlimited: false,
+            badge: null,
+            inputTokenLimit: 100_000,
+            outputTokenLimit: 50_000
+          };
+      }
+    })();
+
+    console.log('Calculated tierConfig:', config);
+    return config;
+  }, [currentTier]);
+
+  // Fetch current tier data
+  useEffect(() => {
+    async function fetchTierData() {
+      try {
+        const response = await fetch('/api/stripe/billing');
+        if (!response.ok) throw new Error('Failed to fetch subscription data');
+        const data = await response.json();
+        console.log('Fetched tier data:', data);
+        setCurrentTier(data.currentTier);
+      } catch (err) {
+        console.error('Error fetching tier data:', err);
+      }
+    }
+
+    fetchTierData();
+  }, []);
+
+  // Fetch usage data
   useEffect(() => {
     async function fetchData() {
-      console.log('Fetching usage data...');
+      console.log('Fetching usage data for tier:', currentTier);
       try {
         const response = await fetch("/api/stripe/usage");
         console.log('API Response status:', response.status);
@@ -50,9 +114,8 @@ export function Usage({ className, currentTier }: UsageProps) {
         
         const rawData = await response.json();
         console.log('Raw API Response:', rawData);
-
-        // Format the data and log each step
-        const formattedData = {
+        
+        const formattedData: UsageData = {
           tokens: {
             input: {
               total: rawData.usage?.input_tokens?.total || 0,
@@ -65,18 +128,15 @@ export function Usage({ className, currentTier }: UsageProps) {
           },
           sessions: {
             total: rawData.usage?.sessions?.total || 0,
-            limit: currentTier === "BASIC" ? 50 : null,
-            isUnlimited: currentTier !== "BASIC",
           },
           subscription: {
-            tier: currentTier,
             status: rawData.usage?.subscription?.status || "inactive",
+            tier: currentTier,
           },
         };
 
         console.log('Formatted Data:', formattedData);
         setData(formattedData);
-
       } catch (err) {
         console.error('Error fetching usage data:', err);
         setError(err instanceof Error ? err.message : "Failed to load usage data");
@@ -90,8 +150,8 @@ export function Usage({ className, currentTier }: UsageProps) {
 
   // Log state changes
   useEffect(() => {
-    console.log('Component State:', { loading, error, data });
-  }, [loading, error, data]);
+    console.log('Component State:', { loading, error, data, currentTier });
+  }, [loading, error, data, currentTier]);
 
   if (loading) {
     console.log('Rendering loading state');
@@ -128,27 +188,24 @@ export function Usage({ className, currentTier }: UsageProps) {
     return null;
   }
 
-  // Log calculated values
   const totalTokens = data.tokens.input.total + data.tokens.output.total;
-  const sessionPercentage = data.sessions.limit !== null
-    ? Math.min((data.sessions.total / data.sessions.limit) * 100, 100)
+  const sessionPercentage = tierConfig.sessionLimit 
+    ? Math.min((data.sessions.total / tierConfig.sessionLimit) * 100, 100)
     : 100;
 
-  console.log('Calculated Values:', { totalTokens, sessionPercentage });
+  console.log('Calculated Values:', { 
+    totalTokens, 
+    sessionPercentage,
+    isUnlimited: tierConfig.isUnlimited,
+    sessionLimit: tierConfig.sessionLimit,
+    currentTier
+  });
 
-  // Rest of the component remains the same...
   return (
     <div className={cn(
       "relative group overflow-hidden rounded-xl border border-white/[0.02] bg-neutral-900/50 backdrop-blur-md",
       className
     )}>
-      {/* Plan Badge */}
-      <div className="absolute top-4 right-4 z-10">
-        <Badge variant="secondary" className="bg-dream-cyan/10 text-dream-cyan">
-          {currentTier} Plan
-        </Badge>
-      </div>
-
       {/* Token Usage Section */}
       <div className="p-6">
         <div className="flex items-center gap-2 mb-4">
@@ -194,9 +251,9 @@ export function Usage({ className, currentTier }: UsageProps) {
             <Users className="w-5 h-5 text-dream-cyan" />
             <h3 className="text-lg font-medium text-white">Monthly Sessions</h3>
           </div>
-          {data.sessions.isUnlimited && (
+          {tierConfig.isUnlimited && (
             <Badge variant="secondary" className="bg-dream-cyan/10 text-dream-cyan">
-              Unlimited
+              {tierConfig.badge}
             </Badge>
           )}
         </div>
@@ -206,14 +263,16 @@ export function Usage({ className, currentTier }: UsageProps) {
             <p className="text-3xl font-semibold text-white">
               {data.sessions.total.toLocaleString()}
             </p>
-            <p className="text-sm text-neutral-400">
-              {data.sessions.isUnlimited
-                ? "Unlimited Access"
-                : `of ${data.sessions.limit} sessions`}
-            </p>
+            {tierConfig.isUnlimited ? (
+              <p className="text-sm text-neutral-400">Unlimited Access</p>
+            ) : (
+              <p className="text-sm text-neutral-400">
+                of {tierConfig.sessionLimit} sessions
+              </p>
+            )}
           </div>
 
-          {!data.sessions.isUnlimited && (
+          {!tierConfig.isUnlimited && (
             <div>
               <div className="h-2 bg-white/[0.02] rounded-full overflow-hidden">
                 <div
@@ -222,7 +281,7 @@ export function Usage({ className, currentTier }: UsageProps) {
                 />
               </div>
               <p className="mt-2 text-sm text-neutral-400">
-                {data.sessions.limit! - data.sessions.total} sessions remaining this month
+                {tierConfig.sessionLimit! - data.sessions.total} sessions remaining this month
               </p>
             </div>
           )}
