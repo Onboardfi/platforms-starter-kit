@@ -112,10 +112,35 @@ const DreamPagination = ({ table }: { table: any }) => {
 };
 
 export function AgentsDataTable({ data }: DataTableProps) {
+  // Debug logging for initial data
+  React.useEffect(() => {
+    console.group('AgentsDataTable - Initial Data Debug');
+    console.log('Raw data:', data);
+    data.forEach(agent => {
+      console.log(`Agent: ${agent.name} (${agent.id})`);
+      console.log('- Session count:', agent._count?.sessions);
+      console.log('- Settings:', agent.settings);
+      console.log('- Full _count object:', agent._count);
+    });
+    console.groupEnd();
+  }, [data]);
+
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = React.useState({});
+
+  // Validate data structure
+  if (!Array.isArray(data)) {
+    console.error('Invalid data format:', data);
+    return <div>Error: Data must be an array</div>;
+  }
+
+  // Check for missing _count property
+  const missingCounts = data.filter(agent => !agent._count);
+  if (missingCounts.length > 0) {
+    console.warn('Agents missing _count property:', missingCounts);
+  }
 
   const table = useReactTable({
     data,
@@ -138,6 +163,18 @@ export function AgentsDataTable({ data }: DataTableProps) {
       rowSelection,
     },
   });
+
+  // Debug logging for table rows
+  React.useEffect(() => {
+    console.group('AgentsDataTable - Table Rows Debug');
+    table.getRowModel().rows.forEach(row => {
+      console.log(`Row ${row.id}:`);
+      console.log('- Original data:', row.original);
+      console.log('- Session count:', row.original._count?.sessions);
+      console.log('- Is one-to-many:', row.original.settings?.allowMultipleSessions);
+    });
+    console.groupEnd();
+  }, [table.getRowModel().rows]);
 
   return (
     <div className="space-y-4">

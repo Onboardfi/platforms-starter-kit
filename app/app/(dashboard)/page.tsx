@@ -17,7 +17,7 @@ import { SitesDataTable } from "@/components/groups/sites/data-table";
 import { getSession } from "@/lib/auth";
 import { CreateAgentBanner } from "@/components/CreateAgentBanner";
 import type { SelectAgent } from "@/lib/schema";
-
+import { getAgentsWithSessionCount } from '@/lib/actions';
 const pageData = {
   name: "Dashboard",
   title: "Dashboard",
@@ -59,7 +59,6 @@ function transformToSelectAgent(agent: any): SelectAgent {
     },
   };
 }
-
 export default async function Page() {
   const session = await getSession();
   if (!session?.user.id || !session.organizationId) {
@@ -67,24 +66,37 @@ export default async function Page() {
   }
 
   const charts = await getAgentAndSiteCounts();
-  const agents = await getAgents();
   const sites = await getSites();
   const usage = await getUsageForUser();
   const currentTier = await getCurrentSubscriptionTier(session.organizationId);
 
   const { data: chartData } = charts || {};
-  const { data: agentsData } = agents || {};
   const { data: sitesData } = sites || {};
   const { data: usageData } = usage || {};
 
-  if (!agentsData || !sitesData || !chartData || !usageData) {
+  if (!sitesData || !chartData || !usageData) {
     notFound();
   }
 
-  const transformedAgents: SelectAgent[] = agentsData.map(transformToSelectAgent);
+  // Now get agents after we have sitesData
+// Now get agents after we have sitesData
+// Now get agents after we have sitesData
+const agents = await Promise.all(
+  sitesData.filter(site => site.id)
+    .map(async (site) => {
+      return await getAgentsWithSessionCount(site.id, session.organizationId as string);
+    })
+).then(results => results.flat());
+
+  // No need for agentsData destructuring since we have direct array
+  if (!agents) {
+    notFound();
+  }
+
+  const transformedAgents: SelectAgent[] = agents;
   const hasNoAgents = transformedAgents.length === 0;
   const hasSites = sitesData.length > 0;
-  const userSiteId = hasSites ? sitesData[0].id : null; // Extract the first site's ID
+  const userSiteId = hasSites ? sitesData[0].id : null;
   const recentAgents = transformedAgents.slice(0, 5);
 
   return (
@@ -115,12 +127,13 @@ export default async function Page() {
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-cal text-white">Recent Onboards</h2>
                 {hasSites && transformedAgents.length > 0 && userSiteId && (
-                  <Link
-                    href={`/site/${userSiteId}`} // Updated href to include siteId
-                    className="text-sm text-neutral-400 hover:text-white transition-colors"
-                  >
-                    View All Onboards →
-                  </Link>
+                <Link 
+                href={`/site/${userSiteId}`}
+                className="px-3 py-1.5 rounded-xl bg-neutral-900/50 text-neutral-300 text-sm hover:bg-neutral-800/50 transition-colors duration-300 shine shadow-dream flex items-center gap-2"
+              >
+                View All Onboards
+                <span className="text-dream-purple">→</span>
+              </Link>
                 )}
               </div>
               {transformedAgents.length > 0 ? (

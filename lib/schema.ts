@@ -691,12 +691,11 @@ export interface AgentSettings {
 
 
 
-
-export const agentsRelations = relations(agents, ({ one }) => ({
+export const agentsRelations = relations(agents, ({ one, many }) => ({
   site: one(sites, { references: [sites.id], fields: [agents.siteId] }),
-  creator: one(users, { references: [users.id], fields: [agents.createdBy] }), // Correct relation
+  creator: one(users, { references: [users.id], fields: [agents.createdBy] }),
+  sessions: many(onboardingSessions) // Add this line
 }));
-
 
 
 // Update posts relations
