@@ -1,9 +1,8 @@
-///Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/api/createSession/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { createOnboardingSession, getAgentById } from "@/lib/actions";
+import { createOnboardingSession, getAgentById, getSessions } from "@/lib/actions";
 import { verifyOnboardingToken } from "@/lib/onboarding-auth";
 import { checkSessionLimits, incrementSessionCount } from "@/lib/usage-limits";
-
+// app/api/createSession/route.ts
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -27,70 +26,81 @@ export async function POST(req: NextRequest) {
     }
 
     const organizationId = agent.site.organizationId;
-    
-    // Check session limits before creating
+    const isOneToOne = !agent.settings.allowMultipleSessions;
+    const isAuthRequired = agent.settings.authentication?.enabled;
+
+    // Get and verify onboarding token first
+    const onboardingToken = req.cookies.get('onboarding_token')?.value;
+    let authState = null;
+
+    if (onboardingToken) {
+      authState = await verifyOnboardingToken(onboardingToken);
+    }
+
+    // Check authentication for protected agents
+    if (isAuthRequired && (!authState || !authState.isAuthenticated)) {
+      return NextResponse.json({
+        error: "Authentication required",
+        success: false,
+        requiresAuth: true,
+        authMessage: agent.settings.authentication?.message
+      }, { status: 401 });
+    }
+
+    // Check session limits
     const limits = await checkSessionLimits(organizationId);
+
+    // For one-to-one sessions, check if one already exists
+    if (isOneToOne) {
+      const existingSessions = await getSessions(agentId, organizationId);
+      if (existingSessions.length > 0) {
+        return NextResponse.json({
+          sessionId: existingSessions[0].id,
+          success: true,
+          existing: true,
+          usage: {
+            current: existingSessions.length,
+            max: limits.maxAllowed
+          }
+        });
+      }
+    }
     
     if (!limits.canCreate) {
       return NextResponse.json({
-        error: `Session limit reached. Your ${limits.tier} plan allows ${limits.maxAllowed} sessions. Please upgrade to create more sessions.`,
+        error: `Session limit reached. Your ${limits.tier} plan allows ${limits.maxAllowed} sessions.`,
         success: false,
         limits
       }, { status: 403 });
     }
 
-    // Get the onboarding token to check authentication state
-    const onboardingToken = req.cookies.get('onboarding_token')?.value;
-    let authState = null;
-    if (onboardingToken) {
-      authState = await verifyOnboardingToken(onboardingToken);
-    }
+    const sessionAuthState = {
+      isAuthenticated: authState?.isAuthenticated || false,
+      isAnonymous: !isAuthRequired && agent.settings.onboardingType === 'external',
+      organizationId
+    };
 
-    try {
-      const sessionId = await createOnboardingSession(agentId, {
-        name: body.name || 'New Session',
-        type: body.type || 'external',
-        authState: {
-          isAuthenticated: authState?.isAuthenticated || false,
-          isAnonymous: authState?.isAnonymous || true,
-          organizationId
-        }
-      });
+    // Create the session
+    const sessionId = await createOnboardingSession(agentId, {
+      name: body.name || 'New Session',
+      type: agent.settings.onboardingType || 'external',
+      authState: sessionAuthState
+    });
 
-      // Increment session count after successful creation
-      await incrementSessionCount(organizationId);
+    // Increment session count after successful creation
+    await incrementSessionCount(organizationId);
 
-      console.log('Session created successfully:', {
-        sessionId,
-        agentId,
-        organizationId,
-        currentCount: limits.currentCount + 1
-      });
-
-      return NextResponse.json({ 
-        sessionId,
-        success: true,
-        usage: {
-          current: limits.currentCount + 1,
-          max: limits.maxAllowed
-        }
-      });
-
-    } catch (error) {
-      console.error('Failed to create session:', {
-        error,
-        agentId,
-        organizationId
-      });
-
-      return NextResponse.json({
-        error: error instanceof Error ? error.message : 'Failed to create session',
-        success: false
-      }, { status: 500 });
-    }
+    return NextResponse.json({ 
+      sessionId,
+      success: true,
+      usage: {
+        current: limits.currentCount + 1,
+        max: limits.maxAllowed
+      }
+    });
 
   } catch (error) {
-    console.error('Create session route error:', error);
+    console.error('Create session error:', error);
     return NextResponse.json({
       error: 'Internal server error',
       success: false

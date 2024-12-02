@@ -836,6 +836,7 @@ const stopRecording = useCallback(async () => {
               throw new Error(sessionResponse.data.error);
           }
 
+
           const sessionId = sessionResponse.data.sessionId;
 
           // Then create an initial conversation for this session
@@ -1335,7 +1336,123 @@ const stopRecording = useCallback(async () => {
             setIsListening(false);
         }
     }, [canPushToTalk]);
+// Place this after your other useEffect declarations in AgentConsole
 
+// Initialize one-to-one sessions automatically
+useEffect(() => {
+    const initializeOneToOne = async () => {
+        // Skip if missing agent info or if sessions are loading
+        if (!agent.id || !agent.settings || isLoadingSessions) return;
+      
+        // Only proceed for one-to-one agents
+        const isOneToOne = !agent.settings.allowMultipleSessions;
+        if (!isOneToOne) return;
+      
+        try {
+          setIsLoadingSessions(true);
+      
+          // Add type checking for authentication
+          const isAuthEnabled = agent.settings.authentication?.enabled ?? false;
+          const isExternal = agent.settings.onboardingType === 'external';
+      
+          // For external one-to-one without auth, create anonymous token
+          if (isExternal && !isAuthEnabled) {
+            try {
+              const tokenResponse = await axios.post('/api/auth/verify-onboarding-password', {
+                agentId: agent.id,
+                anonymous: true
+              }, {
+                withCredentials: true
+              });
+              console.log('Created anonymous token for one-to-one external agent');
+            } catch (tokenError) {
+              console.error('Failed to create anonymous token:', tokenError);
+              return;
+            }
+          }
+      // Get existing sessions
+      const response = await axios.get(`/api/getSessions?agentId=${agent.id}`, {
+        withCredentials: true,
+        headers: {
+          'x-agent-id': agent.id
+        }
+      });
+
+      const existingSessions = response.data.sessions || [];
+
+      if (existingSessions.length === 0) {
+        console.log('Creating new session for one-to-one agent');
+        
+        // Create new session
+        const sessionResponse = await apiClient.post('/api/createSession', {
+          name: `Session ${new Date().toLocaleString()}`,
+          type: agent.settings.onboardingType || 'internal',
+          agentId: agent.id
+        }, {
+          headers: {
+            'x-agent-id': agent.id
+          }
+        });
+
+        if (sessionResponse.data.sessionId) {
+          // Create initial conversation
+          const conversationResponse = await apiClient.post('/api/getOrCreateConversation', {
+            sessionId: sessionResponse.data.sessionId,
+            agentId: agent.id
+          }, {
+            headers: {
+              'x-agent-id': agent.id
+            }
+          });
+
+          // Update state with new session/conversation
+          setCurrentSessionId(sessionResponse.data.sessionId);
+          localStorage.setItem('lastSessionId', sessionResponse.data.sessionId);
+          setConversationId(conversationResponse.data.conversationId);
+
+          // Connect to WebSocket
+          await connectConversation();
+          
+          console.log('One-to-one session initialized:', sessionResponse.data.sessionId);
+        }
+      } else {
+        console.log('Using existing one-to-one session:', existingSessions[0].id);
+        
+        // Use existing session
+        const session = existingSessions[0];
+        setCurrentSessionId(session.id);
+        localStorage.setItem('lastSessionId', session.id);
+        await loadSessionState(session.id);
+      }
+
+    } catch (error) {
+        if (axios.isAxiosError(error) && error.response?.status === 401) {
+          const isAuthEnabled = agent.settings.authentication?.enabled ?? false;
+          if (isAuthEnabled) {
+            console.log('Authentication required for one-to-one session');
+            // Let PasswordAuthWrapper handle authentication
+          }
+        } else {
+          console.error('Failed to initialize one-to-one session:', error);
+          toast.error('Failed to initialize session');
+        }
+      } finally {
+        setIsLoadingSessions(false);
+      }
+  };
+
+  // Run initialization
+  initializeOneToOne();
+}, [
+  agent.id, 
+  agent.settings, 
+  isLoadingSessions,
+  connectConversation, 
+  loadSessionState,
+  setCurrentSessionId,
+  setConversationId,
+  toast
+]);
     /**
      * **JSX Return**
      */

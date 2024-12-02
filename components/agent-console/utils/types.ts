@@ -59,6 +59,11 @@ export interface WebSocketError {
   event_id: string;
 }
 
+
+
+
+
+
 /**
  * **SessionMetadata Interface**
  * Represents detailed session configuration.
@@ -293,23 +298,39 @@ export interface NavbarProps {
 /**
  * **AgentConsoleProps Interface**
  */
+
+
+// Ensure AgentSettings interface is defined
+export interface AgentSettings {
+  headingText?: string;
+  tools?: string[];
+  initialMessage?: string;
+  steps?: Step[];
+  primaryColor?: string;
+  secondaryColor?: string;
+  aiModel?: string;
+  apiKeys?: {
+    [model: string]: string;
+  };
+  onboardingType?: 'internal' | 'external';
+  allowMultipleSessions?: boolean;
+  authentication?: {
+    enabled: boolean;
+    password?: string;
+    message?: string;
+  };
+  [key: string]: any;
+}
+
+// Keep only this version of AgentConsoleProps
 export interface AgentConsoleProps {
   agent: {
     id: string;
-    name?: string | null; // Change this line to allow null
-    settings?: {
-      onboardingType?: string;
-      primaryColor?: string;
-      secondaryColor?: string;
-      steps?: Step[];
-      tools?: string[];
-      authentication?: {
-        message?: string;
-      };
-      [key: string]: any;
-    };
+    name?: string | null;
+    settings: AgentSettings;  // Use the AgentSettings interface
     site?: {
       logo?: string | null;
+      organizationId?: string;
     };
     [key: string]: any;
   };
