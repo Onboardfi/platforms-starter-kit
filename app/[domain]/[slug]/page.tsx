@@ -37,6 +37,7 @@ export default async function SiteAgentPage({
     notFound();
   }
 
+  
   // Create a properly formatted agent object
   const agent = {
     id: data.id,
