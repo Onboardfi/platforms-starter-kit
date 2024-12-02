@@ -1,8 +1,11 @@
+// app/api/createSession/route.ts
+
+
 import { NextRequest, NextResponse } from "next/server";
 import { createOnboardingSession, getAgentById, getSessions } from "@/lib/actions";
 import { verifyOnboardingToken } from "@/lib/onboarding-auth";
 import { checkSessionLimits, incrementSessionCount } from "@/lib/usage-limits";
-// app/api/createSession/route.ts
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();

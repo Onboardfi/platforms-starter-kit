@@ -1,9 +1,6 @@
-///Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/[domain]/[slug]/page.tsx
-
 import { notFound } from "next/navigation";
 import { getAgentData } from "@/lib/fetchers";
 import AgentConsole from "@/components/agent-console/index";
-
 import { AgentSettings } from "@/lib/types";
 
 interface Site {
@@ -15,7 +12,7 @@ interface Site {
 
 interface Agent {
   id: string;
-  name?: string | null;  // Make name optional
+  name?: string | null;
   description?: string | null;
   slug?: string;
   userId?: string | null;
@@ -23,7 +20,7 @@ interface Agent {
   createdAt?: Date;
   updatedAt?: Date;
   published?: boolean;
-  settings?: AgentSettings;
+  settings: AgentSettings;
   site?: Site;
 }
 
@@ -36,18 +33,24 @@ export default async function SiteAgentPage({
   const slug = decodeURIComponent(params.slug);
   const data = await getAgentData(domain, slug);
 
-  if (!data) {
+  if (!data || !data.settings) {
     notFound();
   }
 
-  const agent: Agent = {
-    ...data,
-    site: {
-      id: data.site.id,
-      name: data.site.name,
-      description: data.site.description,
-      logo: data.site.logo,
-    }
+  // Create a properly formatted agent object
+  const agent = {
+    id: data.id,
+    name: data.name || null,
+    settings: {
+      ...data.settings,
+      onboardingType: data.settings.onboardingType || 'internal',
+      authentication: data.settings.authentication || {
+        enabled: false
+      }
+    },
+    site: data.site ? {
+      logo: data.site.logo || null
+    } : undefined
   };
 
   return (
