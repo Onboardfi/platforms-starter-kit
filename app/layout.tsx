@@ -1,5 +1,4 @@
-
-///Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/layout.tsx
+// /app/layout.tsx
 
 import "@/styles/globals.css";
 import { cal, inter } from "@/styles/fonts";
@@ -8,6 +7,7 @@ import { Providers } from "./providers";
 import { Metadata } from "next";
 import { cn } from "@/lib/utils";
 import { ThemeProvider } from "@/components/theme-provider";
+import SegmentScript from "@/components/SegmentScript";
 
 const title = "OnboardFi – AI powered onboarding.";
 const description =
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://onboardfi.com"),
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "white" },
-    { media: "(prefers-color-scheme: dark)", color: "#111111" }
+    { media: "(prefers-color-scheme: dark)", color: "#111111" },
   ],
 };
 
@@ -43,15 +43,21 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning className="dark">
-      <body 
+      <head>
+        {/* You can include other head elements here */}
+      </head>
+      <body
         className={cn(
-          cal.variable, 
+          cal.variable,
           inter.variable,
           "min-h-screen bg-background font-default antialiased",
           "selection:bg-dream-blue/10 selection:text-dream-blue",
           "dark:selection:bg-dream-blue/20 dark:selection:text-dream-blue"
         )}
       >
+        {/* Place SegmentScript inside the body */}
+        <SegmentScript />
+
         <ThemeProvider
           defaultTheme="dark"
           enableSystem={false}
@@ -59,9 +65,7 @@ export default function RootLayout({
           disableTransitionOnChange={false}
         >
           <Providers>
-            <main className="flex min-h-screen flex-col">
-              {children}
-            </main>
+            <main className="flex min-h-screen flex-col">{children}</main>
             <Analytics />
           </Providers>
         </ThemeProvider>

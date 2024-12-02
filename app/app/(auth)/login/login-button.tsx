@@ -1,10 +1,11 @@
-// app/(auth)/login/login-button.tsx
-"use client";
+//Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/app/(auth)/login/login-button.tsx
 
-import LoadingDots from "@/components/icons/loading-dots";
-import { signIn } from "next-auth/react";
+"use client"
 import { useState } from "react";
+import { signIn } from "next-auth/react";
 import { toast } from "sonner";
+import LoadingDots from "@/components/icons/loading-dots";
+import { analyticsClient, ANALYTICS_EVENTS, UserTraits } from '@/lib/analytics';
 
 interface LoginButtonProps {
   returnTo?: string | null;
@@ -15,22 +16,68 @@ export default function LoginButton({ returnTo, isSignUp = false }: LoginButtonP
   const [loading, setLoading] = useState(false);
 
   const handleAuth = async () => {
+    const analytics = {
+      startTime: Date.now(),
+      getContext() {
+        return {
+          returnTo,
+          source: 'github',
+          location: typeof window !== 'undefined' ? window.location.pathname : undefined,
+          referrer: typeof document !== 'undefined' ? document.referrer : undefined,
+          timestamp: new Date().toISOString(),
+          viewport: typeof window !== 'undefined' ? {
+            width: window.innerWidth,
+            height: window.innerHeight
+          } : undefined,
+          deviceType: typeof window !== 'undefined' ? 
+            window.innerWidth < 768 ? 'mobile' : 'desktop' : undefined,
+          isSignUp,
+          provider: 'github',
+          authMethod: 'oauth'
+        };
+      }
+    };
+
     try {
       setLoading(true);
-      
-      // Use returnTo if provided, otherwise fall back to default routes
+
+      // Track initial click
+      analyticsClient.track(
+        isSignUp ? ANALYTICS_EVENTS.AUTH.SIGNUP_CLICKED : ANALYTICS_EVENTS.AUTH.LOGIN_CLICKED,
+        analytics.getContext()
+      );
+
       const callbackUrl = returnTo || (isSignUp ? '/onboarding' : '/');
-      
-      await signIn("github", {
+
+      // Start GitHub OAuth flow
+      const result = await signIn("github", {
         callbackUrl,
-        redirect: true
+        redirect: true // Let NextAuth handle the redirect
       });
+
+      // Track successful initiation
+      analyticsClient.track(ANALYTICS_EVENTS.AUTH.LOGIN_SUCCEEDED, {
+        ...analytics.getContext(),
+        timeToInitiate: Date.now() - analytics.startTime
+      });
+
     } catch (error) {
       console.error('Auth error:', error);
-      toast.error(`Failed to ${isSignUp ? 'sign up' : 'log in'}`);
+      
+      analyticsClient.track(ANALYTICS_EVENTS.AUTH.LOGIN_FAILED, {
+        ...analytics.getContext(),
+        error: error instanceof Error ? {
+          message: error.message,
+          name: error.name,
+          stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        } : 'Unknown error'
+      });
+
+      toast.error(`Failed to ${isSignUp ? 'sign up' : 'log in'}. Please try again.`);
       setLoading(false);
     }
   };
+
 
   return (
     <button
@@ -39,15 +86,18 @@ export default function LoginButton({ returnTo, isSignUp = false }: LoginButtonP
       className={`
         w-full px-4 py-3 rounded-xl flex items-center justify-center
         transition-all duration-300 shadow-lg
-        ${loading 
-          ? 'bg-neutral-700/50 cursor-not-allowed' 
-          : isSignUp 
+        ${
+          loading
+            ? 'bg-neutral-700/50 cursor-not-allowed'
+            : isSignUp
             ? 'bg-purple-600 hover:bg-purple-700'
             : 'bg-white/5 hover:bg-white/10 active:bg-white/15'
         }
         border border-white/10 hover:border-white/20
         group relative overflow-hidden
       `}
+      data-analytics-type={isSignUp ? 'signup' : 'login'}
+      data-analytics-source="github"
     >
       <div className="relative flex items-center space-x-3">
         {loading ? (

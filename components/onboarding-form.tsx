@@ -7,10 +7,37 @@ import { toast } from 'sonner';
 import LoadingDots from '@/components/icons/loading-dots';
 import Image from 'next/image';
 import { Building2, Users2, Globe, ArrowLeft, CheckCircle2 } from 'lucide-react';
-import { createSite } from '@/lib/actions';
+import { createSite, CreateSiteResponse } from '@/lib/actions';
+import { identifyUserWithIntercom } from '@/lib/analytics/intercom';
+import { analyticsClient, type UserTraits, type OrganizationTraits } from '@/lib/analytics';
 
+// Define the component's props interface
 interface OnboardingFormProps {
   inviteToken?: string | null;
+}
+
+// Helper function to clean user data and ensure it matches our UserTraits type
+function cleanUserData(session: any): UserTraits {
+  return {
+    email: session.user.email || undefined,
+    name: session.user.name || undefined,
+    ghUsername: session.user.username || undefined,
+    image: session.user.image || undefined,
+  };
+}
+
+// Helper function to clean organization data and ensure it matches our OrganizationTraits type
+function cleanOrganizationData(data: {
+  name: string;
+  companySize: string;
+  industry: string;
+}): OrganizationTraits {
+  return {
+    name: data.name.trim(),
+    companySize: data.companySize,
+    industry: data.industry.trim() || undefined,
+    createdAt: new Date().toISOString(),
+  };
 }
 
 const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
@@ -18,20 +45,13 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
   const { data: session, status, update: updateSession } = useSession();
   const [loading, setLoading] = useState(false);
 
-  console.log('Component Rendered: status =', status, 'session =', session);
-
-  // Initialize 'step' from localStorage
+  // Initialize step state from localStorage, defaulting to 1 if not found
   const [step, setStep] = useState<number>(() => {
-    let initialStep = 1;
-    if (typeof window !== 'undefined') {
-      const storedStep = parseInt(localStorage.getItem('onboardingStep') || '1');
-      initialStep = storedStep;
-      console.log('Initial step from localStorage:', storedStep);
-    }
-    console.log('useState initial step:', initialStep);
-    return initialStep;
+    if (typeof window === 'undefined') return 1;
+    return parseInt(localStorage.getItem('onboardingStep') || '1', 10);
   });
 
+  // Form data state with proper typing
   const [formData, setFormData] = useState({
     organizationName: '',
     companySize: 'small',
@@ -39,76 +59,52 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
     siteCreated: false,
   });
 
-  // Ensure the root domain is available
+  // Environment configuration
   const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'localhost:3000';
 
+  // Effect to keep localStorage in sync with step changes
   useEffect(() => {
-    // Update localStorage whenever 'step' changes
     if (typeof window !== 'undefined' && step !== null) {
       localStorage.setItem('onboardingStep', step.toString());
-      console.log('Updated localStorage onboardingStep to:', step);
     }
   }, [step]);
 
+  // Effect to update step when organization ID is available
   useEffect(() => {
-    // React to changes in session.organizationId
     if (session?.organizationId) {
-      console.log('Session has organizationId after update:', session.organizationId);
       setStep(2);
-    } else {
-      console.log('Session does not have organizationId yet.');
     }
   }, [session?.organizationId]);
 
-  // Fetch organization details when 'organizationId' is available
-// onboarding-form.tsx
-
-useEffect(() => {
-  if (session?.organizationId) {
-    console.log('Fetching organization details for ID:', session.organizationId);
-    const fetchOrgDetails = async () => {
-      try {
-        const response = await fetch('/api/organizations/current');
-        const data = await response.json();
-        console.log('Fetched organization details:', data);
-        if (data.organization?.name) {
-          setFormData(prev => ({
-            ...prev,
-            organizationName: data.organization.name,
-          }));
-        }
-      } catch (error) {
-        console.error('Error fetching organization details:', error);
-      }
-    };
-    fetchOrgDetails();
-  }
-}, [session?.organizationId]);
-
-
-  // Ensure consistent hook order by placing all hooks above this line
+  // Effect to fetch organization details when available
   useEffect(() => {
-    console.log('Current step:', step); // Debug logging
-  }, [step]);
+    if (session?.organizationId) {
+      const fetchOrgDetails = async () => {
+        try {
+          const response = await fetch('/api/organizations/current');
+          const data = await response.json();
+          
+          if (data.organization?.name) {
+            setFormData(prev => ({
+              ...prev,
+              organizationName: data.organization.name,
+            }));
+          }
+        } catch (error) {
+          console.error('Error fetching organization details:', error);
+        }
+      };
+      fetchOrgDetails();
+    }
+  }, [session?.organizationId]);
 
-  // Conditional return statement must come after all hooks
-  if (status === 'loading' || step === null) {
-    console.log('Status is loading or step is null. Rendering loader.');
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-950">
-        <LoadingDots color="#A8A29E" />
-      </div>
-    );
-  }
-
+  // Handler for organization creation form submission
   const handleSubmitOrganization = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (loading || !formData.organizationName.trim()) return;
 
     setLoading(true);
     const toastId = toast.loading('Creating your organization...');
-    console.log('Submitting organization with name:', formData.organizationName);
 
     try {
       const cleanName = formData.organizationName.trim().toLowerCase();
@@ -125,29 +121,56 @@ useEffect(() => {
       });
 
       const data = await response.json();
-      console.log('Organization creation response:', data);
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to create organization');
-      }
+      if (!response.ok) throw new Error(data.error || 'Failed to create organization');
 
       const organizationId = data.organization?.id;
-      if (!organizationId) {
-        throw new Error('No organization ID received');
+      if (!organizationId) throw new Error('No organization ID received');
+
+      // Handle analytics and Intercom integration when user is available
+      if (session?.user?.id) {
+        const userData = cleanUserData(session);
+        const orgData = cleanOrganizationData({
+          name: cleanName,
+          companySize: formData.companySize,
+          industry: formData.industry,
+        });
+
+        // Use our enhanced analytics with Intercom integration
+        identifyUserWithIntercom(
+          session.user.id,
+          {
+            ...userData,
+            organizationId,
+            organizationName: orgData.name,
+            companySize: orgData.companySize,
+            industry: orgData.industry,
+            role: 'owner',
+            onboardingStep: 'organization_created',
+            lastLogin: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          organizationId,
+          {
+            name: orgData.name,
+            companySize: orgData.companySize,
+            industry: orgData.industry,
+            createdAt: new Date().toISOString(),
+            memberCount: 1,
+            creator: {
+              id: session.user.id,
+              ...(userData.name && { name: userData.name }),
+              ...(userData.email && { email: userData.email }),
+            },
+          }
+        );
       }
 
-      console.log('Organization created with ID:', organizationId);
-
-      // Store organization name regardless of session state
       setFormData(prev => ({
         ...prev,
         organizationName: cleanName,
       }));
 
-      // Force session refresh
-      const updated = await updateSession({});
-      console.log('Session updated:', updated);
-
+      await updateSession({});
       toast.success('Organization created successfully!', { id: toastId });
     } catch (error: any) {
       console.error('Organization creation error:', error);
@@ -157,64 +180,123 @@ useEffect(() => {
     }
   };
 
-  const handleCreateSite = async (e: React.FormEvent) => {
-    e.preventDefault();
+// First, let's modify our analytics helpers to properly handle Intercom integration
+const handleCreateSite = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!formData.organizationName) {
+    toast.error('Organization name is required');
+    return;
+  }
 
-    if (!formData.organizationName) {
-      toast.error('Organization name is required');
-      return;
+  setLoading(true);
+  const toastId = toast.loading('Creating your site...');
+
+  try {
+    // [Previous site form data preparation remains the same]
+    const siteFormData = new FormData();
+    const siteName = formData.organizationName.toLowerCase();
+    siteFormData.append('name', formData.organizationName);
+    siteFormData.append('subdomain', siteName);
+    siteFormData.append('description', `Official site for ${formData.organizationName}`);
+    siteFormData.append('font', 'font-cal');
+    siteFormData.append('message404', 'This page does not exist.');
+
+    const siteResponse = await createSite(siteFormData);
+    if (!siteResponse) throw new Error('Failed to create site - no response received');
+
+    const siteId = typeof siteResponse === 'string' 
+      ? siteResponse 
+      : ('id' in siteResponse ? siteResponse.id : null);
+
+    if (!siteId) throw new Error('Failed to get valid site ID from response');
+
+    await updateSession({
+      needsOnboarding: false,
+    });
+
+    // Handle analytics with proper Intercom integration
+    if (session?.user?.id) {
+      const INTERCOM_SECRET_KEY = process.env.NEXT_PUBLIC_INTERCOM_IDENTITY_VERIFICATION_SECRET;
+      
+      if (!INTERCOM_SECRET_KEY) {
+        console.warn('Intercom secret key is not configured');
+      } else {
+        try {
+          // Create user traits
+          const userTraits: UserTraits = {
+            email: session.user.email || undefined,
+            name: session.user.name || undefined,
+            image: session.user.image || undefined,
+            organizationId: session.organizationId || undefined,
+            organizationName: formData.organizationName,
+            companySize: formData.companySize,
+            industry: formData.industry,
+            onboardingCompleted: true,
+            onboardingCompletedAt: new Date().toISOString(),
+            siteId: siteId.toString(),
+            role: 'owner',
+            lastLogin: new Date().toISOString(),
+          };
+
+          // Create organization traits
+          const orgTraits: OrganizationTraits = {
+            name: formData.organizationName,
+            companySize: formData.companySize,
+            industry: formData.industry,
+            createdAt: new Date().toISOString(),
+            memberCount: 1
+          };
+
+          // Use enhanced analytics client with proper Intercom hash
+          identifyUserWithIntercom(
+            session.user.id,
+            userTraits,
+            session.organizationId || undefined,
+            session.organizationId ? orgTraits : undefined
+          );
+
+          // Track the completion event separately
+          analyticsClient.track('Onboarding Completed', {
+            siteId: siteId.toString(),
+            organizationName: formData.organizationName,
+            companySize: formData.companySize,
+            industry: formData.industry,
+            completedAt: new Date().toISOString()
+          });
+        } catch (analyticsError) {
+          console.error('Analytics error:', analyticsError);
+          // Don't throw - we don't want analytics errors to break the flow
+        }
+      }
     }
 
-    setLoading(true);
-    const toastId = toast.loading('Creating your site...');
-    console.log('Creating site with name:', formData.organizationName);
+    setFormData(prev => ({
+      ...prev,
+      siteCreated: true,
+    }));
 
-    try {
-      const siteFormData = new FormData();
-      const siteName = formData.organizationName.toLowerCase();
-
-      // Ensure the site name equals the organization name
-      siteFormData.append('name', formData.organizationName);
-      siteFormData.append('subdomain', siteName);
-      siteFormData.append('description', `Official site for ${formData.organizationName}`);
-      siteFormData.append('font', 'font-cal');
-      siteFormData.append('message404', 'This page does not exist.');
-
-      const siteId = await createSite(siteFormData);
-
-      console.log('Site creation result:', siteId);
-
-      if (!siteId) {
-        throw new Error('Failed to create site');
-      }
-
-      await updateSession({
-        needsOnboarding: false,
-      });
-
-      setFormData(prev => ({
-        ...prev,
-        siteCreated: true,
-      }));
-
-      // Clear 'onboardingStep' from localStorage after completion
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('onboardingStep');
-        console.log('Removed onboardingStep from localStorage');
-      }
-
-      toast.success('Setup completed successfully!', { id: toastId });
-
-      // Redirect to the home page
-      console.log('Redirecting to home page');
-      router.push('/');
-    } catch (error: any) {
-      console.error('Site creation error:', error);
-      toast.error(error.message || 'Failed to create site', { id: toastId });
-    } finally {
-      setLoading(false);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('onboardingStep');
     }
-  };
+
+    toast.success('Setup completed successfully!', { id: toastId });
+    router.push('/');
+  } catch (error: any) {
+    console.error('Site creation error:', error);
+    toast.error(error.message || 'Failed to create site', { id: toastId });
+  } finally {
+    setLoading(false);
+  }
+};
+
+  // Loading state handling
+  if (status === 'loading' || step === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-neutral-950">
+        <LoadingDots color="#A8A29E" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-neutral-950 p-4">
@@ -297,9 +379,9 @@ useEffect(() => {
                     }}
                     disabled={loading}
                     className="w-full rounded-lg bg-white/[0.02] border border-white/[0.02] px-4 py-2 
-                             text-white placeholder-white/40 focus:border-white/20 
-                             focus:outline-none focus:ring-2 focus:ring-white/10
-                             disabled:opacity-50 disabled:cursor-not-allowed"
+                               text-white placeholder-white/40 focus:border-white/20 
+                               focus:outline-none focus:ring-2 focus:ring-white/10
+                               disabled:opacity-50 disabled:cursor-not-allowed"
                     placeholder="myorganization"
                   />
                   <p className="mt-2 text-xs text-white/40">
@@ -327,9 +409,9 @@ useEffect(() => {
                       }}
                       disabled={loading}
                       className="w-full rounded-lg bg-white/[0.02] border border-white/[0.02] px-4 py-2 
-                               text-white focus:border-white/20 focus:outline-none 
-                               focus:ring-2 focus:ring-white/10
-                               disabled:opacity-50 disabled:cursor-not-allowed"
+                                 text-white focus:border-white/20 focus:outline-none 
+                                 focus:ring-2 focus:ring-white/10
+                                 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <option value="small">1-10 employees</option>
                       <option value="medium">11-50 employees</option>
@@ -358,9 +440,9 @@ useEffect(() => {
                       }}
                       disabled={loading}
                       className="w-full rounded-lg bg-white/[0.02] border border-white/[0.02] px-4 py-2 
-                               text-white placeholder-white/40 focus:border-white/20 
-                               focus:outline-none focus:ring-2 focus:ring-white/10
-                               disabled:opacity-50 disabled:cursor-not-allowed"
+                                 text-white placeholder-white/40 focus:border-white/20 
+                                 focus:outline-none focus:ring-2 focus:ring-white/10
+                                 disabled:opacity-50 disabled:cursor-not-allowed"
                       placeholder="e.g., Technology, Healthcare, etc."
                     />
                   </div>

@@ -1529,7 +1529,10 @@ export const updateAgentStepsWithoutAuth = async (
 
 // ===== Re-exporting Functions =====
 
-export { addMessage, getConversationMessages, createConversation, getSessionConversations };
+// ===== Organization Membership Verification =====
+// (Already included in helper function `verifyOrganizationAccess`)
+// ===== Re-exporting Functions =====
+export { addMessage, getConversationMessages, createConversation, getSessionConversations, type CreateSiteResponse };
 
 // ===== Logging Exports =====
 

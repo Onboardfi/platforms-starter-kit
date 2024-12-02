@@ -8,9 +8,9 @@ import { organizations, organizationMemberships, users } from '@/lib/schema';
 import { createId } from '@paralleldrive/cuid2';
 import { stripe } from '@/lib/stripe';
 import { eq } from 'drizzle-orm';
-import { OrganizationMetadata } from '@/lib/schema';
 import { revalidatePath } from 'next/cache';
 import { STRIPE_CONFIG, SubscriptionTier } from '@/lib/stripe-config';
+import { analytics } from '@/lib/segment'; // Import the analytics instance
 
 // Helper function to merge and update user metadata
 async function updateUserMetadata(userId: string, newMetadata: Partial<Record<string, any>>) {
@@ -495,7 +495,22 @@ export async function POST(req: Request) {
     revalidatePath('/organizations');
     revalidatePath(`/organizations/${result.organization.id}`);
 
-    // 8. Return response
+    // 8. Add a Track call to Segment after organization creation
+    try {
+      await analytics.track({
+        userId: session.user.id,
+        event: 'Organization Created',
+        properties: {
+          organizationId: result.organization.id,
+          organizationName: result.organization.name,
+          timestamp: new Date(),
+        },
+      });
+      console.log('Server-side event tracked: Organization Created');
+    } catch (error) {
+      console.error('Failed to send server-side analytics event:', error);
+    }
+    // 9. Return response
     return NextResponse.json({
       id: result.organization.id,
       organization: {
