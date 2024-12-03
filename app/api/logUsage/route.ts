@@ -1,6 +1,5 @@
 ///Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/api/logUsage/route.ts
 
-
 import { NextRequest, NextResponse } from "next/server";
 import { withCombinedAuth } from "@/lib/combined-auth";
 import db from "@/lib/db";
@@ -10,6 +9,7 @@ import { eq } from "drizzle-orm";
 import { stripe } from '@/lib/stripe';
 import { Stripe } from 'stripe';
 
+// Types remain the same
 interface V2MeterEvent {
   object: 'v2.billing.meter_event';
   created: string;
@@ -31,6 +31,7 @@ type MeterEventResponse = {
   type: 'input' | 'output';
 };
 
+// Stripe meter verification function remains the same
 async function verifyStripeMeters() {
   try {
     console.log('Checking active Stripe meters...');
@@ -61,6 +62,8 @@ async function verifyStripeMeters() {
     throw error;
   }
 }
+
+// Usage reporting function remains the same
 async function reportUsageToStripe(
   stripeCustomerId: string, 
   promptTokens: number,
@@ -71,7 +74,6 @@ async function reportUsageToStripe(
   const identifier = createId();
   const reportPromises: Promise<MeterEventResponse>[] = [];
 
-  // First verify meters exist and are active
   await verifyStripeMeters();
 
   if (promptTokens > 0) {
@@ -129,11 +131,11 @@ async function reportUsageToStripe(
   return Promise.all(reportPromises);
 }
 export async function POST(req: NextRequest) {
-  return withCombinedAuth(req, async (userId, agentId) => {
+  return withCombinedAuth(req, async (userId, agentId, authState) => {
     try {
       const reqData = await req.json();
 
-      // Get organization context with all necessary relations
+      // Verify session exists and get organization context
       const onboardingSession = await db.query.onboardingSessions.findFirst({
         where: eq(onboardingSessions.id, reqData.sessionId),
         with: {
@@ -149,27 +151,43 @@ export async function POST(req: NextRequest) {
         }
       });
 
-      if (!onboardingSession?.organizationId) {
-        console.error('Missing organization context:', { 
-          sessionId: reqData.sessionId,
-          session: onboardingSession 
-        });
-        throw new Error('Organization context not found');
+      if (!onboardingSession) {
+        console.error('Session not found:', reqData.sessionId);
+        return NextResponse.json(
+          { error: "Session not found" },
+          { status: 404 }
+        );
       }
 
+      // Get organization info
       const organizationId = onboardingSession.organizationId;
+      if (!organizationId) {
+        console.error('Missing organization context for session:', reqData.sessionId);
+        return NextResponse.json(
+          { error: "Organization context not found" },
+          { status: 400 }
+        );
+      }
+
       const organization = await db.query.organizations.findFirst({
         where: eq(organizations.id, organizationId)
       });
 
       if (!organization) {
-        throw new Error('Organization not found');
+        console.error('Organization not found:', organizationId);
+        return NextResponse.json(
+          { error: "Organization not found" },
+          { status: 404 }
+        );
       }
 
-      // Handle user ID for anonymous users
-      const effectiveUserId = userId?.startsWith('user-') ? null : userId;
+      // Determine effective user ID based on auth state and session type
+      const isAnonymousSession = authState?.isAnonymous || 
+        onboardingSession.agent?.settings?.onboardingType === 'external';
+      const effectiveUserId = isAnonymousSession ? null : 
+        (userId?.startsWith('user-') ? null : userId);
 
-      // Create initial usage log record
+      // Create usage log record - removed metadata field since it's not in the schema
       const [logResult] = await db.insert(usageLogs)
         .values({
           id: createId(),
@@ -188,7 +206,7 @@ export async function POST(req: NextRequest) {
         })
         .returning();
 
-      // Handle Stripe usage reporting if customer exists
+      // Report usage to Stripe if customer exists
       if (organization.stripeCustomerId) {
         try {
           const stripeResults = await reportUsageToStripe(
@@ -198,7 +216,7 @@ export async function POST(req: NextRequest) {
             organizationId
           );
 
-          // Process results and update usage log with event IDs
+          // Update log with Stripe reporting status
           for (const result of stripeResults) {
             if (result.success && result.id) {
               await db.update(usageLogs)
@@ -211,34 +229,26 @@ export async function POST(req: NextRequest) {
               console.log('Updated usage log with Stripe event:', {
                 logId: logResult.id,
                 eventId: result.id,
-                type: result.type,
-                status: 'reported'
-              });
-            } else {
-              console.error('Failed to report usage to Stripe:', {
-                error: result.error,
-                type: result.type,
-                logId: logResult.id
+                type: result.type
               });
             }
           }
         } catch (stripeError) {
-          console.error('Failed to report usage to Stripe:', {
+          console.error('Stripe usage reporting failed:', {
             error: stripeError,
             logId: logResult.id,
-            organizationId,
-            customerId: organization.stripeCustomerId
+            organizationId
           });
-          // Continue execution - don't fail the whole request
+          // Continue execution - don't fail the request
         }
       }
 
-      console.log('Successfully logged usage:', {
+      console.log('Usage logged successfully:', {
         id: logResult.id,
         sessionId: reqData.sessionId,
         organizationId,
-        effectiveUserId,
-        hasStripeCustomer: !!organization.stripeCustomerId,
+        isAnonymous: isAnonymousSession,
+        sessionType: onboardingSession.type,
         tokens: {
           prompt: reqData.promptTokens,
           completion: reqData.completionTokens,
@@ -263,5 +273,3 @@ export async function POST(req: NextRequest) {
     }
   });
 }
-
-export const runtime = 'nodejs';
