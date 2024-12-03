@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
+import { ScrollArea } from "@radix-ui/react-scroll-area";
 
 interface Integration {
   name: string;
@@ -23,15 +24,8 @@ const integrations = {
       status: "disconnected",
       color: "orange",
       image: "/zapier.png"
-    },
-    {
-      name: "Github",
-      description: "Sync code and collaborate with your team seamlessly.",
-      category: "automation",
-      status: "disconnected",
-      color: "cyan",
-      image: "/github.png"
     }
+  
   ],
   communication: [
     {
@@ -52,14 +46,7 @@ const integrations = {
     }
   ],
   marketing: [
-    {
-      name: "Mailchimp",
-      description: "Automate email and manage contacts with ease.",
-      category: "marketing",
-      status: "disconnected",
-      color: "orange",
-      image: "/mailchimp.png"
-    },
+
     {
       name: "Stripe",
       description: "Manage payments and track transactions in real time.",
@@ -67,16 +54,6 @@ const integrations = {
       status: "connected",
       color: "violet",
       image: "/stripe.png"
-    }
-  ],
-  data: [
-    {
-      name: "Google Sheets",
-      description: "Keep your data in sync for easy tracking and updates.",
-      category: "data",
-      status: "disconnected",
-      color: "blue",
-      image: "/sheets.png"
     }
   ]
 };
@@ -208,98 +185,90 @@ function IntegrationCard({ integration }: { integration: Integration }) {
     </div>
   );
 }
-
 export function IntegrationsTab() {
   return (
-    <div className="space-y-12 p-6">
-      <div className="animate-dream-fade-up">
-        <div className="flex items-center space-x-4 mb-6">
-          <h2 className="text-lg font-light text-white">
-            Automation & Development
-          </h2>
-          <div className="h-[1px] flex-1 bg-gradient-to-r from-white/0 via-white/5 to-white/0" />
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {integrations.automation.map((integration, index) => (
-            <div
-              key={integration.name}
-              style={{ animationDelay: `${index * 0.1}s` }}
-            >
-              <IntegrationCard integration={integration} />
-            </div>
-          ))}
-        </div>
-      </div>
-      
-      <div 
-        className="animate-dream-fade-up" 
-        style={{ animationDelay: "0.2s" }}
-      >
-        <div className="flex items-center space-x-4 mb-6">
-          <h2 className="text-lg font-light text-white">
-            Communication & Collaboration
-          </h2>
-          <div className="h-[1px] flex-1 bg-gradient-to-r from-white/0 via-white/5 to-white/0" />
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {integrations.communication.map((integration, index) => (
-            <div
-              key={integration.name}
-              style={{ animationDelay: `${0.3 + index * 0.1}s` }}
-            >
-              <IntegrationCard integration={integration} />
-            </div>
-          ))}
-        </div>
-      </div>
-      
-      <div 
-        className="animate-dream-fade-up" 
-        style={{ animationDelay: "0.4s" }}
-      >
-        <div className="flex items-center space-x-4 mb-6">
-          <h2 className="text-lg font-light text-white">
-            Marketing & Payments
-          </h2>
-          <div className="h-[1px] flex-1 bg-gradient-to-r from-white/0 via-white/5 to-white/0" />
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {integrations.marketing.map((integration, index) => (
-            <div
-              key={integration.name}
-              style={{ animationDelay: `${0.5 + index * 0.1}s` }}
-            >
-              <IntegrationCard integration={integration} />
-            </div>
-          ))}
-        </div>
-      </div>
+    <div className="relative h-full w-full">
+      {/* Background layers for depth and atmosphere */}
+      <div className="absolute inset-0 bg-gradient-to-b from-neutral-900/50 to-neutral-950/50 backdrop-blur-xl" />
+      <div className="absolute inset-0 bg-[url('/grid.svg')] bg-repeat opacity-20" />
+      <div className="absolute inset-0 bg-gradient-to-t from-neutral-900/80 via-transparent to-transparent" />
 
-      <div 
-        className="animate-dream-fade-up" 
-        style={{ animationDelay: "0.6s" }}
-      >
-        <div className="flex items-center space-x-4 mb-6">
-          <h2 className="text-lg font-light text-white">
-            Data & Storage
-          </h2>
-          <div className="h-[1px] flex-1 bg-gradient-to-r from-white/0 via-white/5 to-white/0" />
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {integrations.data.map((integration, index) => (
-            <div
-              key={integration.name}
-              style={{ animationDelay: `${0.7 + index * 0.1}s` }}
-            >
-              <IntegrationCard integration={integration} />
+      {/* Scrollable content area with padding and backdrop */}
+      <ScrollArea className="relative h-[calc(100vh-6rem)] w-full rounded-3xl border border-white/[0.05] bg-neutral-900/50 backdrop-blur-md shadow-dream">
+        {/* Container for content with proper padding */}
+        <div className="space-y-12 p-6">
+          {/* Automation & Development Section */}
+          <div className="animate-dream-fade-up">
+            <div className="flex items-center space-x-4 mb-6">
+              <h2 className="text-lg font-light text-white">
+                Automation & Development
+              </h2>
+              <div className="h-[1px] flex-1 bg-gradient-to-r from-white/0 via-white/5 to-white/0" />
             </div>
-          ))}
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {integrations.automation.map((integration, index) => (
+                <div
+                  key={integration.name}
+                  style={{ animationDelay: `${index * 0.1}s` }}
+                >
+                  <IntegrationCard integration={integration} />
+                </div>
+              ))}
+            </div>
+          </div>
+          
+          {/* Communication Section */}
+          <div 
+            className="animate-dream-fade-up" 
+            style={{ animationDelay: "0.2s" }}
+          >
+            <div className="flex items-center space-x-4 mb-6">
+              <h2 className="text-lg font-light text-white">
+                Communication & Collaboration
+              </h2>
+              <div className="h-[1px] flex-1 bg-gradient-to-r from-white/0 via-white/5 to-white/0" />
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {integrations.communication.map((integration, index) => (
+                <div
+                  key={integration.name}
+                  style={{ animationDelay: `${0.3 + index * 0.1}s` }}
+                >
+                  <IntegrationCard integration={integration} />
+                </div>
+              ))}
+            </div>
+          </div>
+          
+          {/* Marketing Section */}
+          <div 
+            className="animate-dream-fade-up" 
+            style={{ animationDelay: "0.4s" }}
+          >
+            <div className="flex items-center space-x-4 mb-6">
+              <h2 className="text-lg font-light text-white">
+                Marketing & Payments
+              </h2>
+              <div className="h-[1px] flex-1 bg-gradient-to-r from-white/0 via-white/5 to-white/0" />
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {integrations.marketing.map((integration, index) => (
+                <div
+                  key={integration.name}
+                  style={{ animationDelay: `${0.5 + index * 0.1}s` }}
+                >
+                  <IntegrationCard integration={integration} />
+                </div>
+              ))}
+            </div>
+          </div>
+
+         
         </div>
-      </div>
+      </ScrollArea>
     </div>
   );
 }

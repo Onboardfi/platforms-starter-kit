@@ -1,33 +1,22 @@
 // lib/data/dashboard2.ts
 "use server";
 
-import { onboardingSessions, usageLogs, agents, organizationMemberships } from "../schema";
+import { onboardingSessions, messages, conversations, organizationMemberships, agents } from "../schema";
 import { sql, and, eq, gte, lte } from "drizzle-orm";
 import db from "../db";
-import { authenticateUser } from "./safe-action";
 import { getSession } from "@/lib/auth";
 
-/**
- * Fetches the number of sessions and total usage duration per day for a specific agent.
- * Uses organization-based access control to ensure proper authorization.
- * 
- * @param agentId - The ID of the agent to get metrics for
- * @param inputStartDate - (Optional) Start date for the data range
- * @param inputEndDate - (Optional) End date for the data range
- * @returns An object containing daily metrics for sessions and usage duration
- */
 export async function getSessionAndUsageCountsForAgent(
   agentId: string,
   inputStartDate?: Date,
   inputEndDate?: Date
 ) {
-  // Get current user and organization context
   const session = await getSession();
   if (!session?.organizationId) {
     throw new Error("Organization context required");
   }
 
-  // Get the agent with its complete organization context
+  // Query the agent with its relationships
   const agent = await db.query.agents.findFirst({
     where: eq(agents.id, agentId),
     with: {
@@ -39,12 +28,10 @@ export async function getSessionAndUsageCountsForAgent(
     }
   });
 
-  // Verify agent exists and belongs to a site with organization
   if (!agent?.site?.organization) {
     throw new Error("Agent not found or not associated with an organization");
   }
 
-  // Verify user has access to this organization
   const membership = await db.query.organizationMemberships.findFirst({
     where: and(
       eq(organizationMemberships.userId, session.user.id),
@@ -63,11 +50,10 @@ export async function getSessionAndUsageCountsForAgent(
     startDate.setDate(endDate.getDate() - 29);
   }
 
-  // Format dates consistently for grouping
   const formattedStartDate = new Date(startDate.setHours(0, 0, 0, 0));
   const formattedEndDate = new Date(endDate.setHours(23, 59, 59, 999));
 
-  // Fetch session counts with organization context
+  // Fetch session counts with proper organization context
   const sessionCounts = await db
     .select({
       date: sql<string>`DATE(onboarding_sessions."createdAt")`.as("date"),
@@ -85,32 +71,36 @@ export async function getSessionAndUsageCountsForAgent(
     .groupBy(sql`DATE(onboarding_sessions."createdAt")`)
     .orderBy(sql`DATE(onboarding_sessions."createdAt")`);
 
-  // Fetch usage durations with organization context
-  const usageDurations = await db
+  // Fetch message counts for the specific agent and organization
+  const messageCounts = await db
     .select({
-      date: sql<string>`DATE(usage_logs."createdAt")`.as("date"),
-      totalDuration: sql<number>`SUM(usage_logs."durationSeconds")`.as("totalDuration"),
+      date: sql<string>`DATE(messages."createdAt")`.as("date"),
+      count: sql<number>`COUNT(*)`.as("count"),
     })
-    .from(usageLogs)
+    .from(messages)
     .innerJoin(
-      onboardingSessions, 
-      eq(usageLogs.sessionId, onboardingSessions.id)
+      conversations,
+      eq(messages.conversationId, conversations.id)
+    )
+    .innerJoin(
+      onboardingSessions,
+      eq(conversations.sessionId, onboardingSessions.id)
     )
     .where(
       and(
         eq(onboardingSessions.agentId, agentId),
-        eq(usageLogs.organizationId, agent.site.organization.id),
-        gte(usageLogs.createdAt, formattedStartDate),
-        lte(usageLogs.createdAt, formattedEndDate)
+        eq(onboardingSessions.organizationId, agent.site.organization.id),
+        gte(messages.createdAt, formattedStartDate),
+        lte(messages.createdAt, formattedEndDate)
       )
     )
-    .groupBy(sql`DATE(usage_logs."createdAt")`)
-    .orderBy(sql`DATE(usage_logs."createdAt")`);
+    .groupBy(sql`DATE(messages."createdAt")`)
+    .orderBy(sql`DATE(messages."createdAt")`);
 
-  // Create a complete date range map
-  const dateMap = new Map<string, { sessions: number; totalDuration: number }>();
+  // Create a complete date range map to ensure all dates are represented
+  const dateMap = new Map<string, { sessions: number; messages: number }>();
 
-  // Calculate days in range
+  // Calculate days in range for the date map initialization
   const timeDiff = formattedEndDate.getTime() - formattedStartDate.getTime();
   const days = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
 
@@ -119,10 +109,10 @@ export async function getSessionAndUsageCountsForAgent(
     const date = new Date(formattedStartDate);
     date.setDate(formattedStartDate.getDate() + i);
     const dateString = date.toISOString().split("T")[0];
-    dateMap.set(dateString, { sessions: 0, totalDuration: 0 });
+    dateMap.set(dateString, { sessions: 0, messages: 0 });
   }
 
-  // Populate session counts
+  // Populate session counts from the database results
   sessionCounts.forEach((item) => {
     const existing = dateMap.get(item.date);
     if (existing) {
@@ -130,21 +120,21 @@ export async function getSessionAndUsageCountsForAgent(
     }
   });
 
-  // Populate usage durations
-  usageDurations.forEach((item) => {
+  // Populate message counts from the database results
+  messageCounts.forEach((item) => {
     const existing = dateMap.get(item.date);
     if (existing) {
-      existing.totalDuration = Number(item.totalDuration);
+      existing.messages = Number(item.count);
     }
   });
 
-  // Convert to sorted array format
+  // Convert the map to a sorted array for the chart
   const chartData = Array.from(dateMap.entries())
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, counts]) => ({
       date,
       sessions: counts.sessions,
-      totalDuration: counts.totalDuration,
+      messages: counts.messages,
     }));
 
   return { data: chartData };

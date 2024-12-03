@@ -202,7 +202,35 @@ export const createSite = async (formData: FormData): Promise<CreateSiteResponse
     return { error: error.message || "Failed to create site" };
   }
 };
+export async function getSessionMessages(sessionId: string) {
+  const session = await getSession();
+  if (!session?.organizationId) {
+    throw new Error("Organization context required");
+  }
 
+  return db.query.conversations.findMany({
+    where: eq(conversations.sessionId, sessionId),
+    with: {
+      messages: {
+        orderBy: [asc(messages.orderIndex)],
+      },
+    },
+  }).then(conversations => 
+    conversations.flatMap(conv => 
+      conv.messages.map(msg => ({
+        id: msg.id,
+        role: msg.role,
+        content: [{
+          text: msg.content.text,
+          transcript: msg.content.transcript,
+          audioUrl: msg.content.audioUrl,
+        }],
+        metadata: msg.metadata,
+        status: 'completed' as const
+      }))
+    )
+  );
+}
 // Retrieve sites with agent counts, scoped to the user's organization
 export async function getSitesWithAgentCount() {
   const session = await getSession();

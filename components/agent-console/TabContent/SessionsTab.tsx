@@ -1,3 +1,5 @@
+///Users/bobbygilbert/Documents/Github/platforms-starter-kit/components/agent-console/TabContent/SessionsTab.tsx
+
 "use client";
 
 import * as React from "react";
@@ -33,7 +35,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { LoadingState } from "../shared/LoadingState";
+import LoadingDots from "@/components/icons/loading-dots";// Updated import for LoadingDots
 import { toast } from "sonner";
 import apiClient from "@/lib/api-client";
 import { EditSessionModal } from "./EditSessionModal";
@@ -260,7 +262,7 @@ export default function SessionsTab({
             aria-label="Delete Session"
           >
             {isDeletingSession === row.original.id ? (
-              <LoadingState />
+              <LoadingDots color="#808080" />
             ) : (
               <Trash2
                 className={cn(
@@ -592,191 +594,201 @@ export default function SessionsTab({
   }
 
   return (
-    <div className="relative animate-fade-in-up space-y-4">
-      {/* Toolbar */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <h2 className="text-xl font-light text-white">Sessions</h2>
+    <div className="relative h-full w-full">
+      {/* Background layers */}
+      <div className="absolute inset-0 bg-gradient-to-b from-neutral-900/50 to-neutral-950/50 backdrop-blur-xl" />
+      <div className="absolute inset-0 bg-[url('/grid.svg')] bg-repeat opacity-20" />
+      <div className="absolute inset-0 bg-gradient-to-t from-neutral-900/80 via-transparent to-transparent" />
 
-          {/* Single Session Mode Badge */}
-          {!allowMultipleSessions && (
-            <Badge
-              variant="secondary"
-              className={cn(
-                "px-3 py-1 rounded-full text-[10px] font-light",
-                "bg-purple-500/10 border-purple-500/20 text-purple-500",
-                "backdrop-blur-md"
-              )}
-            >
-              Single Session Mode
-            </Badge>
-          )}
+      {/* ScrollArea content wrapper */}
+      <ScrollArea className="relative h-[calc(100vh-6rem)] w-full rounded-3xl border border-white/[0.05] bg-neutral-900/50 backdrop-blur-md shadow-dream">
+        <div className="relative animate-fade-in-up space-y-4 p-6">
+          {/* Toolbar */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <h2 className="text-xl font-light text-white">Sessions</h2>
 
-          {/* Current Session Badge */}
-          {currentSessionId && (
-            <Badge
-              variant="outline"
-              className={cn(
-                "px-3 py-1 rounded-full text-[10px] font-light",
-                "bg-blue-500/10 border-blue-500/20 text-blue-500",
-                "backdrop-blur-md"
-              )}
-            >
-              Current:{" "}
-              {sessions.find((s) => s.id === currentSessionId)?.name ||
-                currentSessionId}
-            </Badge>
-          )}
-        </div>
-
-        {/* Conditionally render the New Session Button only if not readonly */}
-        {!readonly && (
-          <Button
-            onClick={handleCreateSession}
-            className={cn(
-              "h-9 px-4 rounded-xl text-white/70 font-light",
-              "bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500",
-              "hover:from-cyan-500 hover:via-purple-500 hover:to-pink-500",
-              "transition-all duration-500 ease-in-out",
-              "shadow-md hover:shadow-lg"
-            )}
-            disabled={isCreating || !canCreateNewSession}
-            title={
-              !canCreateNewSession
-                ? "Delete existing session to create a new one"
-                : undefined
-            }
-            aria-label="Create a new session"
-          >
-            {isCreating ? (
-              <LoadingState />
-            ) : (
-              <div className="flex items-center space-x-2">
-                <Plus className="h-4 w-4" />
-                <span>New Session</span>
-              </div>
-            )}
-          </Button>
-        )}
-      </div>
-
-      {isLoadingSessions ? (
-        // Loading State
-        <div className="flex justify-center items-center py-12">
-          <LoadingState />
-        </div>
-      ) : sessions.length === 0 ? (
-        // No Sessions Found
-        <div className="flex flex-col items-center justify-center py-16 space-y-4 animate-fade-in-up">
-          {/* Empty State Icon */}
-          <div className="rounded-full bg-neutral-800/50 p-6 backdrop-blur-md shadow-md">
-            <Inbox className="h-12 w-12 text-white/20" />
-          </div>
-          {/* Messages */}
-          <p className="text-sm text-white/50 font-light">
-            No active sessions found
-          </p>
-          <p className="text-xs text-white/30 font-light">
-            Create a new session to get started
-          </p>
-        </div>
-      ) : (
-        // Sessions Table
-        <div className="space-y-4">
-          <DreamToolbar table={table} />
-
-          <div className="relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine">
-            <div className="absolute inset-[0] rounded-[inherit] [border:1px_solid_transparent] ![mask-clip:padding-box,border-box] ![mask-composite:intersect] [mask:linear-gradient(transparent,transparent),linear-gradient(white,white)] after:absolute after:aspect-square after:w-[320px] after:animate-border-beam after:[animation-delay:0s] after:[background:linear-gradient(to_left,#aaa,transparent,transparent)] after:[offset-anchor:90%_50%] after:[offset-path:rect(0_auto_auto_0_round_200px)]" />
-
-            <div className="relative overflow-x-auto">
-              <table className="w-full">
-                <thead className="border-b border-white/[0.08] bg-neutral-900/30">
-                  {table.getHeaderGroups().map((headerGroup) => (
-                    <tr key={headerGroup.id}>
-                      {headerGroup.headers.map((header) => (
-                        <DreamTableHeader key={header.id}>
-                          <div className="flex items-center gap-2">
-                            {header.isPlaceholder
-                              ? null
-                              : flexRender(
-                                  header.column.columnDef.header,
-                                  header.getContext()
-                                )}
-                            {header.column.getCanSort() && (
-                              <button
-                                onClick={header.column.getToggleSortingHandler()}
-                                className={`
-                                  ml-auto h-4 w-4 
-                                  transition-colors duration-300
-                                  ${
-                                    header.column.getIsSorted()
-                                      ? "text-dream-purple"
-                                      : "text-neutral-500 hover:text-neutral-300"
-                                  }
-                                `}
-                              >
-                                {header.column.getIsSorted() === "desc" ? (
-                                  <ArrowDown className="h-3 w-3" />
-                                ) : header.column.getIsSorted() === "asc" ? (
-                                  <ArrowUp className="h-3 w-3" />
-                                ) : (
-                                  <MoreHorizontal className="h-3 w-3" />
-                                )}
-                              </button>
-                            )}
-                          </div>
-                        </DreamTableHeader>
-                      ))}
-                    </tr>
-                  ))}
-                </thead>
-                <tbody className="divide-y divide-white/[0.04]">
-                  {table.getRowModel().rows?.length ? (
-                    table.getRowModel().rows.map((row) => (
-                      <tr
-                        key={row.id}
-                        className="group hover:bg-white/[0.02] transition-colors duration-300"
-                        data-state={row.getIsSelected() ? "selected" : undefined}
-                      >
-                        {row.getVisibleCells().map((cell) => (
-                          <DreamTableCell key={cell.id}>
-                            {flexRender(
-                              cell.column.columnDef.cell,
-                              cell.getContext()
-                            )}
-                          </DreamTableCell>
-                        ))}
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td
-                        colSpan={table.getAllColumns().length}
-                        className="h-24 text-center text-sm text-neutral-500"
-                      >
-                        No results found.
-                      </td>
-                    </tr>
+              {/* Single Session Mode Badge */}
+              {!allowMultipleSessions && (
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "px-3 py-1 rounded-full text-[10px] font-light",
+                    "bg-purple-500/10 border-purple-500/20 text-purple-500",
+                    "backdrop-blur-md"
                   )}
-                </tbody>
-              </table>
+                >
+                  Single Session Mode
+                </Badge>
+              )}
+
+              {/* Current Session Badge */}
+              {currentSessionId && (
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "px-3 py-1 rounded-full text-[10px] font-light",
+                    "bg-blue-500/10 border-blue-500/20 text-blue-500",
+                    "backdrop-blur-md"
+                  )}
+                >
+                  Current:{" "}
+                  {sessions.find((s) => s.id === currentSessionId)?.name ||
+                    currentSessionId}
+                </Badge>
+              )}
             </div>
+
+            {/* Conditionally render the New Session Button only if not readonly */}
+            {!readonly && (
+              <Button
+                onClick={handleCreateSession}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm transition-all duration-300 group",
+                  isCreating
+                    ? "cursor-not-allowed bg-neutral-900/20 text-neutral-600"
+                    : "bg-gradient-to-r from-neutral-800 to-neutral-900 text-white hover:brightness-110 shine shadow-dream"
+                )}
+                disabled={isCreating || !canCreateNewSession}
+                title={
+                  !canCreateNewSession
+                    ? "Delete existing session to create a new one"
+                    : undefined
+                }
+                aria-label="Create a new session"
+                data-analytics-source="create-session-button" // Optional: For analytics tracking
+              >
+                {isCreating ? (
+                  <LoadingDots color="#808080" />
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4 transition-transform group-hover:scale-110" />
+                    <span>New Session</span>
+                  </>
+                )}
+              </Button>
+            )}
           </div>
 
-          <div className="relative overflow-hidden rounded-2xl bg-neutral-900/30 backdrop-blur-md">
-            <DreamPagination table={table} />
-          </div>
+          {isLoadingSessions ? (
+            // Loading State
+            <div className="flex justify-center items-center py-12">
+              <LoadingDots color="#808080" />
+            </div>
+          ) : sessions.length === 0 ? (
+            // No Sessions Found
+            <div className="flex flex-col items-center justify-center py-16 space-y-4 animate-fade-in-up">
+              {/* Empty State Icon */}
+              <div className="rounded-full bg-neutral-800/50 p-6 backdrop-blur-md shadow-md">
+                <Inbox className="h-12 w-12 text-white/20" />
+              </div>
+              {/* Messages */}
+              <p className="text-sm text-white/50 font-light">
+                No active sessions found
+              </p>
+              <p className="text-xs text-white/30 font-light">
+                Create a new session to get started
+              </p>
+            </div>
+          ) : (
+            // Sessions Table
+            <div className="space-y-4">
+              <DreamToolbar table={table} />
+
+              <div className="relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine">
+                <div className="absolute inset-[0] rounded-[inherit] [border:1px_solid_transparent] ![mask-clip:padding-box,border-box] ![mask-composite:intersect] [mask:linear-gradient(transparent,transparent),linear-gradient(white,white)] after:absolute after:aspect-square after:w-[320px] after:animate-border-beam after:[animation-delay:0s] after:[background:linear-gradient(to_left,#aaa,transparent,transparent)] after:[offset-anchor:90%_50%] after:[offset-path:rect(0_auto_auto_0_round_200px)]" />
+
+                <div className="relative overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="border-b border-white/[0.08] bg-neutral-900/30">
+                      {table.getHeaderGroups().map((headerGroup) => (
+                        <tr key={headerGroup.id}>
+                          {headerGroup.headers.map((header) => (
+                            <DreamTableHeader key={header.id}>
+                              <div className="flex items-center gap-2">
+                                {header.isPlaceholder
+                                  ? null
+                                  : flexRender(
+                                      header.column.columnDef.header,
+                                      header.getContext()
+                                    )}
+                                {header.column.getCanSort() && (
+                                  <button
+                                    onClick={header.column.getToggleSortingHandler()}
+                                    className={`
+                                      ml-auto h-4 w-4 
+                                      transition-colors duration-300
+                                      ${
+                                        header.column.getIsSorted()
+                                          ? "text-dream-purple"
+                                          : "text-neutral-500 hover:text-neutral-300"
+                                      }
+                                    `}
+                                  >
+                                    {header.column.getIsSorted() === "desc" ? (
+                                      <ArrowDown className="h-3 w-3" />
+                                    ) : header.column.getIsSorted() === "asc" ? (
+                                      <ArrowUp className="h-3 w-3" />
+                                    ) : (
+                                      <MoreHorizontal className="h-3 w-3" />
+                                    )}
+                                  </button>
+                                )}
+                              </div>
+                            </DreamTableHeader>
+                          ))}
+                        </tr>
+                      ))}
+                    </thead>
+                    <tbody className="divide-y divide-white/[0.04]">
+                      {table.getRowModel().rows?.length ? (
+                        table.getRowModel().rows.map((row) => (
+                          <tr
+                            key={row.id}
+                            className="group hover:bg-white/[0.02] transition-colors duration-300"
+                            data-state={row.getIsSelected() ? "selected" : undefined}
+                          >
+                            {row.getVisibleCells().map((cell) => (
+                              <DreamTableCell key={cell.id}>
+                                {flexRender(
+                                  cell.column.columnDef.cell,
+                                  cell.getContext()
+                                )}
+                              </DreamTableCell>
+                            ))}
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td
+                            colSpan={table.getAllColumns().length}
+                            className="h-24 text-center text-sm text-neutral-500"
+                          >
+                            No results found.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="relative overflow-hidden rounded-2xl bg-neutral-900/30 backdrop-blur-md">
+                <DreamPagination table={table} />
+              </div>
+            </div>
+          )}
+
+          {/* Edit Session Modal */}
+          <EditSessionModal
+            session={editingSession}
+            isOpen={!!editingSession}
+            onClose={() => setEditingSession(null)}
+            onSave={handleEditSession}
+            isSaving={isEditingSession}
+          />
         </div>
-      )}
-
-      {/* Edit Session Modal */}
-      <EditSessionModal
-        session={editingSession}
-        isOpen={!!editingSession}
-        onClose={() => setEditingSession(null)}
-        onSave={handleEditSession}
-        isSaving={isEditingSession}
-      />
+      </ScrollArea>
     </div>
   );
 }

@@ -30,7 +30,7 @@ interface DateRange {
 interface ChartDataPoint {
   date: string;
   sessions: number;
-  totalDuration: number;
+  messages: number; // Add messages to the data point structure
 }
 
 interface ChartProps {
@@ -44,10 +44,10 @@ const chartConfig = {
     label: "Sessions",
     color: "#85B8FE",
   },
-  totalDuration: {
-    label: "Usage Duration (Minutes)",
+  messages: {  // Add configuration for messages
+    label: "Messages",
     color: "#FFCAE2",
-  },
+  }
 };
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -66,8 +66,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
       </p>
       {payload.map((entry: any, index: number) => (
         <p key={index} className="text-sm" style={{ color: entry.color }}>
-          {entry.name}: {entry.value.toFixed(2)}
-          {entry.name.includes("Duration") ? " mins" : ""}
+          {entry.name}: {entry.value}
         </p>
       ))}
     </div>
@@ -91,18 +90,17 @@ const ChartComponent = ({ agentId, chartData: initialData, className }: ChartPro
   const formattedChartData = React.useMemo(() => {
     return chartData.map(point => ({
       ...point,
-      totalDurationMinutes: (point.totalDuration || 0) / 60,
       date: new Date(point.date).toISOString(),
     }));
   }, [chartData]);
 
-  // Calculate max values for better scaling
+  // Calculate max values for both metrics for better scaling
   const maxSessions = Math.max(...formattedChartData.map(d => d.sessions));
-  const maxDuration = Math.max(...formattedChartData.map(d => d.totalDurationMinutes));
-
-  // Calculate nice round numbers for the Y-axis domains
-  const sessionsDomain = [0, Math.ceil(maxSessions * 1.1)]; // Add 10% padding
-  const durationDomain = [0, Math.ceil(maxDuration * 1.1)];
+  const maxMessages = Math.max(...formattedChartData.map(d => d.messages));
+  
+  // Calculate domains with 10% padding
+  const sessionsDomain = [0, Math.ceil(maxSessions * 1.1)];
+  const messagesDomain = [0, Math.ceil(maxMessages * 1.1)];
 
   if (!formattedChartData?.length) {
     return (
@@ -119,7 +117,7 @@ const ChartComponent = ({ agentId, chartData: initialData, className }: ChartPro
       <CardHeader className="flex flex-col items-stretch space-y-0 border-b p-4 sm:flex-row sm:items-center">
         <div className="flex flex-1 flex-col justify-center gap-1">
           <div className="flex items-center justify-between">
-            <CardTitle>Sessions and Usage Overview</CardTitle>
+            <CardTitle>Session and Message Activity</CardTitle>
           </div>
           <CardDescription>
             {`${selectedRange.startDate.toLocaleDateString()} - ${selectedRange.endDate.toLocaleDateString()}`}
@@ -136,10 +134,10 @@ const ChartComponent = ({ agentId, chartData: initialData, className }: ChartPro
           </div>
           <div className="flex flex-col">
             <span className="text-xs text-muted-foreground">
-              {chartConfig.totalDuration.label}
+              {chartConfig.messages.label}
             </span>
             <span className="text-lg font-bold">
-              {formattedChartData.reduce((acc, curr) => acc + (curr.totalDurationMinutes || 0), 0).toFixed(2)} mins
+              {formattedChartData.reduce((acc, curr) => acc + (curr.messages || 0), 0).toLocaleString()}
             </span>
           </div>
         </div>
@@ -150,7 +148,7 @@ const ChartComponent = ({ agentId, chartData: initialData, className }: ChartPro
             data={formattedChartData}
             margin={{
               top: 20,
-              right: 50,
+              right: 50, // Increased right margin for second Y-axis
               left: 20,
               bottom: 20,
             }}
@@ -187,7 +185,8 @@ const ChartComponent = ({ agentId, chartData: initialData, className }: ChartPro
               axisLine={true}
               tickMargin={8}
               stroke="#666"
-              domain={durationDomain}
+              domain={messagesDomain}
+              allowDecimals={false}
             />
             <Tooltip content={<CustomTooltip />} />
             <Legend verticalAlign="top" height={36} />
@@ -202,10 +201,10 @@ const ChartComponent = ({ agentId, chartData: initialData, className }: ChartPro
             />
             <Line
               yAxisId="right"
-              dataKey="totalDurationMinutes"
-              name={chartConfig.totalDuration.label}
+              dataKey="messages"
+              name={chartConfig.messages.label}
               type="monotone"
-              stroke={chartConfig.totalDuration.color}
+              stroke={chartConfig.messages.color}
               strokeWidth={2}
               dot={false}
             />
@@ -216,8 +215,5 @@ const ChartComponent = ({ agentId, chartData: initialData, className }: ChartPro
   );
 };
 
-// Create a named export for the client component
 export const Chart = ChartComponent;
-
-// Export the types
 export type { ChartProps, ChartDataPoint };
