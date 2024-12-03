@@ -731,25 +731,103 @@ const stopRecording = useCallback(async () => {
         }
     }, [agent.id]);
 
+
+
+    const initAuth = useCallback(async () => {
+        try {
+          // Get existing token verification
+          const verifyResponse = await apiClient.get('/api/auth/verify-onboarding-token', {
+            params: { agentId: agent.id },
+            headers: {
+              'x-agent-id': agent.id,
+              'Content-Type': 'application/json'
+            }
+          });
+      
+          if (verifyResponse.data.success) {
+            // Already authenticated
+            return verifyResponse.data;
+          }
+      
+          // If verification fails, check if we need anonymous auth
+          const isAuthEnabled = agent.settings?.authentication?.enabled ?? false;
+          const isExternal = agent.settings?.onboardingType === 'external';
+      
+          if (isExternal && !isAuthEnabled) {
+            // Try anonymous auth
+            const authResponse = await apiClient.post('/api/auth/verify-onboarding-password', {
+              agentId: agent.id,
+              anonymous: true
+            }, {
+              headers: {
+                'x-agent-id': agent.id,
+                'Content-Type': 'application/json'
+              }
+            });
+      
+            if (authResponse.data.success) {
+              // Re-verify after anonymous auth
+              const reVerifyResponse = await apiClient.get('/api/auth/verify-onboarding-token', {
+                params: { agentId: agent.id },
+                headers: {
+                  'x-agent-id': agent.id,
+                  'Content-Type': 'application/json'
+                }
+              });
+      
+              return reVerifyResponse.data;
+            }
+          }
+      
+          // Not authenticated and can't do anonymous auth
+          return null;
+      
+        } catch (error) {
+          console.error('Auth initialization failed:', error);
+          return null;
+        }
+      }, [agent.id, agent.settings?.authentication?.enabled, agent.settings?.onboardingType]);
+      
+    
     /**
      * **Fetch Sessions**
      * Retrieves available sessions for the agent.
      */
-    const fetchSessions = useCallback(async () => {
-        if (!agent.id) return;
-        
-        try {
-            setIsLoadingSessions(true);
-            const response = await axios.get(`/api/getSessions?agentId=${agent.id}`);
-            setSessions(response.data.sessions || []);
-        } catch (error) {
-            console.error('Failed to fetch sessions:', error);
-            toast.error('Failed to load sessions');
-        } finally {
-            setIsLoadingSessions(false);
-        }
-    }, [agent.id]);
-
+ // Update your existing fetchSessions function
+ const fetchSessions = useCallback(async () => {
+    if (!agent.id) return;
+    
+    try {
+      setIsLoadingSessions(true);
+      
+      // Add this new auth initialization
+      const authState = await initAuth();
+      
+      if (!authState?.success && agent.settings?.authentication?.enabled) {
+        return; // Let PasswordAuthWrapper handle auth
+      }
+  
+      // Modified getSessions call with both query params and headers
+      const response = await apiClient.get('/api/getSessions', {
+        params: { agentId: agent.id },  // Add agentId as query param
+        headers: {
+          'x-agent-id': agent.id,      // Keep header
+          'Content-Type': 'application/json'
+        },
+        withCredentials: true  // Ensure cookies are sent
+      });
+  
+      setSessions(response.data.sessions || []);
+    } catch (error) {
+      console.error('Failed to fetch sessions:', error);
+      if (axios.isAxiosError(error)) {
+        console.error('API error details:', error.response?.data);
+      }
+      toast.error('Failed to load sessions');
+    } finally {
+      setIsLoadingSessions(false);
+    }
+  }, [agent.id, agent.settings?.authentication?.enabled, initAuth]);
     /**
      * **CleanupAudioAndWebSocket Utility Function**
      * Handles cleanup of audio and WebSocket connections.
@@ -1339,120 +1417,133 @@ const stopRecording = useCallback(async () => {
 // Place this after your other useEffect declarations in AgentConsole
 
 // Initialize one-to-one sessions automatically
-useEffect(() => {
-    const initializeOneToOne = async () => {
-        // Skip if missing agent info or if sessions are loading
-        if (!agent.id || !agent.settings || isLoadingSessions) return;
-      
-        // Only proceed for one-to-one agents
-        const isOneToOne = !agent.settings.allowMultipleSessions;
-        if (!isOneToOne) return;
-      
-        try {
-          setIsLoadingSessions(true);
-      
-          // Add type checking for authentication
-          const isAuthEnabled = agent.settings.authentication?.enabled ?? false;
-          const isExternal = agent.settings.onboardingType === 'external';
-      
-          // For external one-to-one without auth, create anonymous token
-          if (isExternal && !isAuthEnabled) {
-            try {
-              const tokenResponse = await axios.post('/api/auth/verify-onboarding-password', {
-                agentId: agent.id,
-                anonymous: true
-              }, {
-                withCredentials: true
-              });
-              console.log('Created anonymous token for one-to-one external agent');
-            } catch (tokenError) {
-              console.error('Failed to create anonymous token:', tokenError);
-              return;
-            }
-          }
-      // Get existing sessions
-      const response = await axios.get(`/api/getSessions?agentId=${agent.id}`, {
-        withCredentials: true,
-        headers: {
-          'x-agent-id': agent.id
+const initializeOneToOneSession = useCallback(async () => {
+    // Use ref to track successful initialization
+    const successfulInit = useRef(false);
+    const initializationKey = `initializing-${agent.id}`;
+  
+    // Skip if already successfully initialized or currently initializing
+    if (successfulInit.current || window.localStorage.getItem(initializationKey)) {
+      return;
+    }
+  
+    try {
+      // Skip if missing agent info or if sessions are loading
+      if (!agent.id || !agent.settings || isLoadingSessions) return;
+  
+      // Only proceed for one-to-one agents
+      const isOneToOne = !agent.settings.allowMultipleSessions;
+      if (!isOneToOne) return;
+  
+      window.localStorage.setItem(initializationKey, 'true');
+      setIsLoadingSessions(true);
+  
+      const isAuthEnabled = agent.settings.authentication?.enabled ?? false;
+  
+      // Single verification attempt
+      try {
+        const verifyResponse = await apiClient.get('/api/auth/verify-onboarding-token', {
+          headers: {
+            'x-agent-id': agent.id,
+            'Content-Type': 'application/json'
+          },
+          params: { agentId: agent.id },
+          timeout: 5000
+        });
+  
+        // If auth required, stop and let PasswordAuthWrapper handle it
+        if (!verifyResponse.data.success && verifyResponse.data.requiresAuth) {
+          console.log('Authentication required for one-to-one session');
+          return;
         }
+      } catch (error) {
+        if (isAuthEnabled) return; // Stop if auth is required
+        // Otherwise continue to session check
+      }
+  
+      // Get sessions once
+      const sessionsResponse = await apiClient.get('/api/getSessions', {
+        headers: { 'x-agent-id': agent.id },
+        params: { agentId: agent.id }
       });
-
-      const existingSessions = response.data.sessions || [];
-
-      if (existingSessions.length === 0) {
-        console.log('Creating new session for one-to-one agent');
-        
-        // Create new session
+  
+      const sessions = sessionsResponse.data.sessions || [];
+  
+      if (sessions.length === 0) {
+        // Create new session only if none exists
         const sessionResponse = await apiClient.post('/api/createSession', {
           name: `Session ${new Date().toLocaleString()}`,
           type: agent.settings.onboardingType || 'internal',
           agentId: agent.id
         }, {
-          headers: {
-            'x-agent-id': agent.id
-          }
+          headers: { 'x-agent-id': agent.id }
         });
-
+  
         if (sessionResponse.data.sessionId) {
-          // Create initial conversation
-          const conversationResponse = await apiClient.post('/api/getOrCreateConversation', {
-            sessionId: sessionResponse.data.sessionId,
-            agentId: agent.id
-          }, {
-            headers: {
-              'x-agent-id': agent.id
-            }
-          });
-
-          // Update state with new session/conversation
           setCurrentSessionId(sessionResponse.data.sessionId);
           localStorage.setItem('lastSessionId', sessionResponse.data.sessionId);
-          setConversationId(conversationResponse.data.conversationId);
-
-          // Connect to WebSocket
-          await connectConversation();
-          
-          console.log('One-to-one session initialized:', sessionResponse.data.sessionId);
+          await loadSessionState(sessionResponse.data.sessionId);
         }
       } else {
-        console.log('Using existing one-to-one session:', existingSessions[0].id);
-        
         // Use existing session
-        const session = existingSessions[0];
-        setCurrentSessionId(session.id);
-        localStorage.setItem('lastSessionId', session.id);
-        await loadSessionState(session.id);
+        const sessionId = sessions[0].id;
+        setCurrentSessionId(sessionId);
+        localStorage.setItem('lastSessionId', sessionId);
+        await loadSessionState(sessionId);
       }
-
+  
+      // Mark initialization as successful
+      successfulInit.current = true;
+  
     } catch (error) {
-        if (axios.isAxiosError(error) && error.response?.status === 401) {
-          const isAuthEnabled = agent.settings.authentication?.enabled ?? false;
-          if (isAuthEnabled) {
-            console.log('Authentication required for one-to-one session');
-            // Let PasswordAuthWrapper handle authentication
-          }
-        } else {
-          console.error('Failed to initialize one-to-one session:', error);
-          toast.error('Failed to initialize session');
-        }
-      } finally {
-        setIsLoadingSessions(false);
+      console.error('Session initialization error:', error);
+      toast.error('Failed to initialize session');
+    } finally {
+      setIsLoadingSessions(false);
+      window.localStorage.removeItem(initializationKey);
+    }
+  }, [
+    agent.id,
+    agent.settings,
+    isLoadingSessions,
+    loadSessionState,
+    toast
+  ]);
+  
+  // Single execution effect
+  useEffect(() => {
+    let mounted = true;
+    let initializeTimeout: NodeJS.Timeout;
+    const initKey = `initialized-${agent.id}`;
+  
+    // Only run once per agent ID
+    if (mounted && !window.localStorage.getItem(initKey)) {
+      initializeTimeout = setTimeout(() => {
+        initializeOneToOneSession().then(() => {
+          // Mark as initialized in localStorage to prevent reruns
+          window.localStorage.setItem(initKey, 'true');
+        });
+      }, 1000);
+    }
+  
+    return () => {
+      mounted = false;
+      if (initializeTimeout) {
+        clearTimeout(initializeTimeout);
       }
-  };
-
-  // Run initialization
-  initializeOneToOne();
-}, [
-  agent.id, 
-  agent.settings, 
-  isLoadingSessions,
-  connectConversation, 
-  loadSessionState,
-  setCurrentSessionId,
-  setConversationId,
-  toast
-]);
+      // Clean up only the initialization lock, not the completion flag
+      window.localStorage.removeItem(`initializing-${agent.id}`);
+    };
+  }, [initializeOneToOneSession, agent.id]);
+  
+  // Add cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Clear all initialization related flags on full unmount
+      window.localStorage.removeItem(`initialized-${agent.id}`);
+      window.localStorage.removeItem(`initializing-${agent.id}`);
+    };
+  }, [agent.id]);
     /**
      * **JSX Return**
      */
