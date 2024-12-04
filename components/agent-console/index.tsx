@@ -749,7 +749,6 @@ const stopRecording = useCallback(async () => {
 
     const initAuth = useCallback(async () => {
         try {
-          // Get existing token verification
           const verifyResponse = await apiClient.get('/api/auth/verify-onboarding-token', {
             params: { agentId: agent.id },
             headers: {
@@ -759,16 +758,16 @@ const stopRecording = useCallback(async () => {
           });
       
           if (verifyResponse.data.success) {
-            // Already authenticated
             return verifyResponse.data;
           }
       
-          // If verification fails, check if we need anonymous auth
           const isAuthEnabled = agent.settings?.authentication?.enabled ?? false;
-          const isExternal = agent.settings?.onboardingType === 'external';
+          
+          if (isAuthEnabled) {
+            return null;
+          }
       
-          if (isExternal && !isAuthEnabled) {
-            // Try anonymous auth
+          if (agent.settings?.onboardingType === 'external' && !isAuthEnabled) {
             const authResponse = await apiClient.post('/api/auth/verify-onboarding-password', {
               agentId: agent.id,
               anonymous: true
@@ -780,7 +779,6 @@ const stopRecording = useCallback(async () => {
             });
       
             if (authResponse.data.success) {
-              // Re-verify after anonymous auth
               const reVerifyResponse = await apiClient.get('/api/auth/verify-onboarding-token', {
                 params: { agentId: agent.id },
                 headers: {
@@ -793,15 +791,24 @@ const stopRecording = useCallback(async () => {
             }
           }
       
-          // Not authenticated and can't do anonymous auth
           return null;
       
         } catch (error) {
-          console.error('Auth initialization failed:', error);
+          // Type check for Axios error
+          if (axios.isAxiosError(error)) {
+            // Now TypeScript knows this is an AxiosError
+            if (error.response?.status === 401) {
+              console.debug('Auth check failed - requires authentication');
+            } else {
+              console.error('Auth initialization failed:', error);
+            }
+          } else {
+            // Handle non-Axios errors
+            console.error('Auth initialization failed:', error);
+          }
           return null;
         }
       }, [agent.id, agent.settings?.authentication?.enabled, agent.settings?.onboardingType]);
-      
     
     /**
      * **Fetch Sessions**

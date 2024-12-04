@@ -145,38 +145,39 @@ const renderTabContent = () => {
     requiresConversation: false 
   };
   
-  // Check if we need to show the "No Active Session" prompt
-  // Check if we need to show the "No Active Session" prompt
-  const shouldShowNoSessionPrompt = requirements.requiresSession && !currentSessionId;
+  // Check for either missing requirement - in both cases we'll prompt for a new session
+  const shouldShowNoSessionPrompt = 
+    (requirements.requiresSession && !currentSessionId) || 
+    (requirements.requiresConversation && !conversationId);
 
+  // Now we show the same prompt regardless of which specific requirement is missing
+  if (shouldShowNoSessionPrompt) {
+    return (
+      <div className="flex flex-col items-center justify-center py-8 space-y-4">
+        <h3 className="text-lg font-medium text-neutral-400">No Active Session</h3>
+        <p className="text-sm text-neutral-500">
+          Create a new session to access this feature
+        </p>
+        <Button
+          onClick={handleSessionCreated}
+          className={cn(
+            'px-4 py-2 text-sm font-medium text-white rounded-md',
+            'focus:outline-none focus:ring-2 focus:ring-offset-2 shine'
+          )}
+          style={{
+            backgroundColor: primaryColor,
+            borderColor: primaryColor,
+            borderWidth: '1px',
+            borderStyle: 'solid',
+          }}
+        >
+          New Session
+        </Button>
+      </div>
+    );
+  }
 
-// If we need a session but don't have it, show the prompt with New Session button
-if (shouldShowNoSessionPrompt) {
-  return (
-    <div className="flex flex-col items-center justify-center py-8 space-y-4">
-      <h3 className="text-lg font-medium text-neutral-400">No Active Session</h3>
-      <p className="text-sm text-neutral-500">
-        Create a new session to access this feature
-      </p>
-      <Button
-        onClick={handleSessionCreated} // This creates a new session
-        className={cn(
-          'px-4 py-2 text-sm font-medium text-white rounded-md',
-          'focus:outline-none focus:ring-2 focus:ring-offset-2 shine'
-        )}
-        style={{
-          backgroundColor: primaryColor,
-          borderColor: primaryColor,
-          borderWidth: '1px',
-          borderStyle: 'solid',
-        }}
-      >
-        New Session
-      </Button>
-    </div>
-  );
-}
-
+  // The rest of the tab content rendering remains the same...
   // Otherwise, render the appropriate tab content
   switch (activeTab) {
     case 'workspace':
