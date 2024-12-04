@@ -170,8 +170,7 @@ export function TabContent({
             handleSendEmail={handleSendEmail}
             setDraftNote={setDraftNote}
             setDraftEmail={setDraftEmail}
-            currentSessionId={currentSessionId}
-          />
+            currentSessionId={currentSessionId} isRecording={false} isListening={false}          />
         );
 
       case 'conversation':
@@ -222,14 +221,17 @@ export function TabContent({
       >
         {renderTabContent()}
 
-        {/* Show session badge only when there's an active session */}
-        {currentSessionId && activeTab !== 'sessions' && (
-          <div className="fixed bottom-4 right-4 z-50">
-            <div className="bg-black/80 text-white text-xs px-3 py-1.5 rounded-full border border-gray-700">
-              Session: {currentSessionId}
-            </div>
-          </div>
-        )}
+  {/* Powered by logo */}
+<div className="fixed bottom-4 right-4 z-50">
+  <div className="flex items-center space-x-2 bg-black/80 text-white text-xs px-3 py-1.5 rounded-full border border-gray-700">
+    <span>Powered by</span>
+    <img 
+      src="/onboardfi-logo-q4.png" 
+      alt="OnboardFi Logo" 
+      className="h-4 w-auto" 
+    />
+  </div>
+</div>
       </motion.div>
     </AnimatePresence>
   );

@@ -16,17 +16,7 @@ interface Integration {
 }
 
 const integrations = {
-  automation: [
-    {
-      name: "Zapier",
-      description: "Automate repetitive tasks and save valuable time.",
-      category: "automation",
-      status: "disconnected",
-      color: "orange",
-      image: "/zapier.png"
-    }
-  
-  ],
+
   communication: [
     {
       name: "Slack",
@@ -198,25 +188,7 @@ export function IntegrationsTab() {
         {/* Container for content with proper padding */}
         <div className="space-y-12 p-6">
           {/* Automation & Development Section */}
-          <div className="animate-dream-fade-up">
-            <div className="flex items-center space-x-4 mb-6">
-              <h2 className="text-lg font-light text-white">
-                Automation & Development
-              </h2>
-              <div className="h-[1px] flex-1 bg-gradient-to-r from-white/0 via-white/5 to-white/0" />
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {integrations.automation.map((integration, index) => (
-                <div
-                  key={integration.name}
-                  style={{ animationDelay: `${index * 0.1}s` }}
-                >
-                  <IntegrationCard integration={integration} />
-                </div>
-              ))}
-            </div>
-          </div>
+     
           
           {/* Communication Section */}
           <div 

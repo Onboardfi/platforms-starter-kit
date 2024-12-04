@@ -1,20 +1,15 @@
-// /Users/bobbygilbert/Documents/Github/platforms-starter-kit/components/agent-console/Navbar.tsx
-
+///Users/bobbygilbert/Documents/Github/platforms-starter-kit/components/agent-console/Navbar.tsx
 'use client';
 
-// Core React imports
 import React from 'react';
-
-// Utility imports
 import { cn } from '@/lib/utils';
 
-// Define the interface for Navbar props
 export interface NavbarProps {
   activeTab: string;
   setActiveTab: React.Dispatch<React.SetStateAction<string>>;
   primaryColor: string;
   secondaryColor: string;
-  tabs: { name: string; id: string }[]; // Added tabs prop
+  tabs: { name: string; id: string }[];
 }
 
 export function Navbar({
@@ -22,11 +17,11 @@ export function Navbar({
   setActiveTab,
   primaryColor,
   secondaryColor,
-  tabs, // Destructure tabs from props
+  tabs,
 }: NavbarProps) {
   return (
-    <div className="border-b border-white/[0.08] bg-background/60 backdrop-blur-dream mt-3">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="sticky top-0 left-0 right-0 z-30 border-b border-white/[0.08] bg-background/60 backdrop-blur-dream">
+      <div className="px-4 sm:px-6 lg:px-8">
         <nav
           className="-mb-px flex items-center justify-between"
           aria-label="Tabs"
