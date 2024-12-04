@@ -719,12 +719,18 @@ export const sitesRelations = relations(sites, ({ one, many }) => ({
   }),
 }));
 
-export const sessionsRelations = relations(sessions, ({ one }) => ({
-  user: one(users, { references: [users.id], fields: [sessions.userId] }),
-}));
 
+export const sessionsRelations = relations(sessions, ({ one }) => ({
+  user: one(users, {
+    fields: [sessions.userId],
+    references: [users.id],
+  }),
+}));
 export const accountsRelations = relations(accounts, ({ one }) => ({
-  user: one(users, { references: [users.id], fields: [accounts.userId] }),
+  user: one(users, {
+    fields: [accounts.userId],
+    references: [users.id],
+  }),
 }));
 
 
@@ -737,7 +743,6 @@ export const organizationsRelations = relations(organizations, ({ many, one }) =
     references: [users.id],
   }),
 }));
-
 
 export const organizationMembershipsRelations = relations(
   organizationMemberships,
@@ -753,16 +758,15 @@ export const organizationMembershipsRelations = relations(
   })
 );
 
-
 // Update user relations to include all relationships
 export const usersRelations = relations(users, ({ many }) => ({
   accounts: many(accounts),
   sessions: many(sessions),
   organizationMemberships: many(organizationMemberships),
-  createdOrganizations: many(organizations, { relationName: 'creator' }),
-  createdSites: many(sites, { relationName: 'creator' }),
-  createdAgents: many(agents), // Consider updating relationName for consistency
-  createdPosts: many(posts), // Consider updating relationName for consistency
+  createdOrganizations: many(organizations),
+  createdSites: many(sites),
+  createdAgents: many(agents),
+  createdPosts: many(posts)
 }));
 
 export const conversationsRelations = relations(conversations, ({ one, many }) => ({

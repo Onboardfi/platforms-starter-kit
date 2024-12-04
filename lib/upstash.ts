@@ -1071,6 +1071,7 @@ async function createUsageLog(data: Omit<CreateUsageLog, 'id' | 'createdAt'>): P
 
 // Add new function to get organization statistics
 
+// Replace the existing getOrganizationStats function
 export async function getOrganizationStats(organizationId: string): Promise<{
   activeSessionCount: number;
   totalMessageCount: number;
@@ -1080,17 +1081,17 @@ export async function getOrganizationStats(organizationId: string): Promise<{
     const activeSessionCount = await redis.scard(`${ORGANIZATION_PREFIX}${organizationId}:sessions`);
     const activeConversationCount = await redis.scard(`${ORGANIZATION_PREFIX}${organizationId}:active_conversations`);
 
-    // Perform raw SQL query with type specification
-    const result = await db.execute<{ count: string }>(sql`
-      SELECT COUNT(*) AS count
-      FROM messages
-      JOIN conversations ON messages.conversationId = conversations.id
-      JOIN onboarding_sessions ON conversations.sessionId = onboardingSessions.id
-      WHERE onboarding_sessions.organizationId = ${organizationId}
-    `);
+    // Query for the message count
+    const [countResult] = await db.select({
+      count: sql<number>`count(*)::int`
+    })
+    .from(messages)
+    .innerJoin(conversations, eq(messages.conversationId, conversations.id))
+    .innerJoin(onboardingSessions, eq(conversations.sessionId, onboardingSessions.id))
+    .where(eq(onboardingSessions.organizationId, organizationId));
 
-    // Parse the count as an integer
-    const totalMessageCount = parseInt(result.rows[0].count, 10);
+    // Get the count safely
+    const totalMessageCount = countResult?.count ?? 0;
 
     return {
       activeSessionCount,

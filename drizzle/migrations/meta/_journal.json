@@ -162,6 +162,27 @@
       "when": 1733180698105,
       "tag": "0022_glossy_nebula",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1733276326569,
+      "tag": "0023_supreme_purple_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1733276530665,
+      "tag": "0024_talented_liz_osborn",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1733276550432,
+      "tag": "0025_melodic_bullseye",
+      "breakpoints": true
     }
   ]
 }

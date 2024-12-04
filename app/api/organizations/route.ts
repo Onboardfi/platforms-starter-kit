@@ -328,6 +328,16 @@ export async function POST(req: Request) {
 
     // 3. Parse and validate request body
     const body = await req.json();
+    console.log('Request body:', body);
+
+    // Add validation for required fields
+    if (!body.name?.trim()) {
+      return NextResponse.json(
+        { error: "Organization name is required" },
+        { status: 400 }
+      );
+    }
+
     const { name, metadata = {} } = body;
 
     if (!name?.trim()) {
@@ -472,12 +482,13 @@ export async function POST(req: Request) {
         }
       }
 
-      // Update user metadata
-      const userMetadataUpdate = {
-        organizationId: org.id,
-        needsOnboarding: false,
-        lastOrganizationCreatedAt: now.toISOString(),
-      };
+   // Update user metadata
+  const userMetadataUpdate = {
+    organizationId: org.id,
+    needsOnboarding: true,
+    lastOrganizationCreatedAt: now.toISOString(),
+  };
+
 
       const metadataUpdated = await updateUserMetadata(user.id, userMetadataUpdate);
       if (!metadataUpdated) {

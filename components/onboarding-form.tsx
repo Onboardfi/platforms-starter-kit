@@ -1,3 +1,5 @@
+///Users/bobbygilbert/Documents/Github/platforms-starter-kit/components/onboarding-form.tsx
+
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -102,11 +104,17 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
   const handleSubmitOrganization = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading || !formData.organizationName.trim()) return;
-
+  
     setLoading(true);
     const toastId = toast.loading('Creating your organization...');
-
+  
     try {
+      console.log('Starting organization creation with data:', {
+        name: formData.organizationName,
+        companySize: formData.companySize,
+        industry: formData.industry
+      });
+  
       const cleanName = formData.organizationName.trim().toLowerCase();
       const response = await fetch('/api/organizations', {
         method: 'POST',
@@ -119,59 +127,33 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
           },
         }),
       });
-
+  
       const data = await response.json();
+      console.log('Organization creation response:', data);
+  
       if (!response.ok) throw new Error(data.error || 'Failed to create organization');
-
-      const organizationId = data.organization?.id;
-      if (!organizationId) throw new Error('No organization ID received');
-
-      // Handle analytics and Intercom integration when user is available
-      if (session?.user?.id) {
-        const userData = cleanUserData(session);
-        const orgData = cleanOrganizationData({
-          name: cleanName,
-          companySize: formData.companySize,
-          industry: formData.industry,
-        });
-
-        // Use our enhanced analytics with Intercom integration
-        identifyUserWithIntercom(
-          session.user.id,
-          {
-            ...userData,
-            organizationId,
-            organizationName: orgData.name,
-            companySize: orgData.companySize,
-            industry: orgData.industry,
-            role: 'owner',
-            onboardingStep: 'organization_created',
-            lastLogin: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-          organizationId,
-          {
-            name: orgData.name,
-            companySize: orgData.companySize,
-            industry: orgData.industry,
-            createdAt: new Date().toISOString(),
-            memberCount: 1,
-            creator: {
-              id: session.user.id,
-              ...(userData.name && { name: userData.name }),
-              ...(userData.email && { email: userData.email }),
-            },
-          }
-        );
-      }
-
+  
+      // Update form state
       setFormData(prev => ({
         ...prev,
         organizationName: cleanName,
+        siteCreated: false,
       }));
-
-      await updateSession({});
+  
+      // Force session refresh
+      await updateSession({ 
+        organizationId: data.organization.id,
+        needsOnboarding: true 
+      });
+  
+      // Wait for session change to be reflected
+      await new Promise(resolve => setTimeout(resolve, 1000));
+  
       toast.success('Organization created successfully!', { id: toastId });
+      
+      // Move to next step
+      setStep(2);
+  
     } catch (error: any) {
       console.error('Organization creation error:', error);
       toast.error(error.message || 'Failed to create organization', { id: toastId });
@@ -180,6 +162,17 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ inviteToken }) => {
     }
   };
 
+  useEffect(() => {
+    if (session) {
+      console.log('Session updated:', {
+        organizationId: session.organizationId,
+        needsOnboarding: session.needsOnboarding,
+        step
+      });
+    }
+  }, [session, step]);
+
+  
 // First, let's modify our analytics helpers to properly handle Intercom integration
 const handleCreateSite = async (e: React.FormEvent) => {
   e.preventDefault();
@@ -288,6 +281,15 @@ const handleCreateSite = async (e: React.FormEvent) => {
     setLoading(false);
   }
 };
+useEffect(() => {
+  if (session?.user?.id) {
+    console.log('Current session state:', {
+      userId: session.user.id,
+      organizationId: session.organizationId,
+      needsOnboarding: session.needsOnboarding
+    });
+  }
+}, [session]);
 
   // Loading state handling
   if (status === 'loading' || step === null) {
