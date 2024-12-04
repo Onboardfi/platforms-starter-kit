@@ -5,14 +5,16 @@
 // Core React imports
 import React from 'react';
 
-// Component imports
-import { TABS } from "./utils/constants";
-import { NavbarProps } from "./utils/types";
-import { cn } from "@/lib/utils";
+// Utility imports
+import { cn } from '@/lib/utils';
 
-interface ExtendedNavbarProps extends NavbarProps {
+// Define the interface for Navbar props
+export interface NavbarProps {
+  activeTab: string;
+  setActiveTab: React.Dispatch<React.SetStateAction<string>>;
   primaryColor: string;
   secondaryColor: string;
+  tabs: { name: string; id: string }[]; // Added tabs prop
 }
 
 export function Navbar({
@@ -20,7 +22,8 @@ export function Navbar({
   setActiveTab,
   primaryColor,
   secondaryColor,
-}: ExtendedNavbarProps) {
+  tabs, // Destructure tabs from props
+}: NavbarProps) {
   return (
     <div className="border-b border-white/[0.08] bg-background/60 backdrop-blur-dream mt-3">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -30,19 +33,19 @@ export function Navbar({
         >
           {/* Tabs Container */}
           <div className="flex space-x-1">
-            {TABS.map((tab, index) => (
+            {tabs.map((tab, index) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
                   // Base styles
-                  "relative group px-4 py-2 rounded-xl font-light text-sm transition-all duration-300",
+                  'relative group px-4 py-2 rounded-xl font-light text-sm transition-all duration-300',
                   // State styles
                   activeTab === tab.id
-                    ? "text-white bg-white/5 shadow-dream"
-                    : "text-white/50 hover:text-white/80 hover:bg-white/5",
+                    ? 'text-white bg-white/5 shadow-dream'
+                    : 'text-white/50 hover:text-white/80 hover:bg-white/5',
                   // Animation
-                  "shine"
+                  'shine'
                 )}
                 style={{
                   animationDelay: `${index * 0.1}s`,

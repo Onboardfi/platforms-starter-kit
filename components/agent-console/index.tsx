@@ -1,12 +1,12 @@
-// Users/bobbygilbert/Documents/Github/platforms-starter-kit/components/agent-console/index.tsx
+// components/agent-console/index.tsx
 
 'use client';
 import { addMessage, getConversationMessages } from '@/lib/actions';
-import { 
-  MessageType, 
-  MessageRole, 
-  MessageContent, 
-  MessageMetadata 
+import {
+  MessageType,
+  MessageRole,
+  MessageContent,
+  MessageMetadata,
 } from '@/lib/types';
 
 // Core React imports
@@ -20,8 +20,8 @@ import OnboardingProgressSidebar from '@/components/OnboardingProgressCard';
 import { EmailTemplate } from '@/components/email-template';
 
 // UI Component imports
-import { Badge } from "@/components/ui/badge";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { Badge } from '@/components/ui/badge';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 // Third-party imports
 import { toast } from 'sonner';
@@ -34,24 +34,23 @@ import apiClient from '@/lib/api-client';
 import PasswordAuthWrapper from '@/components/auth/PasswordAuthWrapper';
 import { createId } from '@paralleldrive/cuid2';
 
-
 // Type imports
-import { 
-  AgentConsoleProps, 
-  DraftEmail, 
+import {
+  AgentConsoleProps,
+  DraftEmail,
   Session,
   WebSocketMessage,
-  ConversationItem  
+  ConversationItem,
 } from './utils/types';
 
 // WebSocket Handler
 import EnhancedWebSocketHandler from '@/lib/websocket-handler';
 
 // Base64 Utilities
-import { 
-  arrayBufferToBase64, 
+import {
+  arrayBufferToBase64,
   base64ToInt16Array,
-  base64ToArrayBuffer 
+  base64ToArrayBuffer,
 } from '@/lib/utils/base64Utils';
 
 /**
@@ -60,59 +59,59 @@ import {
  */
 const getToolConfigurations = (tools: string[]) => {
   const toolConfigs = [];
-  
+
   for (const tool of tools) {
     switch (tool) {
       case 'memory':
         toolConfigs.push({
-          type: "function",
-          name: "store_memory",
-          description: "Store a value in memory with a given key",
+          type: 'function',
+          name: 'store_memory',
+          description: 'Store a value in memory with a given key',
           parameters: {
-            type: "object",
+            type: 'object',
             properties: {
-              key: { type: "string" },
-              value: { type: "string" }
+              key: { type: 'string' },
+              value: { type: 'string' },
             },
-            required: ["key", "value"]
-          }
+            required: ['key', 'value'],
+          },
         });
         break;
-        
+
       case 'notion':
         toolConfigs.push({
-          type: "function",
-          name: "add_to_notion",
-          description: "Add content to a Notion document",
+          type: 'function',
+          name: 'add_to_notion',
+          description: 'Add content to a Notion document',
           parameters: {
-            type: "object",
+            type: 'object',
             properties: {
-              content: { type: "string" }
+              content: { type: 'string' },
             },
-            required: ["content"]
-          }
+            required: ['content'],
+          },
         });
         break;
-        
+
       case 'email':
         toolConfigs.push({
-          type: "function",
-          name: "send_email",
-          description: "Send an email",
+          type: 'function',
+          name: 'send_email',
+          description: 'Send an email',
           parameters: {
-            type: "object",
+            type: 'object',
             properties: {
-              to: { type: "string" },
-              subject: { type: "string" },
-              body: { type: "string" }
+              to: { type: 'string' },
+              subject: { type: 'string' },
+              body: { type: 'string' },
             },
-            required: ["to", "subject", "body"]
-          }
+            required: ['to', 'subject', 'body'],
+          },
         });
         break;
     }
   }
-  
+
   return toolConfigs;
 };
 
@@ -120,27 +119,40 @@ const getToolConfigurations = (tools: string[]) => {
  * **AgentConsole Component**
  */
 function AgentConsole({ agent }: AgentConsoleProps) {
-    // UI State
-    const [activeTab, setActiveTab] = useState('workspace');
-    const [isRecording, setIsRecording] = useState(false);
-    const [canPushToTalk, setCanPushToTalk] = useState(true);
-    const [data, setData] = useState(agent);
-    
-    // Conversation State
-    const [draftNote, setDraftNote] = useState<string | null>(null);
-    const [draftEmail, setDraftEmail] = useState<DraftEmail | null>(null);
-    const [isEditingDraft, setIsEditingDraft] = useState(false);
-    const [isEditingEmail, setIsEditingEmail] = useState(false);
+  // UI State
+  const [activeTab, setActiveTab] = useState('workspace');
+  const [isRecording, setIsRecording] = useState(false);
+  const [canPushToTalk, setCanPushToTalk] = useState(true);
+  const [data, setData] = useState(agent);
 
-    // Session State
-    const [currentSessionId, setCurrentSessionId] = useState<string | null>(() => {
-        if (typeof window !== 'undefined') {
-            return localStorage.getItem('lastSessionId');
-        }
-        return null;
-    });
-    const [sessions, setSessions] = useState<Session[]>([]);
-    const [isLoadingSessions, setIsLoadingSessions] = useState<boolean>(false);
+  // Extract allowMultipleSessions from agent settings
+  const allowMultipleSessions = agent.settings?.allowMultipleSessions;
+
+  // Define tabs here
+  const tabs = [
+    { name: 'Workspace', id: 'workspace' },
+    { name: 'Conversation', id: 'conversation' },
+    ...(allowMultipleSessions !== false
+      ? [{ name: 'Sessions', id: 'sessions' }]
+      : []),
+    { name: 'Integrations', id: 'integrations' },
+  ];
+
+  // Conversation State
+  const [draftNote, setDraftNote] = useState<string | null>(null);
+  const [draftEmail, setDraftEmail] = useState<DraftEmail | null>(null);
+  const [isEditingDraft, setIsEditingDraft] = useState(false);
+  const [isEditingEmail, setIsEditingEmail] = useState(false);
+
+  // Session State
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('lastSessionId');
+    }
+    return null;
+  });
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [isLoadingSessions, setIsLoadingSessions] = useState<boolean>(false);
 
     // Step Completion State
     const [emailSent, setEmailSent] = useState(false);
@@ -1594,99 +1606,104 @@ const initializeOneToOneSession = useCallback(async () => {
   }, [agent.id]);
     /**
      * **JSX Return**
-     */
-    return (
-        <PasswordAuthWrapper 
-            agentId={agent.id}
-            siteName={agent.name || "Internal Onboarding"}
-            authMessage={agent.settings?.authentication?.message || undefined}
-        >
-            <TooltipProvider>
-                <div className="min-h-screen bg-gray-1100 bg-[url('/grid.svg')]">
-                    {/* Sidebar */}
-                    <div className="fixed left-0 top-0 bottom-0 w-96 border-r border-gray-800 bg-black overflow-y-auto">
-                        <div className="flex-1 flex flex-col">
-                            <OnboardingProgressSidebar
-                                emailSent={emailSent}
-                                notesTaken={notesTaken}
-                                notionMessageSent={notionMessageSent}
-                                memoryKv={memoryKv}
-                                steps={data.settings?.steps || []}
-                                title={data.name || undefined}
-                                logo={data.site?.logo || null}
-                                availableTools={data.settings?.tools || []}
-                                agentId={data.id}
-                                onStepsUpdated={fetchSessions}
-                                primaryColor={data.settings?.primaryColor || "#3b82f6"}
-                                secondaryColor={data.settings?.secondaryColor || "#10b981"}
-                                currentSessionId={currentSessionId}
-                            />
-                        </div>
-                    </div>
+     */return (
+    <PasswordAuthWrapper
+    agentId={agent.id}
+    siteName={agent.name || 'Internal Onboarding'}
+    authMessage={agent.settings?.authentication?.message || undefined}
+  >
+    <TooltipProvider>
+      <div className="min-h-screen bg-gray-1100 bg-[url('/grid.svg')]">
+        {/* Sidebar */}
+        <div className="fixed left-0 top-0 bottom-0 w-96 border-r border-gray-800 bg-black overflow-y-auto">
+          <div className="flex-1 flex flex-col">
+            <OnboardingProgressSidebar
+              emailSent={emailSent}
+              notesTaken={notesTaken}
+              notionMessageSent={notionMessageSent}
+              memoryKv={memoryKv}
+              steps={data.settings?.steps || []}
+              title={data.name || undefined}
+              logo={data.site?.logo || null}
+              availableTools={data.settings?.tools || []}
+              agentId={data.id}
+              onStepsUpdated={fetchSessions}
+              primaryColor={data.settings?.primaryColor || '#3b82f6'}
+              secondaryColor={data.settings?.secondaryColor || '#10b981'}
+              currentSessionId={currentSessionId}
+            />
+          </div>
+        </div>
 
-                    {/* Main Content */}
-                    <div className="ml-96 min-h-screen flex flex-col">
-                        <Navbar
-                            activeTab={activeTab}
-                            setActiveTab={setActiveTab}
-                            primaryColor={data.settings?.primaryColor || '#7928CA'}
-                            secondaryColor={data.settings?.secondaryColor || '#FF0080'}
-                        />
-                        <TabContent
-                            activeTab={activeTab}
-                            agentId={agent.id}
-                            items={items}
-                            draftNote={draftNote}
-                            draftEmail={draftEmail}
-                            isEditingDraft={isEditingDraft}
-                            isEditingEmail={isEditingEmail}
-                            handleEditDraft={() => setIsEditingDraft(true)}
-                            handleEditEmail={() => setIsEditingEmail(true)}
-                            handleSaveDraft={(draft: string) => {
-                                setDraftNote(draft);
-                                setIsEditingDraft(false);
-                            }}
-                            handleSaveEmail={(email: DraftEmail) => {
-                                setDraftEmail(email);
-                                setIsEditingEmail(false);
-                            }}
-                            handleSendNote={handleSendNote}
-                            handleSendEmail={handleSendEmail}
-                            setDraftNote={setDraftNote}
-                            setDraftEmail={setDraftEmail}
-                            sessions={sessions}
-                            isLoadingSessions={isLoadingSessions}
-                            createNewSession={createNewSession}
-                            currentSessionId={currentSessionId}
-                            onSessionSelect={handleSessionSelect}
-                            primaryColor={data.settings?.primaryColor || '#7928CA'}
-                            secondaryColor={data.settings?.secondaryColor || '#FF0080'}
-                            conversationId={conversationId}
-                            connectConversation={connectConversation}
-                        />
+        {/* Main Content */}
+        <div className="ml-96 min-h-screen flex flex-col">
 
-<Footer
-  isConnected={isConnected}
-  isRecording={isRecording}
-  canPushToTalk={canPushToTalk}
-  connectConversation={connectConversation}
-  disconnectConversation={disconnectConversation}
-  startRecording={startRecording}
-  stopRecording={stopRecording}
-  changeTurnEndType={(value: string) => setCanPushToTalk(value === 'none')}
-  clientCanvasRef={clientCanvasRef}
-  serverCanvasRef={serverCanvasRef}
-  wavRecorder={wavRecorderRef.current!}
-  wavStreamPlayer={wavStreamPlayerRef.current!}
-  primaryColor={data.settings?.primaryColor}
-  secondaryColor={data.settings?.secondaryColor}
-  isListening={isListening}
+<Navbar
+  activeTab={activeTab}
+  setActiveTab={setActiveTab}
+  primaryColor={data.settings?.primaryColor || '#7928CA'}
+  secondaryColor={data.settings?.secondaryColor || '#FF0080'}
+  tabs={tabs} // Pass tabs to Navbar
 />
-                    </div>
-                </div>
-            </TooltipProvider>
-        </PasswordAuthWrapper>
-    );
+
+          <TabContent
+            activeTab={activeTab}
+            agentId={agent.id}
+            items={items}
+            draftNote={draftNote}
+            draftEmail={draftEmail}
+            isEditingDraft={isEditingDraft}
+            isEditingEmail={isEditingEmail}
+            handleEditDraft={() => setIsEditingDraft(true)}
+            handleEditEmail={() => setIsEditingEmail(true)}
+            handleSaveDraft={(draft: string) => {
+              setDraftNote(draft);
+              setIsEditingDraft(false);
+            }}
+            handleSaveEmail={(email: DraftEmail) => {
+              setDraftEmail(email);
+              setIsEditingEmail(false);
+            }}
+            handleSendNote={handleSendNote}
+            handleSendEmail={handleSendEmail}
+            setDraftNote={setDraftNote}
+            setDraftEmail={setDraftEmail}
+            sessions={sessions}
+            isLoadingSessions={isLoadingSessions}
+            createNewSession={createNewSession}
+            currentSessionId={currentSessionId}
+            onSessionSelect={handleSessionSelect}
+            primaryColor={data.settings?.primaryColor || '#7928CA'}
+            secondaryColor={data.settings?.secondaryColor || '#FF0080'}
+            conversationId={conversationId}
+            connectConversation={connectConversation}
+            allowMultipleSessions={allowMultipleSessions} // Pass it to TabContent
+          />
+
+          <Footer
+            isConnected={isConnected}
+            isRecording={isRecording}
+            canPushToTalk={canPushToTalk}
+            connectConversation={connectConversation}
+            disconnectConversation={disconnectConversation}
+            startRecording={startRecording}
+            stopRecording={stopRecording}
+            changeTurnEndType={(value: string) =>
+              setCanPushToTalk(value === 'none')
+            }
+            clientCanvasRef={clientCanvasRef}
+            serverCanvasRef={serverCanvasRef}
+            wavRecorder={wavRecorderRef.current!}
+            wavStreamPlayer={wavStreamPlayerRef.current!}
+            primaryColor={data.settings?.primaryColor}
+            secondaryColor={data.settings?.secondaryColor}
+            isListening={isListening}
+          />
+        </div>
+      </div>
+    </TooltipProvider>
+  </PasswordAuthWrapper>
+);
 }
 
 export default AgentConsole;

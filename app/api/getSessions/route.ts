@@ -1,3 +1,4 @@
+//Users/bobbygilbert/Documents/Github/platforms-starter-kit/app/api/getSessions/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
