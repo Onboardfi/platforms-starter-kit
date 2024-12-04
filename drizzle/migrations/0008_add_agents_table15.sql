@@ -1,1 +1,0 @@
-ALTER TABLE "sites" ALTER COLUMN "message404" SET DEFAULT 'Blimey! This page does not exist.';

@@ -1,15 +1,35 @@
 import Form from "@/components/form";
 import { updateSite } from "@/lib/actions";
 import db from "@/lib/db";
+import { notFound } from "next/navigation";
+import { sites } from "@/lib/schema";
+import { eq } from "drizzle-orm";
+import { SelectSite } from "@/lib/schema";
 
 export default async function SiteSettingsAppearance({
   params,
 }: {
   params: { id: string };
 }) {
-  const data = await db.query.sites.findFirst({
-    where: (sites, { eq }) => eq(sites.id, decodeURIComponent(params.id)),
+  const site = await db.query.sites.findFirst({
+    where: eq(sites.id, decodeURIComponent(params.id)),
+    with: {
+      organization: true,
+      creator: true
+    }
   });
+
+  // Handle null case upfront
+  if (!site) {
+    notFound();
+  }
+
+  // Create a type-safe site object that matches SelectSite
+  const safeSite: SelectSite = {
+    ...site,
+    organization: site.organization,
+    creator: site.creator,
+  };
 
   return (
     <div className="flex flex-col space-y-6">
@@ -20,9 +40,9 @@ export default async function SiteSettingsAppearance({
         inputAttrs={{
           name: "image",
           type: "file",
-          defaultValue: data?.image!,
+          defaultValue: site.image || "",
         }}
-        handleSubmit={updateSite}
+        handleSubmit={(formData: FormData) => updateSite(formData, safeSite, "image")}
       />
       <Form
         title="Logo"
@@ -31,9 +51,9 @@ export default async function SiteSettingsAppearance({
         inputAttrs={{
           name: "logo",
           type: "file",
-          defaultValue: data?.logo!,
+          defaultValue: site.logo || "",
         }}
-        handleSubmit={updateSite}
+        handleSubmit={(formData: FormData) => updateSite(formData, safeSite, "logo")}
       />
       <Form
         title="Font"
@@ -42,9 +62,9 @@ export default async function SiteSettingsAppearance({
         inputAttrs={{
           name: "font",
           type: "select",
-          defaultValue: data?.font!,
+          defaultValue: site.font,
         }}
-        handleSubmit={updateSite}
+        handleSubmit={(formData: FormData) => updateSite(formData, safeSite, "font")}
       />
       <Form
         title="404 Page Message"
@@ -53,11 +73,11 @@ export default async function SiteSettingsAppearance({
         inputAttrs={{
           name: "message404",
           type: "text",
-          defaultValue: data?.message404!,
+          defaultValue: site.message404 || "Blimey! You've found a page that doesn't exist.",
           placeholder: "Blimey! You've found a page that doesn't exist.",
           maxLength: 240,
         }}
-        handleSubmit={updateSite}
+        handleSubmit={(formData: FormData) => updateSite(formData, safeSite, "message404")}
       />
     </div>
   );

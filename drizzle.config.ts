@@ -1,6 +1,10 @@
 ///Users/bobbygilbert/Documents/Github/platforms-starter-kit/drizzle.config.ts
 import type { Config } from "drizzle-kit";
 import { defineConfig } from "drizzle-kit";
+import * as dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config({ path: '.env.local' });
 
 export default defineConfig({
   schema: "./lib/schema.ts",
@@ -11,16 +15,9 @@ export default defineConfig({
     user: process.env.POSTGRES_USER || "postgres.ulvyhwjieyyttllrlbxx",
     password: process.env.POSTGRES_PASSWORD,
     database: process.env.POSTGRES_DATABASE || "postgres",
-    ssl: {
-      rejectUnauthorized: false // This will allow self-signed certificates
-    },
+    ssl: true,
     port: 6543
   },
   verbose: true,
-  strict: true,
-  entities: {
-    roles: {
-      provider: 'supabase'
-    }
-  },
+  strict: true
 });

@@ -1,1 +1,0 @@
-ALTER TABLE "system_logs" ALTER COLUMN "id" SET DEFAULT 'omnn3zmm1pmgzv0mb83c7f5n';
