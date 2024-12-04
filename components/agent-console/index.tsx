@@ -638,25 +638,39 @@ case 'response.output_item.done':
      * Initializes audio recording and playback components.
      */
     const initializeAudio = useCallback(async () => {
-      try {
-          if (isRecording) {
-              await wavRecorderRef.current.end();
-              setIsRecording(false);
-          }
-
-          // Initialize stream player first for AI audio playback
-          await wavStreamPlayerRef.current.interrupt(); // Ensure previous sessions are cleared
-          await wavStreamPlayerRef.current.connect();
-
-          // Then initialize recorder
-          await wavRecorderRef.current.begin();
-
-          return true;
-      } catch (error) {
-          console.error('Failed to initialize audio:', error);
-          toast.error('Audio initialization failed');
-          return false;
-      }
+        try {
+            if (isRecording) {
+                try {
+                    await wavRecorderRef.current.end();
+                    setIsRecording(false);
+                } catch (e) {
+                    console.warn('Error ending previous recording:', e);
+                }
+            }
+    
+            // Initialize stream player first for AI audio playback
+            try {
+                await wavStreamPlayerRef.current.interrupt();
+                await wavStreamPlayerRef.current.connect();
+            } catch (e) {
+                console.warn('Error initializing stream player:', e);
+                return false;
+            }
+    
+            // Then initialize recorder
+            try {
+                await wavRecorderRef.current.begin();
+                return true;
+            } catch (e) {
+                console.error('Error initializing recorder:', e);
+                toast.error('Audio initialization failed');
+                return false;
+            }
+        } catch (error) {
+            console.error('Failed to initialize audio:', error);
+            toast.error('Audio initialization failed');
+            return false;
+        }
     }, [isRecording]);
 // Add recording functions:
 const stopRecording = useCallback(async () => {
@@ -836,38 +850,48 @@ const stopRecording = useCallback(async () => {
         try {
             // Stop recording if active
             if (wavRecorderRef.current?.isRecording) {
-                await wavRecorderRef.current.pause();
-                setIsRecording(false);
+                try {
+                    await wavRecorderRef.current.pause();
+                    setIsRecording(false);
+                } catch (e) {
+                    console.warn('Error stopping recording:', e);
+                }
             }
-
-            // Clean up audio players in sequence
+    
+            // Clean up audio players in sequence with error handling
             try {
                 // Stop any playing audio first
-                await wavStreamPlayerRef.current?.interrupt();
+                if (wavStreamPlayerRef.current?.interrupt) {
+                    await wavStreamPlayerRef.current.interrupt();
+                }
                 
-                // Then clean up recorder
-                if (wavRecorderRef.current) {
+                // Then clean up recorder - only call end() if there's an active processor
+                if (wavRecorderRef.current?.processor) {
                     await wavRecorderRef.current.end();
                 }
             } catch (e) {
                 console.warn('Error during audio cleanup:', e);
             }
-
+    
             // Finally disconnect WebSocket
             if (wsHandler.current) {
-                await wsHandler.current.cleanupAudio(); // Ensure audio is cleaned up
-                wsHandler.current.disconnect();
-                wsHandler.current = null;
+                try {
+                    await wsHandler.current.cleanupAudio();
+                    wsHandler.current.disconnect();
+                    wsHandler.current = null;
+                } catch (e) {
+                    console.warn('Error during WebSocket cleanup:', e);
+                }
             }
-
+    
             setIsConnected(false);
         } catch (error) {
             console.error('Error during cleanup:', error);
             setIsConnected(false);
-            throw error;
+            // Don't throw the error since this is cleanup code
+            // Just ensure we always set isConnected to false
         }
     }, []);
-
     /**
      * **Disconnect Conversation**
      * Disconnects the conversation by cleaning up audio and WebSocket connections.
@@ -1415,11 +1439,11 @@ const stopRecording = useCallback(async () => {
         }
     }, [canPushToTalk]);
 // Place this after your other useEffect declarations in AgentConsole
-
+const successfulInit = useRef(false);
 // Initialize one-to-one sessions automatically
 const initializeOneToOneSession = useCallback(async () => {
     // Use ref to track successful initialization
-    const successfulInit = useRef(false);
+   
     const initializationKey = `initializing-${agent.id}`;
   
     // Skip if already successfully initialized or currently initializing
