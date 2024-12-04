@@ -1314,18 +1314,35 @@ const stopRecording = useCallback(async () => {
         if (!draftEmail || !currentSessionId || !conversationId) return;
         
         try {
+            console.log('Sending email:', { 
+                sessionId: currentSessionId, 
+                email: draftEmail 
+            });
+    
+            // Send the email
             await axios.post('/api/send_email', { 
                 ...draftEmail,
                 sessionId: currentSessionId 
             });
             
+            console.log('Email sent, updating step status');
+    
+            // Update step status
+            const response = await axios.post('/api/updateSessionSteps', {
+                sessionId: currentSessionId,
+                completionTool: 'email',
+                completed: true
+            });
+    
+            console.log('Step status updated:', response.data);
+            
             setEmailSent(true);
             setDraftEmail(null);
-
+    
             toast.success('Email successfully sent!');
             await updateStepStatus('email');
         } catch (err) {
-            console.error('Error in send_email:', err);
+            console.error('Error in handleSendEmail:', err);
             toast.error('Failed to send email.');
         }
     }, [draftEmail, currentSessionId, conversationId, updateStepStatus]);

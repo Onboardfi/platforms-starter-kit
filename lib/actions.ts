@@ -1244,28 +1244,29 @@ export const createOnboardingSession = async (
 
     // Create session in PostgreSQL
     const sessionId = createId();
-    const [dbSession] = await db
-      .insert(onboardingSessions)
-      .values({
-        id: sessionId,
-        agentId,
-        organizationId,
-        userId: data.userId,
-        name: data.name,
-        clientIdentifier: data.clientIdentifier || `${data.userId || 'anon'}-${sessionId}`,
-        type: data.type,
-        status: 'active',
-        stepProgress: { steps: [] },
-        metadata: {
-          isAnonymous: !data.userId,
-          isAuthenticated: !!data.userId,
-          organizationId,
-          createdAt: new Date().toISOString()
-        },
-        startedAt: new Date(),
-        lastInteractionAt: new Date(),
-      })
-      .returning();
+   // When creating the session in PostgreSQL
+const [dbSession] = await db
+.insert(onboardingSessions)
+.values({
+  id: sessionId,
+  agentId,
+  organizationId,
+  userId: data.userId,
+  name: data.name,
+  clientIdentifier: data.clientIdentifier || `${data.userId || 'anon'}-${sessionId}`,
+  type: data.type,
+  status: 'active',
+  stepProgress: { steps: initialSteps }, // Initialize with the steps!
+  metadata: {
+    isAnonymous: !data.userId,
+    isAuthenticated: !!data.userId,
+    organizationId,
+    createdAt: new Date().toISOString()
+  },
+  startedAt: new Date(),
+  lastInteractionAt: new Date(),
+})
+.returning();
 
     // Initialize Redis state
     await createSession(agentId, {
