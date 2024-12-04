@@ -1637,6 +1637,8 @@ const initializeOneToOneSession = useCallback(async () => {
                             onSessionSelect={handleSessionSelect}
                             primaryColor={data.settings?.primaryColor || '#7928CA'}
                             secondaryColor={data.settings?.secondaryColor || '#FF0080'}
+                            conversationId={conversationId}
+                            connectConversation={connectConversation}
                         />
 
 <Footer

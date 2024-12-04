@@ -42,8 +42,9 @@ export interface TabContentProps {
   primaryColor: string;
   secondaryColor: string;
   allowMultipleSessions?: boolean;
+  conversationId: string | null;
+  connectConversation: () => Promise<void>;
 }
-
 export function TabContent({
   activeTab,
   agentId,
@@ -68,6 +69,9 @@ export function TabContent({
   primaryColor,
   secondaryColor,
   allowMultipleSessions,
+  conversationId,
+  connectConversation,
+  
 }: TabContentProps) {
   // Handle session creation
   const handleSessionCreated = useCallback(async () => {
@@ -120,65 +124,112 @@ export function TabContent({
     </div>
   );
 
-  // Render appropriate tab content based on requirements
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case 'workspace':
-        return currentSessionId ? (
-          <WorkspaceTab
-            draftNote={draftNote}
-            draftEmail={draftEmail}
-            isEditingDraft={isEditingDraft}
-            isEditingEmail={isEditingEmail}
-            handleEditDraft={handleEditDraft}
-            handleEditEmail={handleEditEmail}
-            handleSaveDraft={handleSaveDraft}
-            handleSaveEmail={handleSaveEmail}
-            handleSendNote={handleSendNote}
-            handleSendEmail={handleSendEmail}
-            setDraftNote={setDraftNote}
-            setDraftEmail={setDraftEmail}
-            currentSessionId={currentSessionId}
-           
-          />
-        ) : (
-          <NoActiveSessionPrompt />
-        );
+// First, let's define a type for our session requirements
+type TabRequirements = {
+  requiresSession: boolean;
+  requiresConversation: boolean;
+};
 
-      case 'conversation':
-        return currentSessionId ? (
-          <ConversationTab
-            items={items}
-            currentSessionId={currentSessionId}
-            primaryColor={primaryColor}
-            secondaryColor={secondaryColor}
-          />
-        ) : (
-          <NoActiveSessionPrompt />
-        );
+// Then create a map of requirements for each tab
+const tabRequirements: Record<string, TabRequirements> = {
+  workspace: { requiresSession: true, requiresConversation: true },
+  conversation: { requiresSession: true, requiresConversation: true },
+  sessions: { requiresSession: false, requiresConversation: false },
+  integrations: { requiresSession: false, requiresConversation: false }
+};
 
-      case 'sessions':
-        return (
-          <SessionsTab
-            sessions={sessions}
-            isLoadingSessions={isLoadingSessions}
-            onSessionCreated={handleSessionCreated}
-            onSessionSelect={handleSessionSelectCallback}
-            agentId={agentId}
-            currentSessionId={currentSessionId}
-            primaryColor={primaryColor}
-            secondaryColor={secondaryColor}
-            allowMultipleSessions={allowMultipleSessions}
-          />
-        );
-
-      case 'integrations':
-        return <IntegrationsTab />;
-
-      default:
-        return null;
-    }
+const renderTabContent = () => {
+  // Get requirements for current tab
+  const requirements = tabRequirements[activeTab] || { 
+    requiresSession: false, 
+    requiresConversation: false 
   };
+  
+  // Check if we need to show the "No Active Session" prompt
+  // Check if we need to show the "No Active Session" prompt
+  const shouldShowNoSessionPrompt = requirements.requiresSession && !currentSessionId;
+
+
+// If we need a session but don't have it, show the prompt with New Session button
+if (shouldShowNoSessionPrompt) {
+  return (
+    <div className="flex flex-col items-center justify-center py-8 space-y-4">
+      <h3 className="text-lg font-medium text-neutral-400">No Active Session</h3>
+      <p className="text-sm text-neutral-500">
+        Create a new session to access this feature
+      </p>
+      <Button
+        onClick={handleSessionCreated} // This creates a new session
+        className={cn(
+          'px-4 py-2 text-sm font-medium text-white rounded-md',
+          'focus:outline-none focus:ring-2 focus:ring-offset-2 shine'
+        )}
+        style={{
+          backgroundColor: primaryColor,
+          borderColor: primaryColor,
+          borderWidth: '1px',
+          borderStyle: 'solid',
+        }}
+      >
+        New Session
+      </Button>
+    </div>
+  );
+}
+
+  // Otherwise, render the appropriate tab content
+  switch (activeTab) {
+    case 'workspace':
+      return (
+        <WorkspaceTab
+          draftNote={draftNote}
+          draftEmail={draftEmail}
+          isEditingDraft={isEditingDraft}
+          isEditingEmail={isEditingEmail}
+          handleEditDraft={handleEditDraft}
+          handleEditEmail={handleEditEmail}
+          handleSaveDraft={handleSaveDraft}
+          handleSaveEmail={handleSaveEmail}
+          handleSendNote={handleSendNote}
+          handleSendEmail={handleSendEmail}
+          setDraftNote={setDraftNote}
+          setDraftEmail={setDraftEmail}
+          currentSessionId={currentSessionId}
+        />
+      );
+
+    case 'conversation':
+      return (
+        <ConversationTab
+          items={items}
+          currentSessionId={currentSessionId}
+          primaryColor={primaryColor}
+          secondaryColor={secondaryColor}
+        />
+      );
+
+    case 'sessions':
+      return (
+        <SessionsTab
+          sessions={sessions}
+          isLoadingSessions={isLoadingSessions}
+          onSessionCreated={handleSessionCreated}
+          onSessionSelect={handleSessionSelectCallback}
+          agentId={agentId}
+          currentSessionId={currentSessionId}
+          primaryColor={primaryColor}
+          secondaryColor={secondaryColor}
+          allowMultipleSessions={allowMultipleSessions}
+        />
+      );
+
+    case 'integrations':
+      return <IntegrationsTab />;
+
+    default:
+      return null;
+  }
+};
 
   return (
     <AnimatePresence mode="wait">
