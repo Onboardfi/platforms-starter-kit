@@ -147,9 +147,9 @@ export default function SessionsTab({
             <div className="w-32 h-2 bg-neutral-800 rounded-full overflow-hidden">
               <div
                 className={cn("h-full rounded-full transition-all duration-300", {
-                  "bg-green-500": percentage === 100,
-                  "bg-yellow-500": percentage > 0 && percentage < 100,
-                  "bg-white/20": percentage === 0,
+                  "bg-dream-cyan": percentage === 100,
+                  "bg-dream-blue": percentage > 0 && percentage < 100,
+                  "bg-dream-pink": percentage === 0,
                 })}
                 style={{ width: `${percentage}%` }}
               />

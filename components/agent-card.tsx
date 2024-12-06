@@ -129,6 +129,7 @@ export default function AgentCard({ data }: AgentCardProps) {
                 {clampedValue.toFixed(0)}%
               </span>
             </div>
+            
             <div className="relative h-1 bg-neutral-800 rounded-full overflow-hidden">
               <div 
                 className="absolute top-0 left-0 h-full bg-gradient-to-r from-dream-pink to-dream-cyan rounded-full transition-all duration-500"

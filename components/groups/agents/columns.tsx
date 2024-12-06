@@ -40,7 +40,7 @@ export const columns: ColumnDef<SelectAgent>[] = [
                 <div className="w-32 h-2 bg-neutral-800 rounded-full overflow-hidden">
                   <div 
                     className={cn(
-                      "h-full rounded-full transition-all duration-500",
+                      "h-full bg-gradient-to-r from-dream-pink to-dream-cyan rounded-full transition-all duration-500",
                       progress === 100 ? "bg-green-500" : "bg-white"
                     )}
                     style={{ width: `${progress}%` }}
