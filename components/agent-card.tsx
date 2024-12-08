@@ -128,6 +128,7 @@ export default function AgentCard({ data }: AgentCardProps) {
               <span className="text-dream-cyan">
                 {clampedValue.toFixed(0)}%
               </span>
+              
             </div>
             
             <div className="relative h-1 bg-neutral-800 rounded-full overflow-hidden">
