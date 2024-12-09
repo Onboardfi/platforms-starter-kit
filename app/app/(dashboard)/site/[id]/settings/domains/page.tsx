@@ -1,7 +1,11 @@
-// app/(dashboard)/site/[id]/settings/domains/page.tsx
 import Form from "@/components/form";
 import { updateSite } from "@/lib/actions";
 import db from "@/lib/db";
+import { Button } from "@/components/ui/button";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Lock, Rocket, ExternalLink } from "lucide-react";
+import Link from "next/link";
 
 export default async function SiteSettingsDomains({
   params,
@@ -39,20 +43,63 @@ export default async function SiteSettingsDomains({
         handleSubmit={updateSite}
       />
       
-      <Form
-        title="Custom Domain"
-        description="The custom domain for your site."
-        helpText="Please enter a valid domain."
-        inputAttrs={{
-          name: "customDomain",
-          type: "text",
-          defaultValue: data?.customDomain!,
-          placeholder: "yourdomain.com",
-          maxLength: 64,
-          pattern: "^[a-z0-9]+([\\-\\.]{1}[a-z0-9]+)*\\.[a-z]{2,5}$",
-        }}
-        handleSubmit={updateSite}
-      />
+      <div className="relative">
+        <div className="absolute -inset-x-6 -inset-y-4">
+          <div className="h-full w-full bg-gradient-to-r from-dream-purple/10 via-dream-cyan/10 to-dream-cyan/10 opacity-[0.15] blur-lg" />
+        </div>
+        
+        <Card className="relative border border-dream-cyan/20 bg-neutral-900/50">
+          <CardHeader className="space-y-1 pb-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <h3 className="text-lg font-medium text-white">Custom Domain</h3>
+                <Badge variant="secondary" className="bg-dream-cyan/10 text-dream-cyan">
+                  Coming Soon
+                </Badge>
+              </div>
+              <Lock className="w-4 h-4 text-dream-cyan" />
+            </div>
+            <p className="text-sm text-neutral-400">
+              The custom domain for your site.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4 pb-6">
+            <div className="flex items-center gap-4">
+              <input
+                type="text"
+                className="flex-1 bg-neutral-800/50 border border-neutral-700 rounded-md px-3 py-2 text-neutral-400 placeholder-neutral-500"
+                placeholder="yourdomain.com"
+                disabled
+              />
+              <Button variant="outline" disabled className="border-dream-cyan/20 text-dream-cyan">
+                Save
+              </Button>
+            </div>
+
+            <div className="rounded-lg bg-dream-cyan/5 border border-dream-cyan/10 p-4">
+              <div className="flex gap-2">
+                <Rocket className="h-5 w-5 text-dream-cyan" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-white">
+                    Available on Growth Plan
+                  </p>
+                  <p className="text-sm text-neutral-400">
+                    Upgrade to our Growth plan to use custom domains and unlock additional premium features.
+                  </p>
+                  <div className="pt-3">
+                    <Link href="/settings/billing">
+                      <Button size="sm" className="bg-dream-cyan text-black hover:bg-dream-cyan/90">
+                        <span>Upgrade to Growth</span>
+                        <ExternalLink className="ml-2 h-4 w-4" />
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

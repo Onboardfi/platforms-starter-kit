@@ -1,11 +1,11 @@
-"use client";
+"use client"
 
 import { useState, useEffect } from "react";
 import { Suspense } from 'react';
 import { useRouter } from "next/navigation";
 import { getAgentById, getSessions, getSessionMessages } from "@/lib/actions";
 import { getSessionAndUsageCountsForAgent } from "@/lib/data/dashboard2";
-import { ExternalLink, ArrowLeft } from "lucide-react";
+import { ExternalLink, ArrowLeft, Archive, Clock, CheckCircle2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -13,7 +13,7 @@ import dynamic from 'next/dynamic';
 import Link from "next/link";
 import { Session } from "@/lib/types";
 
-// Dynamically import the Chart component with no SSR
+// Dynamically import components to improve initial page load
 const Chart = dynamic(
   () => import('@/components/dashboard/session-chart').then((mod) => mod.Chart),
   { 
@@ -26,7 +26,6 @@ const Chart = dynamic(
   }
 );
 
-// Dynamically import the ConversationTab
 const ConversationTab = dynamic(
   () => import('@/components/agent-console/TabContent/ConversationTab'),
   {
@@ -41,7 +40,6 @@ const ConversationTab = dynamic(
   }
 );
 
-// Dynamically import SessionsTab with client-side rendering
 const SessionsTabWrapper = dynamic(
   () =>
     import('@/components/agent-console/TabContent/SessionsTab').then((mod) => {
@@ -74,14 +72,12 @@ const SessionsTabWrapper = dynamic(
   }
 );
 
-// Add SessionDetails component for viewing individual sessions
 const SessionDetails = dynamic(
   () =>
     import('@/components/agent-console/TabContent/SessionDetails').then((mod) => {
       return function DetailsWrapper({ session, onBack, messages, primaryColor, secondaryColor }: any) {
         return (
           <div className="space-y-6">
-            {/* Back button */}
             <button
               onClick={onBack}
               className="flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors"
@@ -90,7 +86,6 @@ const SessionDetails = dynamic(
               Back to Sessions
             </button>
             
-            {/* Session info header */}
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-light text-white">
                 Session: {session.name || "Untitled"}
@@ -100,7 +95,6 @@ const SessionDetails = dynamic(
               </Badge>
             </div>
 
-            {/* Messages */}
             <ConversationTab 
               items={messages}
               currentSessionId={session.id}
@@ -116,9 +110,50 @@ const SessionDetails = dynamic(
   }
 );
 
-interface AnalyticsPageProps {
-  params: { id: string };
-}
+// Component for metric cards with consistent styling
+const MetricCard = ({ 
+  title, 
+  value, 
+  subtitle, 
+  icon: Icon,
+  gradient = false 
+}: { 
+  title: string;
+  value: string | number;
+  subtitle?: string;
+  icon: React.ElementType;
+  gradient?: boolean;
+}) => (
+  <Card className={`
+    relative overflow-hidden backdrop-blur-md border-white/10 group
+    ${gradient ? 'bg-gradient-to-br from-neutral-800/50 to-neutral-900/50' : 'bg-neutral-800/50'}
+  `}>
+    <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-5" />
+    <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+    
+    <CardHeader>
+      <div className="flex items-center justify-between">
+        <CardTitle className="text-sm font-light text-neutral-300">
+          {title}
+        </CardTitle>
+        <Icon className="w-4 h-4 text-neutral-400 group-hover:text-white transition-colors" />
+      </div>
+    </CardHeader>
+    
+    <CardContent className="space-y-2">
+      <p className="text-3xl font-light text-white">
+        {typeof value === 'number' ? value.toLocaleString() : value}
+      </p>
+      {subtitle && (
+        <p className="text-xs text-neutral-400">
+          {subtitle}
+        </p>
+      )}
+    </CardContent>
+  </Card>
+);
+
+// Main analytics component
 export default function AgentAnalytics({ params }: { params: { id: string }}) {
   const router = useRouter();
   const [viewingSession, setViewingSession] = useState<{
@@ -131,7 +166,7 @@ export default function AgentAnalytics({ params }: { params: { id: string }}) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Load data using useEffect
+  // Load data on component mount
   useEffect(() => {
     let isMounted = true;
 
@@ -140,10 +175,8 @@ export default function AgentAnalytics({ params }: { params: { id: string }}) {
         setIsLoading(true);
         setError(null);
 
-        // Load agent data - we'll handle auth in the server action
         const agentData = await getAgentById(decodeURIComponent(params.id));
         
-        // If no agent found or unauthorized, redirect
         if (!agentData) {
           router.push('/login');
           return;
@@ -152,7 +185,6 @@ export default function AgentAnalytics({ params }: { params: { id: string }}) {
         if (!isMounted) return;
         setAgent(agentData);
 
-        // Load sessions
         const dbSessions = await getSessions(agentData.id);
         
         if (!isMounted) return;
@@ -179,7 +211,6 @@ export default function AgentAnalytics({ params }: { params: { id: string }}) {
 
         setSessions(formattedSessions);
 
-        // Load chart data
         const charts = await getSessionAndUsageCountsForAgent(agentData.id);
         if (!isMounted) return;
         setChartData(charts.data);
@@ -187,7 +218,6 @@ export default function AgentAnalytics({ params }: { params: { id: string }}) {
       } catch (error: any) {
         console.error("Error loading data:", error);
         if (isMounted) {
-          // Check if it's an authentication error
           if (error.message?.includes('unauthorized') || error.message?.includes('Unauthorized')) {
             router.push('/login');
             return;
@@ -209,6 +239,23 @@ export default function AgentAnalytics({ params }: { params: { id: string }}) {
       isMounted = false;
     };
   }, [params.id, router]);
+
+  // Calculate completion rate accounting for partial progress
+  const calculateAverageCompletionRate = () => {
+    if (!sessions.length) return 0;
+
+    const sessionCompletionRates = sessions.map(session => {
+      const steps = session.stepProgress?.steps || [];
+      if (!steps.length) return 0;
+      
+      const completedSteps = steps.filter(step => step.completed).length;
+      return (completedSteps / steps.length) * 100;
+    });
+
+    const totalCompletionRate = sessionCompletionRates.reduce((sum, rate) => sum + rate, 0);
+    return Math.round(totalCompletionRate / sessions.length);
+  };
+
   // Loading state
   if (isLoading) {
     return (
@@ -245,7 +292,6 @@ export default function AgentAnalytics({ params }: { params: { id: string }}) {
       />
     );
   }
-
 
   // Main analytics view
   return (
@@ -302,8 +348,33 @@ export default function AgentAnalytics({ params }: { params: { id: string }}) {
         )}
       </div>
 
-     {/* Sessions Table with proper null checking */}
-     <div className="relative">
+      {/* Analytics Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <MetricCard
+          title="Average Completion Rate"
+          value={`${calculateAverageCompletionRate()}%`}
+          subtitle="Average percentage of completed steps across all sessions"
+          icon={CheckCircle2}
+          gradient
+        />
+
+        <MetricCard
+          title="Total Sessions"
+          value={sessions.length}
+          subtitle="Total number of onboarding sessions created"
+          icon={Archive}
+        />
+
+        <MetricCard
+          title="Active Sessions"
+          value={sessions.filter((s) => s.status === "active").length}
+          subtitle="Currently ongoing onboarding sessions"
+          icon={Clock}
+        />
+      </div>
+
+      {/* Sessions Table */}
+      <div className="relative">
         <Suspense fallback={
           <div className="rounded-xl border border-white/[0.02] bg-neutral-900/50 backdrop-blur-md p-6 shine shadow-dream">
             <div className="h-32 flex items-center justify-center">
@@ -322,8 +393,12 @@ export default function AgentAnalytics({ params }: { params: { id: string }}) {
                 const selectedSession = sessions.find(s => s.id === sessionId);
                 if (selectedSession) {
                   try {
+                    // When a session is selected, we fetch its messages and update the state
                     const messages = await getSessionMessages(sessionId);
-                    setViewingSession({ session: selectedSession, messages });
+                    setViewingSession({ 
+                      session: selectedSession, 
+                      messages 
+                    });
                   } catch (error) {
                     console.error('Error fetching session messages:', error);
                     toast.error('Failed to load session messages');
@@ -335,54 +410,7 @@ export default function AgentAnalytics({ params }: { params: { id: string }}) {
         </Suspense>
       </div>
 
-      {/* Analytics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* Completion Rate Card */}
-        <Card className="bg-neutral-800/50 backdrop-blur-md border-white/10">
-          <CardHeader>
-            <CardTitle className="text-sm font-light">
-              Average Completion Rate
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-light">
-              {sessions.length > 0
-                ? `${Math.round(
-                    (sessions.filter((s) =>
-                      s.stepProgress?.steps.every((step) => step.completed)
-                    ).length /
-                      sessions.length) *
-                      100
-                  )}%`
-                : "0%"}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Total Sessions Card */}
-        <Card className="bg-neutral-800/50 backdrop-blur-md border-white/10">
-          <CardHeader>
-            <CardTitle className="text-sm font-light">Total Sessions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-light">{sessions.length}</p>
-          </CardContent>
-        </Card>
-
-        {/* Active Sessions Card */}
-        <Card className="bg-neutral-800/50 backdrop-blur-md border-white/10">
-          <CardHeader>
-            <CardTitle className="text-sm font-light">
-              Active Sessions
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-light">
-              {sessions.filter((s) => s.status === "active").length}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+   
     </div>
   );
 }

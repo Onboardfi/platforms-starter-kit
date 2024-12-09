@@ -1,6 +1,6 @@
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { Grid, Box, ArrowUpRight, Plug } from "lucide-react";
+import { Grid, ArrowUpRight } from "lucide-react";
 import Image from "next/image";
 
 interface Integration {
@@ -33,14 +33,14 @@ const INTEGRATIONS: IntegrationCategory[] = [
       },
       {
         id: "github",
-        name: "Github",
+        name: "GitHub",
         description: "Sync code and collaborate with your team seamlessly.",
         category: "Development",
         image: "/github.png",
         status: "not_connected",
         docUrl: "/docs/integrations/github",
-      }
-    ]
+      },
+    ],
   },
   {
     category: "Communication & Collaboration",
@@ -62,8 +62,8 @@ const INTEGRATIONS: IntegrationCategory[] = [
         image: "/notion1.png",
         status: "not_connected",
         docUrl: "/docs/integrations/notion",
-      }
-    ]
+      },
+    ],
   },
   {
     category: "Marketing & Payments",
@@ -85,8 +85,8 @@ const INTEGRATIONS: IntegrationCategory[] = [
         image: "/stripe.png",
         status: "not_connected",
         docUrl: "/docs/integrations/stripe",
-      }
-    ]
+      },
+    ],
   },
   {
     category: "Data & Storage",
@@ -99,18 +99,38 @@ const INTEGRATIONS: IntegrationCategory[] = [
         image: "/sheets.png",
         status: "not_connected",
         docUrl: "/docs/integrations/sheets",
-      }
-    ]
-  }
+      },
+    ],
+  },
+  {
+    category: "Productivity & Scheduling",
+    integrations: [
+      {
+        id: "cal",
+        name: "Cal.com",
+        description: "Open-source scheduling platform with customizable booking pages, calendar integrations, and flexible workflows.",
+        category: "Scheduling",
+        image: "/cal.png",
+        status: "not_connected",
+        docUrl: "/docs/integrations/cal",
+      },
+      {
+        id: "monday",
+        name: "monday.com CRM",
+        description: "Customizable CRM to streamline sales and enhance customer relationships.",
+        category: "Productivity",
+        image: "/monday.png",
+        status: "not_connected",
+        docUrl: "/docs/integrations/monday",
+      },
+    ],
+  },
 ];
 
 const CategoryHeader = ({ title }: { title: string }) => (
   <div className="relative overflow-hidden rounded-2xl bg-neutral-900/30 backdrop-blur-md p-4 mb-6">
-    {/* Background Elements */}
     <div className="absolute inset-0 -z-10">
-      {/* Grid Background */}
       <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-30" />
-      {/* Gradient Overlay */}
       <div className="absolute inset-0 bg-gradient-to-r from-transparent to-neutral-900/50" />
     </div>
     <div className="relative flex items-center gap-3 z-10">
@@ -119,10 +139,13 @@ const CategoryHeader = ({ title }: { title: string }) => (
     </div>
   </div>
 );
-
 const DreamIntegrationCard = ({ data }: { data: Integration }) => (
   <div className="group relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine">
-    {/* Gradient Border Effect */}
+    {/* Coming Soon Badge */}
+    <div className="absolute top-3 right-3 z-20 bg-dream-cyan/20 text-dream-cyan text-xs font-medium px-2 py-1 rounded-full border border-dream-cyan/30">
+      Coming Soon
+    </div>
+
     <div className="
       absolute inset-[0] 
       rounded-[inherit] 
@@ -141,7 +164,6 @@ const DreamIntegrationCard = ({ data }: { data: Integration }) => (
     " />
 
     <div className="relative p-6 h-full flex flex-col">
-      {/* Logo */}
       <div className="mb-4 w-12 h-12 rounded-xl bg-neutral-900/50 border border-white/[0.08] shine overflow-hidden relative">
         <Image
           src={data.image}
@@ -150,14 +172,10 @@ const DreamIntegrationCard = ({ data }: { data: Integration }) => (
           className="object-contain p-2"
         />
       </div>
-
-      {/* Content */}
       <h3 className="text-lg font-medium text-white mb-2">{data.name}</h3>
       <p className="text-sm text-neutral-400 mb-6 flex-grow">
         {data.description}
       </p>
-
-      {/* Status and Action */}
       <div className="flex items-center justify-between mt-auto pt-4 border-t border-white/[0.08]">
         <span className={`
           px-3 py-1 
@@ -197,17 +215,11 @@ export default async function IntegrationsPage() {
 
   return (
     <div className="container mx-auto p-8 space-y-12">
-      {/* Page Header */}
       <div className="relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine mb-12">
-        {/* Background Elements */}
         <div className="absolute inset-0 -z-10">
-          {/* Grid Background */}
           <div className="absolute inset-0 bg-[url('/grid.svg')] bg-repeat opacity-30" />
-          {/* Gradient Overlay to Fade Grid */}
           <div className="absolute inset-0 bg-gradient-to-r from-transparent to-neutral-900/80" />
         </div>
-
-        {/* Gradient Border Effect */}
         <div className="
           absolute inset-[0] 
           rounded-[inherit] 
@@ -224,8 +236,6 @@ export default async function IntegrationsPage() {
           after:[offset-anchor:90%_50%] 
           after:[offset-path:rect(0_auto_auto_0_round_200px)]
         " />
-
-        {/* Header Content */}
         <div className="relative p-8 z-10">
           <h1 className="text-4xl font-light text-white mb-2">Integrations</h1>
           <p className="text-neutral-400">
@@ -234,12 +244,10 @@ export default async function IntegrationsPage() {
         </div>
       </div>
 
-      {/* Categories */}
       <div className="space-y-12">
         {INTEGRATIONS.map((category) => (
           <div key={category.category} className="space-y-6">
             <CategoryHeader title={category.category} />
-            
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {category.integrations.map((integration) => (
                 <DreamIntegrationCard 

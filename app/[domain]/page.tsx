@@ -1,5 +1,3 @@
-// app/[domain]/page.tsx
-
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import BlurImage from "@/components/blur-image";
@@ -103,20 +101,14 @@ export default async function SiteHomePage({
         ) : (
           <div className="flex flex-col items-center justify-center py-20">
             <Image
-              alt="missing agent"
-              src="https://illustrations.popsy.co/gray/success.svg"
+              alt="Astronaut illustration"
+              src="/astro404.png"
               width={400}
               height={400}
-              className="dark:hidden"
+              className="w-60 h-60 object-contain"
+              priority
             />
-            <Image
-              alt="missing agent"
-              src="https://illustrations.popsy.co/white/success.svg"
-              width={400}
-              height={400}
-              className="hidden dark:block"
-            />
-            <p className="font-title text-2xl text-stone-600 dark:text-stone-400">
+            <p className="font-title text-2xl text-stone-600 dark:text-stone-400 mt-8">
               No agents yet.
             </p>
           </div>
