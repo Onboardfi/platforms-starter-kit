@@ -1,10 +1,11 @@
+// /Users/bobbygilbert/Documents/GitHub/platforms-starter-kit/components/agent-console/TabContent/WorkspaceTab.tsx
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmailTemplate } from "@/components/email-template";
 import Spline from '@splinetool/react-spline';
-import { DraftEmail } from "../utils/types";
+import { DraftEmail, DraftLead } from "../utils/types";
 
 interface WorkspaceTabProps {
   draftNote: string | null;
@@ -22,6 +23,12 @@ interface WorkspaceTabProps {
   currentSessionId: string | null;
   isRecording: boolean;
   isListening: boolean;
+  draftLead: DraftLead | null;
+  isEditingLead: boolean;
+  handleEditLead: () => void;
+  handleSaveLead: (lead: DraftLead) => void;
+  handleSendLead: () => Promise<void>;
+  setDraftLead: (lead: DraftLead | null) => void;
 }
 
 export default function WorkspaceTab({
@@ -39,18 +46,16 @@ export default function WorkspaceTab({
   setDraftEmail,
   currentSessionId,
   isRecording,
-  isListening
+  isListening,
+  draftLead,
+  isEditingLead,
+  handleEditLead,
+  handleSaveLead,
+  handleSendLead,
+  setDraftLead,
 }: WorkspaceTabProps) {
-  // Spline scene handlers
   const handleSplineLoad = (splineApp: any) => {
-    // You can store the spline app reference if needed
     console.log('Spline scene loaded');
-  };
-
-  // Handle voice spectrum updates from your existing audio processing
-  const updateSplineVoiceSpectrum = (spectrum: number) => {
-    // If you have a reference to the spline app, you can update objects here
-    // splineApp.current?.findObjectByName('VoiceSpectrum')?.morphTargetInfluences[0] = spectrum;
   };
 
   if (!currentSessionId) {
@@ -77,18 +82,14 @@ export default function WorkspaceTab({
             </Badge>
           </div>
           
-          {!draftNote && !draftEmail ? (
+          {!draftNote && !draftEmail && !draftLead ? (
             <div className="rounded-lg bg-vc-border-gradient p-px shadow-lg shadow-black/20">
               <div className="relative h-[620px] rounded-lg overflow-hidden bg-black">
-                {/* Spline scene with voice visualization */}
                 <Spline
                   scene="https://prod.spline.design/iXkcy912rFIkpvXP/scene.splinecode"
                   onLoad={handleSplineLoad}
                 />
-                
-                {/* Voice activity indicators */}
                 <div className="absolute bottom-4 right-4 flex items-center gap-4">
-                  {/* Recording indicator */}
                   <div className="flex items-center gap-2">
                     <div 
                       className={`w-3 h-3 rounded-full ${
@@ -99,8 +100,6 @@ export default function WorkspaceTab({
                       {isRecording ? 'Recording' : 'Ready'}
                     </span>
                   </div>
-
-                  {/* Listening indicator */}
                   <div className="flex items-center gap-2">
                     <div 
                       className={`w-3 h-3 rounded-full ${
@@ -116,7 +115,6 @@ export default function WorkspaceTab({
             </div>
           ) : (
             <div className="space-y-6">
-              {/* Existing draft note section */}
               {draftNote && (
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-white font-mono">Draft Note</h3>
@@ -151,7 +149,6 @@ export default function WorkspaceTab({
                 </div>
               )}
 
-              {/* Existing draft email section */}
               {draftEmail && (
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-white font-mono">Draft Email</h3>
@@ -160,30 +157,21 @@ export default function WorkspaceTab({
                       <Input
                         type="email"
                         value={draftEmail.to}
-                        onChange={(e) => setDraftEmail({
-                          ...draftEmail,
-                          to: e.target.value
-                        })}
+                        onChange={(e) => setDraftEmail({ ...draftEmail, to: e.target.value })}
                         placeholder="Recipient Email"
                         className="bg-dark-accent-1 border-gray-800 text-white font-mono"
                       />
                       <Input
                         type="text"
                         value={draftEmail.subject}
-                        onChange={(e) => setDraftEmail({
-                          ...draftEmail,
-                          subject: e.target.value
-                        })}
+                        onChange={(e) => setDraftEmail({ ...draftEmail, subject: e.target.value })}
                         placeholder="Subject"
                         className="bg-dark-accent-1 border-gray-800 text-white font-mono"
                       />
                       <Input
                         type="text"
                         value={draftEmail.firstName}
-                        onChange={(e) => setDraftEmail({
-                          ...draftEmail,
-                          firstName: e.target.value
-                        })}
+                        onChange={(e) => setDraftEmail({ ...draftEmail, firstName: e.target.value })}
                         placeholder="Recipient First Name"
                         className="bg-dark-accent-1 border-gray-800 text-white font-mono"
                       />
@@ -224,6 +212,118 @@ export default function WorkspaceTab({
                       className="font-mono"
                     >
                       Send Email
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {draftLead && (
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-white font-mono">Draft Lead</h3>
+                  {isEditingLead ? (
+                    <div className="space-y-4">
+                      <Input
+                        type="text"
+                        value={draftLead.firstName}
+                        onChange={(e) => setDraftLead({ ...draftLead, firstName: e.target.value })}
+                        placeholder="First Name"
+                        className="bg-dark-accent-1 border-gray-800 text-white font-mono"
+                      />
+                      <Input
+                        type="text"
+                        value={draftLead.lastName}
+                        onChange={(e) => setDraftLead({ ...draftLead, lastName: e.target.value })}
+                        placeholder="Last Name"
+                        className="bg-dark-accent-1 border-gray-800 text-white font-mono"
+                      />
+                      <Input
+                        type="text"
+                        value={draftLead.company || ''}
+                        onChange={(e) => setDraftLead({ ...draftLead, company: e.target.value })}
+                        placeholder="Company"
+                        className="bg-dark-accent-1 border-gray-800 text-white font-mono"
+                      />
+                      <Input
+                        type="email"
+                        value={draftLead.email || ''}
+                        onChange={(e) => setDraftLead({ ...draftLead, email: e.target.value })}
+                        placeholder="Email"
+                        className="bg-dark-accent-1 border-gray-800 text-white font-mono"
+                      />
+                      <Input
+                        type="tel"
+                        value={draftLead.phone || ''}
+                        onChange={(e) => setDraftLead({ ...draftLead, phone: e.target.value })}
+                        placeholder="Phone"
+                        className="bg-dark-accent-1 border-gray-800 text-white font-mono"
+                      />
+                      <Input
+                        type="text"
+                        value={draftLead.source || ''}
+                        onChange={(e) => setDraftLead({ ...draftLead, source: e.target.value })}
+                        placeholder="Source"
+                        className="bg-dark-accent-1 border-gray-800 text-white font-mono"
+                      />
+                      <textarea
+                        value={draftLead.notes || ''}
+                        onChange={(e) => setDraftLead({ ...draftLead, notes: e.target.value })}
+                        placeholder="Notes"
+                        className="w-full min-h-[100px] bg-dark-accent-1 border border-gray-800 rounded-lg p-4 text-white font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-white"
+                      />
+                    </div>
+                  ) : (
+                    <div className="bg-dark-accent-1 border border-gray-800 rounded-lg p-4">
+                      <div className="space-y-2 text-sm font-mono">
+                        <div className="flex">
+                          <span className="text-gray-400 w-32">Name:</span>
+                          <span className="text-white">{draftLead.firstName} {draftLead.lastName}</span>
+                        </div>
+                        {draftLead.company && (
+                          <div className="flex">
+                            <span className="text-gray-400 w-32">Company:</span>
+                            <span className="text-white">{draftLead.company}</span>
+                          </div>
+                        )}
+                        {draftLead.email && (
+                          <div className="flex">
+                            <span className="text-gray-400 w-32">Email:</span>
+                            <span className="text-white">{draftLead.email}</span>
+                          </div>
+                        )}
+                        {draftLead.phone && (
+                          <div className="flex">
+                            <span className="text-gray-400 w-32">Phone:</span>
+                            <span className="text-white">{draftLead.phone}</span>
+                          </div>
+                        )}
+                        {draftLead.source && (
+                          <div className="flex">
+                            <span className="text-gray-400 w-32">Source:</span>
+                            <span className="text-white">{draftLead.source}</span>
+                          </div>
+                        )}
+                        {draftLead.notes && (
+                          <div className="flex">
+                            <span className="text-gray-400 w-32">Notes:</span>
+                            <span className="text-white whitespace-pre-wrap">{draftLead.notes}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex justify-end space-x-4">
+                    <Button
+                      variant="outline"
+                      onClick={isEditingLead ? () => handleSaveLead(draftLead) : handleEditLead}
+                      className="font-mono"
+                    >
+                      {isEditingLead ? "Save Changes" : "Edit Lead"}
+                    </Button>
+                    <Button
+                      onClick={handleSendLead}
+                      className="font-mono"
+                    >
+                      Create Lead
                     </Button>
                   </div>
                 </div>

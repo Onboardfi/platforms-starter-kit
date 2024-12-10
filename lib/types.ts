@@ -1,5 +1,7 @@
 // lib/types.ts
 
+import { FunctionCall } from "@/components/agent-console/utils/types";
+
 /**
  * Core Types for Session Steps and Base Types
  */
@@ -29,8 +31,9 @@ export type ConversationStatus = 'active' | 'completed' | 'archived';
 
 export interface MessageContent {
   text?: string;
-  audioUrl?: string;
   transcript?: string;
+  audioUrl?: string;
+  function_call?: FunctionCall;
 }
 export interface SelectOrganization {
   id: string;

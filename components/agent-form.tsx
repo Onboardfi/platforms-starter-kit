@@ -1,3 +1,5 @@
+// Users/bobbygilbert/Documents/GitHub/platforms-starter-kit/components/agent-form.tsx
+
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
@@ -7,7 +9,6 @@ import { debounce } from "lodash";
 import { toast } from "sonner";
 import bcrypt from "bcryptjs";
 
-// Dream UI Styled Label
 const DreamLabel = ({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) => (
   <label
     htmlFor={htmlFor}
@@ -17,7 +18,6 @@ const DreamLabel = ({ children, htmlFor }: { children: React.ReactNode; htmlFor?
   </label>
 );
 
-// Dream UI Styled Input
 const DreamInput = React.forwardRef<
   HTMLInputElement,
   React.InputHTMLAttributes<HTMLInputElement>
@@ -43,8 +43,6 @@ const DreamInput = React.forwardRef<
 ));
 DreamInput.displayName = "DreamInput";
 
-
-// Dream UI Styled Textarea
 const DreamTextarea = React.forwardRef<
   HTMLTextAreaElement,
   React.TextareaHTMLAttributes<HTMLTextAreaElement>
@@ -71,7 +69,6 @@ const DreamTextarea = React.forwardRef<
 ));
 DreamTextarea.displayName = "DreamTextarea";
 
-// Dream UI Styled Select
 interface DreamSelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   options: { value: string; label: string }[];
 }
@@ -115,7 +112,6 @@ const DreamSelect = React.forwardRef<HTMLSelectElement, DreamSelectProps>(
 );
 DreamSelect.displayName = "DreamSelect";
 
-// Dream UI Styled Checkbox
 interface DreamCheckboxProps {
   checked: boolean;
   onChange: (checked: boolean) => void;
@@ -167,7 +163,6 @@ const DreamCheckbox = ({ checked, onChange, label, description, id }: DreamCheck
   </label>
 );
 
-// Dream UI Styled Card
 interface DreamCardProps {
   title: string;
   children: React.ReactNode;
@@ -184,7 +179,6 @@ const DreamCard = ({ title, children, className = "" }: DreamCardProps) => (
     shine
     ${className}
   `}>
-    {/* Gradient Border Effect */}
     <div className="
       absolute inset-[0] 
       rounded-[inherit] 
@@ -201,8 +195,6 @@ const DreamCard = ({ title, children, className = "" }: DreamCardProps) => (
       after:[offset-anchor:90%_50%] 
       after:[offset-path:rect(0_auto_auto_0_round_200px)]
     " />
-    
-    {/* Card Content */}
     <div className="relative p-6">
       <h3 className="text-xl font-medium text-white mb-6 pb-4 border-b border-white/[0.08]">
         {title}
@@ -212,7 +204,6 @@ const DreamCard = ({ title, children, className = "" }: DreamCardProps) => (
   </div>
 );
 
-// Dream UI Styled Button
 interface DreamButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'default' | 'gradient' | 'outline';
   size?: 'sm' | 'md' | 'lg';
@@ -259,7 +250,6 @@ const DreamButton = React.forwardRef<HTMLButtonElement, DreamButtonProps>(
 );
 DreamButton.displayName = "DreamButton";
 
-// Color Picker Component
 interface DreamColorPickerProps {
   value: string;
   onChange: (value: string) => void;
@@ -298,7 +288,10 @@ interface AgentFormProps {
 export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
   const { agent, setAgent } = useAgent();
   
-  // Form state
+  // Add "monday" to the list of available tools
+  const availableTools = ["memory", "email", "notion", "monday"];
+  const availableModels = ["openai"];
+
   const [formState, setFormState] = useState({
     name: initialAgent?.name ?? "",
     description: initialAgent?.description ?? "",
@@ -322,12 +315,10 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
     }
   });
 
-  // Password management state
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 
-  // Debounced update
   const debouncedUpdate = useCallback(
     debounce((updatedState) => {
       if (agent) {
@@ -344,7 +335,6 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
     [agent, setAgent]
   );
 
-  // Update handler
   const handleUpdate = useCallback((field: string, value: any) => {
     setFormState(prev => {
       const newState = field.startsWith('settings.')
@@ -370,7 +360,6 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
     });
   }, [debouncedUpdate]);
 
-  // Handle password update
   const handlePasswordUpdate = async () => {
     if (password !== confirmPassword) {
       toast.error("Passwords do not match");
@@ -398,13 +387,8 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
     }
   };
 
-  // Available options
-  const availableTools = ["memory", "email", "notion"];
-  const availableModels = ["openai"];
-
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-[1200px] mx-auto p-6">
-      {/* Basic Information */}
       <DreamCard title="Basic Information">
         <div className="space-y-6">
           <div className="space-y-2">
@@ -440,7 +424,6 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
         </div>
       </DreamCard>
 
-      {/* Settings */}
       <DreamCard title="Settings">
         <div className="space-y-6">
           <div className="space-y-2">
@@ -514,7 +497,6 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
         </div>
       </DreamCard>
 
-      {/* AI Model & Branding */}
       <DreamCard title="AI Model & Branding">
         <div className="space-y-6">
           <div className="space-y-2">
@@ -556,7 +538,6 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
         </div>
       </DreamCard>
 
-      {/* Authentication Settings */}
       {formState.settings.onboardingType === 'internal' && (
         <DreamCard title="Authentication Settings" className="lg:col-span-3">
           <div className="space-y-6">

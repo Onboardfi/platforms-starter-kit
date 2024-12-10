@@ -1,0 +1,1 @@
+ALTER TABLE "system_logs" ALTER COLUMN "id" SET DEFAULT 'ej948qwve86fxslfce49fgtk';

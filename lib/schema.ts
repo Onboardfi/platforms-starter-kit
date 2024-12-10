@@ -32,7 +32,12 @@ export interface TierFeatureLimits {
   TEAM_COLLABORATION: boolean;
 }
 
-
+// Add with other interface definitions near the top:
+export interface OrganizationIntegrationSettings {
+  boardId?: string;
+  groupId?: string;
+  columnMappings?: Record<string, string>;
+}
 
 // Subscription metadata - focused only on feature access
 export interface SubscriptionMetadata {
@@ -88,42 +93,8 @@ export interface OrganizationMetadata {
   [key: string]: any;
 }
 
-export const organizationInvites = pgTable(
-  'organization_invites',
-  {
-    id: text('id').primaryKey().$defaultFn(() => createId()),
-    organizationId: text('organizationId')
-      .notNull()
-      .references(() => organizations.id, { onDelete: 'cascade' }),
-    email: text('email').notNull(),
-    role: text('role').$type<'owner' | 'admin' | 'member'>().notNull().default('member'),
-    token: text('token').notNull().unique(),
-    status: text('status')
-      .$type<'pending' | 'accepted' | 'cancelled' | 'expired'>()
-      .notNull()
-      .default('pending'),
-    invitedBy: text('invitedBy')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    invitedAt: timestamp('invitedAt', { mode: 'date' }).defaultNow().notNull(),
-    expiresAt: timestamp('expiresAt', { mode: 'date' }).notNull(),
-    acceptedAt: timestamp('acceptedAt', { mode: 'date' }),
-    metadata: jsonb('metadata').$type<Record<string, any>>().default({}),
-  },
-  (table) => ({
-    emailOrgIdx: uniqueIndex('org_invites_email_org_idx').on(
-      table.email,
-      table.organizationId
-    ),
-    tokenIdx: index('org_invites_token_idx').on(table.token),
-    statusIdx: index('org_invites_status_idx').on(table.status),
-    orgIdIdx: index('org_invites_org_idx').on(table.organizationId),
-  })
-);
 
-
-// In schema.ts, update the users table definition:
-
+// Core table definitions
 export const users = pgTable('users', {
   id: text('id').primaryKey().$defaultFn(() => createId()),
   name: text('name'),
@@ -138,6 +109,72 @@ export const users = pgTable('users', {
   createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
   updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
 });
+export const organizations = pgTable(
+  'organizations',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId()),
+    name: text('name').notNull(),
+    slug: text('slug').notNull(),
+    createdBy: text('createdBy')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    logo: text('logo'),
+    stripeCustomerId: text('stripeCustomerId'),
+    stripeSubscriptionId: text('stripeSubscriptionId'),
+    metadata: jsonb('metadata').$type<OrganizationMetadata>().default({}).notNull(),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => ({
+    slugIdx: uniqueIndex('organizations_slug_idx').on(table.slug),
+    createdByIdx: index('organizations_createdBy_idx').on(table.createdBy),
+  })
+);
+export const organizationIntegrations = pgTable(
+  'organization_integrations',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId()),
+    organizationId: text('organizationId')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    provider: text('provider').notNull(), // e.g., 'monday'
+    accessToken: text('accessToken'),
+    tokenType: text('tokenType'),
+    scope: text('scope'),
+    settings: jsonb('settings').$type<{
+      boardId?: string;
+      groupId?: string;
+      columnMappings?: Record<string, string>;
+    }>().default({}),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => ({
+    providerIdx: index('org_integrations_provider_idx').on(table.provider),
+    orgProviderIdx: uniqueIndex('org_integrations_org_provider_idx').on(
+      table.organizationId,
+      table.provider
+    ),
+  })
+);
+// After organizationIntegrations table definition, add:
+export const organizationIntegrationsRelations = relations(organizationIntegrations, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [organizationIntegrations.organizationId],
+    references: [organizations.id],
+  }),
+}));
+// Ensure organization relations are complete
+export const organizationsRelations = relations(organizations, ({ many, one }) => ({
+  memberships: many(organizationMemberships),
+  sites: many(sites),
+  creator: one(users, {
+    fields: [organizations.createdBy],
+    references: [users.id],
+  }),
+}));
+
+
 
 
 export const sessions = pgTable(
@@ -153,28 +190,6 @@ export const sessions = pgTable(
     userIdIdx: index('sessions_userId_idx').on(table.userId),
   })
 );
-
-export const verificationTokens = pgTable(
-  'verificationTokens',
-  {
-    identifier: text('identifier').notNull(),
-    token: text('token').notNull(),
-    expires: timestamp('expires', { mode: 'date' }).notNull(),
-  },
-  (table) => ({
-    compositePk: primaryKey(table.identifier, table.token),
-  })
-);
-
-export const examples = pgTable('examples', {
-  id: serial('id').primaryKey(),
-  name: text('name'),
-  description: text('description'),
-  domainCount: integer('domainCount'),
-  url: text('url'),
-  image: text('image'),
-  imageBlurhash: text('imageBlurhash'),
-});
 
 export const accounts = pgTable(
   'accounts',
@@ -201,28 +216,33 @@ export const accounts = pgTable(
     compositePk: primaryKey(table.provider, table.providerAccountId),
   })
 );
-// Update the organizations table definition
-export const organizations = pgTable(
-  'organizations',
+export const verificationTokens = pgTable(
+  'verificationTokens',
   {
-    id: text('id').primaryKey().$defaultFn(() => createId()),
-    name: text('name').notNull(),
-    slug: text('slug').notNull(),
-    createdBy: text('createdBy')
-      .notNull()
-      .references(() => users.id, { onDelete: 'restrict' }),
-    logo: text('logo'),
-    stripeCustomerId: text('stripeCustomerId'),
-    stripeSubscriptionId: text('stripeSubscriptionId'),
-    metadata: jsonb('metadata').$type<OrganizationMetadata>().default({}).notNull(),
-    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow().notNull(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow().notNull(),
+    identifier: text('identifier').notNull(),
+    token: text('token').notNull(),
+    expires: timestamp('expires', { mode: 'date' }).notNull(),
   },
   (table) => ({
-    slugIdx: uniqueIndex('organizations_slug_idx').on(table.slug),
-    createdByIdx: index('organizations_createdBy_idx').on(table.createdBy),
+    compositePk: primaryKey(table.identifier, table.token),
   })
 );
+
+
+
+
+export const examples = pgTable('examples', {
+  id: serial('id').primaryKey(),
+  name: text('name'),
+  description: text('description'),
+  domainCount: integer('domainCount'),
+  url: text('url'),
+  image: text('image'),
+  imageBlurhash: text('imageBlurhash'),
+});
+
+// Update the organizations table definition
+
 export type CreateOrganizationRequest = {
   name: string;
   slug: string;
@@ -257,6 +277,39 @@ export const organizationMemberships = pgTable(
   })
 );
 
+
+export const organizationInvites = pgTable(
+  'organization_invites',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId()),
+    organizationId: text('organizationId')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    role: text('role').$type<'owner' | 'admin' | 'member'>().notNull().default('member'),
+    token: text('token').notNull().unique(),
+    status: text('status')
+      .$type<'pending' | 'accepted' | 'cancelled' | 'expired'>()
+      .notNull()
+      .default('pending'),
+    invitedBy: text('invitedBy')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    invitedAt: timestamp('invitedAt', { mode: 'date' }).defaultNow().notNull(),
+    expiresAt: timestamp('expiresAt', { mode: 'date' }).notNull(),
+    acceptedAt: timestamp('acceptedAt', { mode: 'date' }),
+    metadata: jsonb('metadata').$type<Record<string, any>>().default({}),
+  },
+  (table) => ({
+    emailOrgIdx: uniqueIndex('org_invites_email_org_idx').on(
+      table.email,
+      table.organizationId
+    ),
+    tokenIdx: index('org_invites_token_idx').on(table.token),
+    statusIdx: index('org_invites_status_idx').on(table.status),
+    orgIdIdx: index('org_invites_org_idx').on(table.organizationId),
+  })
+);
 
 
 // Modify the sites table to reference organization instead of user
@@ -655,7 +708,8 @@ export type Step = {
   [x: string]: any;
   title: string;
   description: string;
-  completionTool: 'email' | 'memory' | 'notesTaken' | 'notion' | null;
+  completionTool: 'email' | 'memory' | 'notesTaken' | 'notion' | 'monday' | null;
+
   completed: boolean;
 };
 
@@ -734,15 +788,7 @@ export const accountsRelations = relations(accounts, ({ one }) => ({
 }));
 
 
-// Ensure organization relations are complete
-export const organizationsRelations = relations(organizations, ({ many, one }) => ({
-  memberships: many(organizationMemberships),
-  sites: many(sites),
-  creator: one(users, {
-    fields: [organizations.createdBy],
-    references: [users.id],
-  }),
-}));
+
 
 export const organizationMembershipsRelations = relations(
   organizationMemberships,
@@ -849,8 +895,10 @@ export type SelectAgent = typeof agents.$inferSelect & {
 export type SelectOrganizationWithRelations = SelectOrganization & {
   memberships?: SelectOrganizationMembership[];
   sites?: SelectSite[];
+  integrations?: SelectOrganizationIntegration[]; // Add this line
   creator?: typeof users.$inferSelect;
 };
+
 
 
 export type SelectOrganizationMembershipWithRelations = SelectOrganizationMembership & {
@@ -937,6 +985,11 @@ export type ConversationMetadata = {
     success: boolean;
   };
 };
+
+// Add these integration-specific types:
+export type SelectOrganizationIntegration = typeof organizationIntegrations.$inferSelect;
+export type InsertOrganizationIntegration = typeof organizationIntegrations.$inferInsert;
+
 
 export type SelectUsageLog = typeof usageLogs.$inferSelect;
 // Add types for organization queries

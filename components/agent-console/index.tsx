@@ -41,6 +41,7 @@ import {
   Session,
   WebSocketMessage,
   ConversationItem,
+  DraftLead,
 } from './utils/types';
 
 // WebSocket Handler
@@ -52,11 +53,24 @@ import {
   base64ToInt16Array,
   base64ToArrayBuffer,
 } from '@/lib/utils/base64Utils';
+type ToolCallMetadata = {
+  tool: string;
+  input: Record<string, any>;
+  timestamp: string;
+  result?: {
+    success: boolean;
+    leadId?: string;
+  };
+  error?: string;
+};
 
 /**
  * **Helper Function**
  * Convert agent tool names to WebSocket tool configurations
  */
+
+
+
 const getToolConfigurations = (tools: string[]) => {
   const toolConfigs = [];
 
@@ -77,7 +91,52 @@ const getToolConfigurations = (tools: string[]) => {
           },
         });
         break;
-
+        case 'monday':
+        toolConfigs.push({
+          type: 'function',
+          name: 'create_lead',
+          description: 'Create a new lead in Monday.com CRM',
+          parameters: {
+            type: 'object',
+            properties: {
+              firstName: {
+                type: 'string',
+                description: 'First name of the lead'
+              },
+              lastName: {
+                type: 'string',
+                description: 'Last name of the lead'
+              },
+              company: {
+                type: 'string',
+                description: 'Company name',
+                optional: true
+              },
+              email: {
+                type: 'string',
+                description: 'Email address',
+                optional: true
+              },
+              phone: {
+                type: 'string',
+                description: 'Phone number',
+                optional: true
+              },
+              source: {
+                type: 'string',
+                description: 'Lead source',
+                optional: true
+              },
+              notes: {
+                type: 'string',
+                description: 'Additional notes about the lead',
+                optional: true
+              }
+            },
+            required: ['firstName', 'lastName']
+          }
+        });
+        break;
       case 'notion':
         toolConfigs.push({
           type: 'function',
@@ -120,6 +179,10 @@ const getToolConfigurations = (tools: string[]) => {
  */
 function AgentConsole({ agent }: AgentConsoleProps) {
   // UI State
+
+  // State for draft lead handling
+const [draftLead, setDraftLead] = useState<DraftLead | null>(null);
+const [isEditingLead, setIsEditingLead] = useState(false);
   const [activeTab, setActiveTab] = useState('workspace');
   const [isRecording, setIsRecording] = useState(false);
   const [canPushToTalk, setCanPushToTalk] = useState(true);
@@ -165,6 +228,7 @@ function AgentConsole({ agent }: AgentConsoleProps) {
 
     // Current Conversation ID
     const [conversationId, setConversationId] = useState<string | null>(null);
+    const [functionCallArguments, setFunctionCallArguments] = useState<{[callId: string]: string}>({});
 
     // Modify the setItems logic to prevent duplicates
     const addUniqueItem = useCallback((newItem: ConversationItem) => {
@@ -286,45 +350,59 @@ function AgentConsole({ agent }: AgentConsoleProps) {
      * **Save Message to Database**
      * Saves a conversation message to the database via the saveMessage API route.
      */
-    const saveMessageToDatabase = useCallback(async (item: ConversationItem, conversationId: string) => {
-        try {
-            console.log('Attempting to save message:', {
-                messageId: item.id,
-                conversationId,
-                content: item.content
-            });
+   // File: components/agent-console/index.tsx
 
-            // Transform the content to match expected database structure
-            const content = {
-                text: item.content[0]?.text || item.content[0]?.transcript || '',  
-                transcript: item.content[0]?.transcript || undefined,  
-                audioUrl: item.content[0]?.audioUrl || undefined  
-            };
-
-            // Don't pass toolCalls separately as it should be part of metadata
-            const message = await addMessage({
-                id: item.id,
-                conversationId,
-                type: item.type as MessageType,
-                role: item.role as MessageRole,
-                content,
-                metadata: {
-                    ...item.metadata,
-                    toolCalls: item.metadata?.toolCalls || []
-                },
-                stepId: item.stepId,
-                parentMessageId: item.parentMessageId
-            });
-
-            console.log('Message saved to database:', message.id);
-            return message;
-        } catch (error) {
-            console.error('Failed to save message:', error);
-            console.error('Message data:', item);
-            toast.error('Failed to save message to database');
-            throw error;
-        }
-    }, []);
+   const saveMessageToDatabase = useCallback(async (item: ConversationItem, conversationId: string) => {
+    try {
+      console.log('Attempting to save message:', {
+        messageId: item.id,
+        conversationId,
+        content: item.content
+      });
+  
+      let content: MessageContent;
+      if (item.type === 'function_call') {
+        // For function calls, we'll format the content without using type
+        content = {
+          text: JSON.stringify(item.content[0]?.function_call),
+          function_call: item.content[0]?.function_call
+        };
+      } else {
+        // For regular messages, use standard content structure
+        content = {
+          text: item.content[0]?.text || item.content[0]?.transcript || '',
+          transcript: item.content[0]?.transcript,
+          audioUrl: item.content[0]?.audioUrl
+        };
+      }
+  
+      const message = await addMessage({
+        id: item.id,
+        conversationId,
+        type: item.type as MessageType,
+        role: item.role as MessageRole,
+        content,
+        metadata: {
+          ...item.metadata,
+          toolCalls: item.type === 'function_call' ? [{
+            tool: item.name || '',
+            input: JSON.parse(item.arguments || '{}'),
+            timestamp: new Date().toISOString()
+          }] : []
+        },
+        stepId: item.stepId,
+        parentMessageId: item.parentMessageId
+      });
+  
+      console.log('Message saved to database:', message.id);
+      return message;
+    } catch (error) {
+      console.error('Failed to save message:', error);
+      console.error('Message data:', item);
+      toast.error('Failed to save message to database');
+      throw error;
+    }
+  }, []);
 
     /**
      * **Handle WebSocket Message**
@@ -424,90 +502,138 @@ function AgentConsole({ agent }: AgentConsoleProps) {
                     addUniqueItem(data.item as ConversationItem);
                 }
                 break;
-
+// Update the handleWebSocketMessage switch case for function calls:
+case 'response.function_call_arguments.delta':
+    if (data.call_id && data.delta) {
+        setFunctionCallArguments(prev => ({
+            ...prev,
+            [data.call_id]: (prev[data.call_id] || '') + data.delta
+        }));
+    }
+    break;
       // Update the function call handling in handleWebSocketMessage
-case 'response.output_item.done':
-    if (data.item && conversationId) {
-      console.log('Response output item done:', data.item.id);
-      
-                    // Handle function calls
-                   // Handle function calls
-    if (data.item.type === 'function_call') {
-        try {
-          const args = JSON.parse(data.item.arguments);
+      case 'response.output_item.done':
+        if (data.item && conversationId) {
+          console.log('Response output item done:', data.item.id);
           
-          switch (data.item.name) {
-            case 'send_email':
-              // Update email draft state with firstName
-              setDraftEmail({
-                to: args.to,
-                subject: args.subject,
-                body: args.body || '',
-                firstName: args.firstName || ''  // Add firstName field
-              });
-              setActiveTab('workspace'); // Switch to workspace tab
-              setIsEditingEmail(true);
-              break;
-
-              case 'add_to_notion':
-                case 'add_notion_message':
-                  // Update note draft state
-                  setDraftNote(args.content || args.messageContent);
-                  setActiveTab('workspace'); // Switch to workspace tab
-                  setIsEditingDraft(true);
-                  break;
+          if (data.item.type === 'function_call') {
+            try {
+              const args = JSON.parse(data.item.arguments);
+              const functionMessage: ConversationItem = {
+                id: data.item.id,
+                type: 'function_call',
+                role: 'assistant',
+                object: 'realtime.item',
+                status: 'completed',
+                name: data.item.name || '',
+                call_id: data.item.call_id,
+                arguments: data.item.arguments,
+                content: [{
+                  text: JSON.stringify(args),
+                  function_call: {
+                    name: data.item.name || '',
+                    arguments: data.item.arguments,
+                    call_id: data.item.call_id
+                  },
+                  type: ''
+                }],
+                // Initialize metadata with required properties
+                metadata: {
+                  isFinal: true,
+                  toolCalls: []
+                }
+              };
+          
+              await saveMessageToDatabase(functionMessage, conversationId);
+              addUniqueItem(functionMessage);
       
+              // Handle different function types
+              switch (data.item.name) {
                 case 'store_memory':
-                  // Update memory state
                   setMemoryKv(prev => ({
                     ...prev,
                     [args.key]: args.value
                   }));
                   break;
+      
+                case 'send_email':
+                  setDraftEmail({
+                    to: args.to,
+                    subject: args.subject,
+                    body: args.body || '',
+                    firstName: args.firstName || ''
+                  });
+                  setActiveTab('workspace');
+                  setIsEditingEmail(true);
+                  break;
+      
+                case 'add_to_notion':
+                  setDraftNote(args.content);
+                  setActiveTab('workspace');
+                  setIsEditingDraft(true);
+                  break;
+
+
+                  
+// Then update the create_lead case with proper typing:
+case 'create_lead':
+  try {
+    // Format the lead data from the AI's response
+    const formattedLead = {
+      firstName: args.firstName,
+      lastName: args.lastName,
+      company: args.company || '',
+      email: args.email || '',
+      phone: args.phone || '',
+      source: args.source || '',
+      notes: args.notes || ''
+    };
+    
+    // Show the lead form in workspace tab first (like email)
+    setDraftLead(formattedLead);
+    setActiveTab('workspace');
+    setIsEditingLead(false);
+    
+    // Save the function call metadata
+    const toolCall = {
+      tool: data.item.name || '',
+      input: args,
+      timestamp: new Date().toISOString()
+    };
+
+    // Add the tool call to metadata without the result yet
+    functionMessage.metadata = {
+      ...functionMessage.metadata ?? {},
+      toolCalls: [...(functionMessage.metadata?.toolCalls ?? []), toolCall]
+    };
+    
+    // Note that we don't create the lead yet - that happens when the user clicks the submit button
+    // in the WorkspaceTab component
+
+  } catch (error) {
+    console.error('Error preparing lead:', error);
+    toast.error('Failed to prepare lead form');
+  }
+  break;
               }
-                              // Save the function call as a message
-        const functionMessage = {
-            ...data.item,
-            role: 'assistant' as MessageRole,  // Add type assertion
-            status: 'completed',
-            content: [{
-              type: 'function_call' as MessageType,  // Add type assertion
-              text: JSON.stringify(args),
-              transcript: `Function ${data.item.name} called with ${JSON.stringify(args)}`
-            }],
-            metadata: {
-              ...data.item.metadata,
-              isFinal: true,
-              toolCalls: [{
-                tool: data.item.name,
-                input: args,
-                timestamp: new Date().toISOString()
-              }]
+      
+            } catch (error) {
+              console.error('Error handling function call:', error);
+              toast.error('Failed to process function call');
             }
-          };
-  
-          await saveMessageToDatabase(functionMessage, conversationId);
-          addUniqueItem(functionMessage);
-
-
-                        } catch (error) {
-                            console.error('Error handling function call:', error);
-                            toast.error('Failed to process function call');
-                        }
-                    } else {
-                        // Handle regular assistant messages
-                        const assistantMessage = {
-                            ...data.item,
-                            role: 'assistant',
-                            status: 'completed'
-                        } as ConversationItem;
-
-                        await saveMessageToDatabase(assistantMessage, conversationId);
-                        addUniqueItem(assistantMessage);
-                    }
-                }
-                break;
-
+          } else {
+            // Handle regular assistant messages
+            const assistantMessage = {
+              ...data.item,
+              role: 'assistant',
+              status: 'completed'
+            } as ConversationItem;
+      
+            await saveMessageToDatabase(assistantMessage, conversationId);
+            addUniqueItem(assistantMessage);
+          }
+        }
+        break;
                 case 'response.done':
                     if (data.response?.usage && conversationId && currentSessionId) {
                         const usage = data.response.usage;
@@ -1302,25 +1428,95 @@ const stopRecording = useCallback(async () => {
      * Handles sending notes and emails.
      */
     const handleSendNote = useCallback(async () => {
-        if (!draftNote || !currentSessionId || !conversationId) return;
-        
-        try {
-            await axios.post('/api/addMessageToNotion', { 
-                messageContent: draftNote,
-                sessionId: currentSessionId 
-            });
-            
-            setNotesTaken(true);
-            setNotionMessageSent(true);
-            setDraftNote(null);
-
-            toast.success('Note successfully sent to Notion!');
-            await updateStepStatus('notion');
-        } catch (err) {
-            console.error('Error in add_notion_message:', err);
-            toast.error('Failed to add note to Notion.');
-        }
-    }, [draftNote, currentSessionId, conversationId, updateStepStatus]);
+      if (!draftNote || !currentSessionId || !conversationId) {
+          console.warn('Missing required data:', {
+              hasDraftNote: !!draftNote,
+              hasSessionId: !!currentSessionId,
+              hasConversationId: !!conversationId
+          });
+          toast.error('Missing required data to save note');
+          return;
+      }
+      
+      try {
+          // Add validation for note content
+          if (draftNote.trim().length === 0) {
+              toast.error('Note content cannot be empty');
+              return;
+          }
+  
+          // First validate that required environment variables are set
+          const response = await axios.get('/api/validateNotionConfig');
+          
+          // Then attempt to send the note
+          await axios.post('/api/addMessageToNotion', { 
+              messageContent: draftNote,
+              sessionId: currentSessionId 
+          }, {
+              // Add timeout and headers
+              timeout: 10000,
+              headers: {
+                  'Content-Type': 'application/json'
+              }
+          });
+          
+          setNotesTaken(true);
+          setNotionMessageSent(true);
+          setDraftNote(null);
+  
+          toast.success('Note successfully sent to Notion!');
+          await updateStepStatus('notion');
+  
+      } catch (err) {
+          // Type guard for Axios errors
+          if (axios.isAxiosError(err)) {
+              const statusCode = err.response?.status;
+              const errorMessage = err.response?.data?.error || err.message;
+              
+              console.error('Notion API Error:', {
+                  statusCode,
+                  message: errorMessage,
+                  config: err.config,
+                  data: err.response?.data
+              });
+  
+              // Handle specific error cases
+              switch (statusCode) {
+                  case 401:
+                      toast.error('Unauthorized: Please check Notion API token');
+                      break;
+                  case 404:
+                      toast.error('Notion page not found');
+                      break;
+                  case 429:
+                      toast.error('Rate limit exceeded. Please try again later.');
+                      break;
+                  case 400:
+                      toast.error(`Invalid request: ${errorMessage}`);
+                      break;
+                  case 500:
+                      toast.error('Server error. Please check Notion configuration.');
+                      break;
+                  default:
+                      toast.error('Failed to add note to Notion. Please try again.');
+              }
+          } else {
+              // Handle non-Axios errors
+              console.error('Error sending note to Notion:', err);
+              toast.error('Unexpected error while saving note');
+          }
+  
+          // Optionally retry for specific errors
+          if (axios.isAxiosError(err) && err.response?.status === 429) {
+              // Implement retry logic with exponential backoff
+              // This is just an example - you might want to make this more sophisticated
+              setTimeout(() => {
+                  toast.info('Retrying to send note...');
+                  handleSendNote();
+              }, 2000);
+          }
+      }
+  }, [draftNote, currentSessionId, conversationId, updateStepStatus]);
 
     const handleSendEmail = useCallback(async () => {
         if (!draftEmail || !currentSessionId || !conversationId) return;
@@ -1678,6 +1874,38 @@ const initializeOneToOneSession = useCallback(async () => {
             conversationId={conversationId}
             connectConversation={connectConversation}
             allowMultipleSessions={allowMultipleSessions} // Pass it to TabContent
+            draftLead={draftLead}
+            isEditingLead={isEditingLead}
+            handleEditLead={() => setIsEditingLead(true)}
+            handleSaveLead={(lead: DraftLead) => {
+              setDraftLead(lead);
+              setIsEditingLead(false);
+            }}
+            handleSendLead={async () => {
+              if (!draftLead || !conversationId) return;
+              try {
+                const leadResponse = await apiClient.post('/api/monday/create-lead', {
+                  leadData: draftLead,
+                  agentId: agent.id
+                }, {
+                  headers: {
+                    'x-agent-id': agent.id,
+                    'Content-Type': 'application/json'
+                  }
+                });
+          
+                if (leadResponse.data.success) {
+                  toast.success('Lead created in Monday.com');
+                  setDraftLead(null);
+                  // Update step status if needed
+                  await updateStepStatus('monday');
+                }
+              } catch (error) {
+                console.error('Failed to send lead:', error);
+                toast.error('Failed to create lead');
+              }
+            }}
+            setDraftLead={setDraftLead}
           />
 
           <Footer

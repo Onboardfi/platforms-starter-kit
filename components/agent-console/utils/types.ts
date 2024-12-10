@@ -26,23 +26,44 @@ export interface Tool {
   parameters: object;
 }
 
+export interface DraftLead {
+  firstName: string;
+  lastName: string;
+  company?: string;
+  email?: string;
+  phone?: string;
+  source?: string;
+  notes?: string;
+}
+
+// Add this new interface for function calls
+export interface FunctionCall {
+  name: string;
+  arguments: string;
+  call_id?: string;
+}
 
 /**
  * **ConversationItem Interface**
  */
 // Remove this duplicate interface since you're importing it
-export interface ConversationItem {  // Add 'export'
+// Update the ConversationItem interface
+export interface ConversationItem {
   id: string;
   object: 'realtime.item';
-  type: string;
+  type: string | 'function_call'; // Add function_call as a possible type
   role: string;
-  status: 'completed' | 'pending';
+  status: 'completed' | 'pending' | 'in_progress';
   content: Array<{
-      type: string;
-      text?: string;
-      transcript?: string;
-      audioUrl?: string;
+    type: string;
+    text?: string;
+    transcript?: string;
+    audioUrl?: string;
+    function_call?: FunctionCall; // Add function_call property
   }>;
+  name?: string;        // Add for function calls
+  call_id?: string;     // Add for function calls
+  arguments?: string;   // Add for function calls
   metadata?: Record<string, any>;
   stepId?: string;
   parentMessageId?: string;
@@ -163,6 +184,29 @@ export interface WebSocketPayload {
   [key: string]: any;
 }
 
+
+
+
+
+
+
+export interface MessageContent {
+  text?: string;
+  transcript?: string;
+  audioUrl?: string;
+  type?: string;  // Add this to support function call type
+  function_call?: FunctionCall; // Add this for function calls
+}
+
+// Make sure the ToolCall interface has required fields
+export interface ToolCall {
+  tool: string;         // Make this required (no undefined)
+  input: Record<string, any>;
+  result?: Record<string, any>;
+  error?: string;
+  timestamp: string;
+  duration?: number;
+}
 /**
  * **WebSocketMessage Interface**
  */
@@ -239,6 +283,13 @@ export interface TabContentProps {
   createNewSession: () => Promise<string | null>;
   currentSessionId: string | null;
   onSessionSelect: (sessionId: string) => Promise<void>;
+
+  draftLead: DraftLead | null;
+  isEditingLead: boolean;
+  handleEditLead: () => void;
+  handleSaveLead: (lead: DraftLead) => void;
+  handleSendLead: () => Promise<void>;
+  setDraftLead: (lead: DraftLead | null) => void;
 }
 
 /**

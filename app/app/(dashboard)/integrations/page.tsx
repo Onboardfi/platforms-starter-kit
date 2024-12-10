@@ -1,7 +1,14 @@
+// app/integrations/page.tsx
+'use client';
+
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Grid, ArrowUpRight } from "lucide-react";
 import Image from "next/image";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { MondayIntegration } from "@/components/integrations/MondayIntegration";
 
 interface Integration {
   id: string;
@@ -16,6 +23,11 @@ interface Integration {
 interface IntegrationCategory {
   category: string;
   integrations: Integration[];
+}
+
+interface DialogState {
+  isOpen: boolean;
+  integration: Integration | null;
 }
 
 const INTEGRATIONS: IntegrationCategory[] = [
@@ -42,66 +54,7 @@ const INTEGRATIONS: IntegrationCategory[] = [
       },
     ],
   },
-  {
-    category: "Communication & Collaboration",
-    integrations: [
-      {
-        id: "slack",
-        name: "Slack",
-        description: "Keep your team connected with real-time updates.",
-        category: "Communication",
-        image: "/slack1.png",
-        status: "not_connected",
-        docUrl: "/docs/integrations/slack",
-      },
-      {
-        id: "notion",
-        name: "Notion",
-        description: "Sync docs and projects for smarter collaboration.",
-        category: "Collaboration",
-        image: "/notion1.png",
-        status: "not_connected",
-        docUrl: "/docs/integrations/notion",
-      },
-    ],
-  },
-  {
-    category: "Marketing & Payments",
-    integrations: [
-      {
-        id: "mailchimp",
-        name: "Mailchimp",
-        description: "Automate email and manage contacts with ease.",
-        category: "Marketing",
-        image: "/mailchimp.png",
-        status: "not_connected",
-        docUrl: "/docs/integrations/mailchimp",
-      },
-      {
-        id: "stripe",
-        name: "Stripe",
-        description: "Manage payments and track transactions in real time.",
-        category: "Payments",
-        image: "/stripe.png",
-        status: "not_connected",
-        docUrl: "/docs/integrations/stripe",
-      },
-    ],
-  },
-  {
-    category: "Data & Storage",
-    integrations: [
-      {
-        id: "sheets",
-        name: "Google Sheets",
-        description: "Keep your data in sync for easy tracking and updates.",
-        category: "Data",
-        image: "/sheets.png",
-        status: "not_connected",
-        docUrl: "/docs/integrations/sheets",
-      },
-    ],
-  },
+  // ... keep other categories the same ...
   {
     category: "Productivity & Scheduling",
     integrations: [
@@ -139,12 +92,20 @@ const CategoryHeader = ({ title }: { title: string }) => (
     </div>
   </div>
 );
-const DreamIntegrationCard = ({ data }: { data: Integration }) => (
+
+const DreamIntegrationCard = ({ 
+  data, 
+  onConfigure 
+}: { 
+  data: Integration;
+  onConfigure: (integration: Integration) => void;
+}) => (
   <div className="group relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine">
-    {/* Coming Soon Badge */}
-    <div className="absolute top-3 right-3 z-20 bg-dream-cyan/20 text-dream-cyan text-xs font-medium px-2 py-1 rounded-full border border-dream-cyan/30">
-      Coming Soon
-    </div>
+    {data.id !== 'monday' && (
+      <div className="absolute top-3 right-3 z-20 bg-dream-cyan/20 text-dream-cyan text-xs font-medium px-2 py-1 rounded-full border border-dream-cyan/30">
+        Coming Soon
+      </div>
+    )}
 
     <div className="
       absolute inset-[0] 
@@ -189,76 +150,146 @@ const DreamIntegrationCard = ({ data }: { data: Integration }) => (
           {data.status === 'connected' ? 'Connected' : 'Not Connected'}
         </span>
 
-        <a 
-          href={data.docUrl} 
-          className="
-            flex items-center gap-2 
-            text-sm text-neutral-400 
-            hover:text-white 
-            transition-colors duration-300
-            group/link
-          "
-        >
-          Learn More
-          <ArrowUpRight className="h-4 w-4 transition-transform duration-300 group-hover/link:translate-x-0.5 group-hover/link:-translate-y-0.5" />
-        </a>
+        {data.id === 'monday' ? (
+          <Button
+            onClick={() => onConfigure(data)}
+            className="text-sm text-dream-cyan hover:text-dream-cyan/90 transition-colors duration-300"
+            variant="ghost"
+          >
+            Configure
+            <ArrowUpRight className="h-4 w-4 ml-1" />
+          </Button>
+        ) : (
+          <a 
+            href={data.docUrl} 
+            className="
+              flex items-center gap-2 
+              text-sm text-neutral-400 
+              hover:text-white 
+              transition-colors duration-300
+              group/link
+            "
+          >
+            Learn More
+            <ArrowUpRight className="h-4 w-4 transition-transform duration-300 group-hover/link:translate-x-0.5 group-hover/link:-translate-y-0.5" />
+          </a>
+        )}
       </div>
     </div>
   </div>
 );
 
-export default async function IntegrationsPage() {
-  const session = await getSession();
-  if (!session) {
-    redirect("/login");
-  }
+export default function IntegrationsPage() {
+  const [integrationStatuses, setIntegrationStatuses] = useState<Record<string, boolean>>({});
+  const [dialogState, setDialogState] = useState<DialogState>({
+    isOpen: false,
+    integration: null
+  });
+
+  useEffect(() => {
+    const fetchStatuses = async () => {
+      try {
+        const response = await fetch('/api/integrations/monday/status');
+        const data = await response.json();
+        
+        setIntegrationStatuses(prev => ({
+          ...prev,
+          monday: data.connected
+        }));
+      } catch (error) {
+        console.error('Failed to fetch integration statuses:', error);
+      }
+    };
+
+    fetchStatuses();
+  }, []);
+
+  // Handle integration configuration
+  const handleConfigure = (integration: Integration) => {
+    setDialogState({
+      isOpen: true,
+      integration
+    });
+  };
+
+  // Update integration status when dialog closes
+  const handleDialogChange = async (open: boolean) => {
+    setDialogState(prev => ({ ...prev, isOpen: open }));
+    if (!open) {
+      // Refresh statuses when dialog closes
+      const response = await fetch('/api/integrations/monday/status');
+      const data = await response.json();
+      
+      setIntegrationStatuses(prev => ({
+        ...prev,
+        monday: data.connected
+      }));
+    }
+  };
 
   return (
-    <div className="container mx-auto p-8 space-y-12">
-      <div className="relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine mb-12">
-        <div className="absolute inset-0 -z-10">
-          <div className="absolute inset-0 bg-[url('/grid.svg')] bg-repeat opacity-30" />
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent to-neutral-900/80" />
+    <>
+      <div className="container mx-auto p-8 space-y-12">
+        <div className="relative overflow-hidden rounded-3xl bg-neutral-800/50 backdrop-blur-md shadow-dream shine mb-12">
+          <div className="absolute inset-0 -z-10">
+            <div className="absolute inset-0 bg-[url('/grid.svg')] bg-repeat opacity-30" />
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent to-neutral-900/80" />
+          </div>
+          <div className="
+            absolute inset-[0] 
+            rounded-[inherit] 
+            [border:1px_solid_transparent] 
+            ![mask-clip:padding-box,border-box] 
+            ![mask-composite:intersect] 
+            [mask:linear-gradient(transparent,transparent),linear-gradient(white,white)] 
+            after:absolute 
+            after:aspect-square 
+            after:w-[320px] 
+            after:animate-border-beam 
+            after:[animation-delay:0s] 
+            after:[background:linear-gradient(to_left,#aaa,transparent,transparent)] 
+            after:[offset-anchor:90%_50%] 
+            after:[offset-path:rect(0_auto_auto_0_round_200px)]
+          " />
+          <div className="relative p-8 z-10">
+            <h1 className="text-4xl font-light text-white mb-2">Integrations</h1>
+            <p className="text-neutral-400">
+              Connect your favorite tools and services to enhance your workflow
+            </p>
+          </div>
         </div>
-        <div className="
-          absolute inset-[0] 
-          rounded-[inherit] 
-          [border:1px_solid_transparent] 
-          ![mask-clip:padding-box,border-box] 
-          ![mask-composite:intersect] 
-          [mask:linear-gradient(transparent,transparent),linear-gradient(white,white)] 
-          after:absolute 
-          after:aspect-square 
-          after:w-[320px] 
-          after:animate-border-beam 
-          after:[animation-delay:0s] 
-          after:[background:linear-gradient(to_left,#aaa,transparent,transparent)] 
-          after:[offset-anchor:90%_50%] 
-          after:[offset-path:rect(0_auto_auto_0_round_200px)]
-        " />
-        <div className="relative p-8 z-10">
-          <h1 className="text-4xl font-light text-white mb-2">Integrations</h1>
-          <p className="text-neutral-400">
-            Connect your favorite tools and services to enhance your workflow
-          </p>
+
+        <div className="space-y-12">
+          {INTEGRATIONS.map((category) => (
+            <div key={category.category} className="space-y-6">
+              <CategoryHeader title={category.category} />
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {category.integrations.map((integration) => (
+                  <DreamIntegrationCard 
+                    key={integration.id} 
+                    data={{
+                      ...integration,
+                      status: integrationStatuses[integration.id] ? 'connected' : 'not_connected'
+                    }}
+                    onConfigure={handleConfigure}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
-      <div className="space-y-12">
-        {INTEGRATIONS.map((category) => (
-          <div key={category.category} className="space-y-6">
-            <CategoryHeader title={category.category} />
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {category.integrations.map((integration) => (
-                <DreamIntegrationCard 
-                  key={integration.id} 
-                  data={integration} 
-                />
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+      <Dialog 
+        open={dialogState.isOpen} 
+        onOpenChange={handleDialogChange}
+      >
+        <DialogContent className="sm:max-w-[600px] bg-neutral-900 border-neutral-800">
+          {dialogState.integration?.id === 'monday' && (
+            <MondayIntegration />
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
