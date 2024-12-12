@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { MondayOAuthClient } from '@/lib/monday/oauth-client';
+import { cookies } from 'next/headers';
 
 export async function GET(request: Request) {
   const session = await getSession();
@@ -25,9 +26,23 @@ export async function GET(request: Request) {
 
   const state = client.generateState();
   
+  // Store state and organizationId in cookies for verification
+  cookies().set('monday_oauth_state', state, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 3600 // 1 hour
+  });
+  
+  cookies().set('monday_org_id', session.organizationId, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 3600
+  });
+
   try {
     const authUrl = client.getAuthorizationUrl(
-      // Using the correct Monday.com scopes
       ['boards:read', 'boards:write'],
       {
         state,

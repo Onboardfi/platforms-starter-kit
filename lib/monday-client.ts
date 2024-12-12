@@ -32,6 +32,9 @@ interface MondayClientConfig {
       }
     }
   
+    updateToken(newToken: string) {
+      this.token = newToken;
+    }
     private async delay(ms: number): Promise<void> {
       return new Promise(resolve => setTimeout(resolve, ms));
     }

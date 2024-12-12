@@ -137,10 +137,11 @@ export const organizationIntegrations = pgTable(
     organizationId: text('organizationId')
       .notNull()
       .references(() => organizations.id, { onDelete: 'cascade' }),
-    provider: text('provider').notNull(), // e.g., 'monday'
+    provider: text('provider').notNull(),
     accessToken: text('accessToken'),
     tokenType: text('tokenType'),
     scope: text('scope'),
+    refreshToken: text('refreshToken'), // Add this line if you want refresh token support
     settings: jsonb('settings').$type<{
       boardId?: string;
       groupId?: string;
