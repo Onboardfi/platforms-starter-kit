@@ -8,7 +8,8 @@ import {
   MessageContent,
   MessageMetadata,
 } from '@/lib/types';
-
+import { AxiosError } from 'axios';
+import { Site } from '@/types/agent';
 // Core React imports
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 
@@ -179,7 +180,7 @@ const getToolConfigurations = (tools: string[]) => {
  */
 function AgentConsole({ agent }: AgentConsoleProps) {
   // UI State
-
+  const agentSite = agent.site as Site | undefined;
   // State for draft lead handling
 const [draftLead, setDraftLead] = useState<DraftLead | null>(null);
 const [isEditingLead, setIsEditingLead] = useState(false);
@@ -1842,6 +1843,7 @@ const initializeOneToOneSession = useCallback(async () => {
           <TabContent
             activeTab={activeTab}
             agentId={agent.id}
+            agentSite={agentSite!} // Add the agentSite prop
             items={items}
             draftNote={draftNote}
             draftEmail={draftEmail}
@@ -1878,28 +1880,88 @@ const initializeOneToOneSession = useCallback(async () => {
               setDraftLead(lead);
               setIsEditingLead(false);
             }}
-            handleSendLead={async () => {
-              if (!draftLead || !conversationId) return;
-              try {
-                const leadResponse = await apiClient.post('/api/monday/create-lead', {
-                  leadData: draftLead,
-                  agentId: agent.id
-                }, {
-                  headers: {
-                    'x-agent-id': agent.id,
-                    'Content-Type': 'application/json'
-                  }
-                });
-          
+
+
+
+       // Then in the handleSendLead function:
+handleSendLead={async () => {
+  if (!draftLead || !conversationId) return;
+  try {
+    // Log attempt with proper type handling
+    console.log('Attempting to create lead:', {
+      draftLead,
+      agentId: agent.id,
+      organizationId: agentSite?.organizationId
+    });
+
+    // Make the API call with proper type handling
+    const leadResponse = await apiClient.post('/api/monday/create-lead', {
+      leadData: draftLead,
+      agentId: agent.id,
+      siteId: agentSite?.id, // Use the properly typed site reference
+      organizationId: agentSite?.organizationId
+    }, {
+      headers: {
+        'x-agent-id': agent.id,
+        'x-organization-id': agentSite?.organizationId,
+        'Content-Type': 'application/json'
+      }
+    });
+            
                 if (leadResponse.data.success) {
+                  console.log('Lead created successfully:', leadResponse.data);
                   toast.success('Lead created in Monday.com');
                   setDraftLead(null);
+                  
+                  // Update metadata with lead creation details
+                  const metadata = {
+                    leadId: leadResponse.data.leadId,
+                    timestamp: new Date().toISOString()
+                  };
+            
                   // Update step status if needed
                   await updateStepStatus('monday');
                 }
-              } catch (error) {
-                console.error('Failed to send lead:', error);
-                toast.error('Failed to create lead');
+              } catch (err) {
+                // Proper error type handling
+                const error = err as Error | AxiosError;
+                
+                // Enhanced error logging with type checking
+                console.error('Failed to send lead:', {
+                  error: error instanceof Error ? error.message : 'Unknown error',
+                  draftLead,
+                  agentId: agent.id,
+                  organizationId: (agent.site as Site)?.organizationId,
+                  response: axios.isAxiosError(error) ? error.response?.data : undefined
+                });
+            
+                // More specific error messages with proper type handling
+                if (axios.isAxiosError(error)) {
+                  const statusCode = error.response?.status;
+                  const errorMessage = error.response?.data?.error || error.message;
+            
+                  switch (statusCode) {
+                    case 400:
+                      toast.error(`Invalid lead data: ${errorMessage}`);
+                      break;
+                    case 401:
+                      toast.error('Monday.com integration not authenticated');
+                      break;
+                    case 404:
+                      toast.error('Monday.com board or integration not found');
+                      break;
+                    case 429:
+                      toast.error('Too many requests to Monday.com. Please try again later.');
+                      break;
+                    default:
+                      toast.error(`Failed to create lead: ${errorMessage}`);
+                  }
+                } else {
+                  toast.error('Failed to create lead');
+                }
+            
+                // Reset state on error
+                setDraftLead(null);
               }
             }}
             setDraftLead={setDraftLead}

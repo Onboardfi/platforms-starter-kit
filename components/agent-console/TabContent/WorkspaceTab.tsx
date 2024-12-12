@@ -1,4 +1,5 @@
-// /Users/bobbygilbert/Documents/GitHub/platforms-starter-kit/components/agent-console/TabContent/WorkspaceTab.tsx
+//Users/bobbygilbert/Documents/Github/platforms-starter-kit/components/agent-console/TabContent/WorkspaceTab.tsx
+// 
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -6,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { EmailTemplate } from "@/components/email-template";
 import Spline from '@splinetool/react-spline';
 import { DraftEmail, DraftLead } from "../utils/types";
+import MondayLeadForm from '@/components/MondayLeadForm';
 
 interface WorkspaceTabProps {
   draftNote: string | null;
@@ -29,6 +31,11 @@ interface WorkspaceTabProps {
   handleSaveLead: (lead: DraftLead) => void;
   handleSendLead: () => Promise<void>;
   setDraftLead: (lead: DraftLead | null) => void;
+  agentId: string;
+  agentSite: {
+    id: string;
+    organizationId: string;
+  };
 }
 
 export default function WorkspaceTab({
@@ -53,6 +60,8 @@ export default function WorkspaceTab({
   handleSaveLead,
   handleSendLead,
   setDraftLead,
+  agentId,
+  agentSite
 }: WorkspaceTabProps) {
   const handleSplineLoad = (splineApp: any) => {
     console.log('Spline scene loaded');
@@ -217,117 +226,49 @@ export default function WorkspaceTab({
                 </div>
               )}
 
-              {draftLead && (
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-white font-mono">Draft Lead</h3>
-                  {isEditingLead ? (
-                    <div className="space-y-4">
-                      <Input
-                        type="text"
-                        value={draftLead.firstName}
-                        onChange={(e) => setDraftLead({ ...draftLead, firstName: e.target.value })}
-                        placeholder="First Name"
-                        className="bg-dark-accent-1 border-gray-800 text-white font-mono"
-                      />
-                      <Input
-                        type="text"
-                        value={draftLead.lastName}
-                        onChange={(e) => setDraftLead({ ...draftLead, lastName: e.target.value })}
-                        placeholder="Last Name"
-                        className="bg-dark-accent-1 border-gray-800 text-white font-mono"
-                      />
-                      <Input
-                        type="text"
-                        value={draftLead.company || ''}
-                        onChange={(e) => setDraftLead({ ...draftLead, company: e.target.value })}
-                        placeholder="Company"
-                        className="bg-dark-accent-1 border-gray-800 text-white font-mono"
-                      />
-                      <Input
-                        type="email"
-                        value={draftLead.email || ''}
-                        onChange={(e) => setDraftLead({ ...draftLead, email: e.target.value })}
-                        placeholder="Email"
-                        className="bg-dark-accent-1 border-gray-800 text-white font-mono"
-                      />
-                      <Input
-                        type="tel"
-                        value={draftLead.phone || ''}
-                        onChange={(e) => setDraftLead({ ...draftLead, phone: e.target.value })}
-                        placeholder="Phone"
-                        className="bg-dark-accent-1 border-gray-800 text-white font-mono"
-                      />
-                      <Input
-                        type="text"
-                        value={draftLead.source || ''}
-                        onChange={(e) => setDraftLead({ ...draftLead, source: e.target.value })}
-                        placeholder="Source"
-                        className="bg-dark-accent-1 border-gray-800 text-white font-mono"
-                      />
-                      <textarea
-                        value={draftLead.notes || ''}
-                        onChange={(e) => setDraftLead({ ...draftLead, notes: e.target.value })}
-                        placeholder="Notes"
-                        className="w-full min-h-[100px] bg-dark-accent-1 border border-gray-800 rounded-lg p-4 text-white font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-white"
-                      />
-                    </div>
-                  ) : (
-                    <div className="bg-dark-accent-1 border border-gray-800 rounded-lg p-4">
-                      <div className="space-y-2 text-sm font-mono">
-                        <div className="flex">
-                          <span className="text-gray-400 w-32">Name:</span>
-                          <span className="text-white">{draftLead.firstName} {draftLead.lastName}</span>
-                        </div>
-                        {draftLead.company && (
-                          <div className="flex">
-                            <span className="text-gray-400 w-32">Company:</span>
-                            <span className="text-white">{draftLead.company}</span>
-                          </div>
-                        )}
-                        {draftLead.email && (
-                          <div className="flex">
-                            <span className="text-gray-400 w-32">Email:</span>
-                            <span className="text-white">{draftLead.email}</span>
-                          </div>
-                        )}
-                        {draftLead.phone && (
-                          <div className="flex">
-                            <span className="text-gray-400 w-32">Phone:</span>
-                            <span className="text-white">{draftLead.phone}</span>
-                          </div>
-                        )}
-                        {draftLead.source && (
-                          <div className="flex">
-                            <span className="text-gray-400 w-32">Source:</span>
-                            <span className="text-white">{draftLead.source}</span>
-                          </div>
-                        )}
-                        {draftLead.notes && (
-                          <div className="flex">
-                            <span className="text-gray-400 w-32">Notes:</span>
-                            <span className="text-white whitespace-pre-wrap">{draftLead.notes}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  <div className="flex justify-end space-x-4">
-                    <Button
-                      variant="outline"
-                      onClick={isEditingLead ? () => handleSaveLead(draftLead) : handleEditLead}
-                      className="font-mono"
-                    >
-                      {isEditingLead ? "Save Changes" : "Edit Lead"}
-                    </Button>
-                    <Button
-                      onClick={handleSendLead}
-                      className="font-mono"
-                    >
-                      Create Lead
-                    </Button>
-                  </div>
-                </div>
-              )}
+
+{draftLead && (
+  <div className="space-y-4">
+    <h3 className="text-lg font-semibold text-white font-mono">Draft Lead</h3>
+    <MondayLeadForm
+      initialData={{
+        firstName: draftLead.firstName || '',
+        lastName: draftLead.lastName || '',
+        company: draftLead.company || '',
+        email: draftLead.email || '',
+        phone: draftLead.phone || '',
+        source: draftLead.source || '',
+        notes: draftLead.notes || ''
+      }}
+      agentId={agentId}
+      onSave={(lead) => {
+        handleSaveLead(lead);
+        setDraftLead(lead);
+        handleEditLead();
+      }}
+      onCancel={() => {
+        handleEditLead();
+      }}
+    />
+    {!isEditingLead && (
+      <div className="flex justify-end space-x-4">
+        <Button
+          variant="outline"
+          onClick={handleEditLead}
+          className="font-mono"
+        >
+          Edit Lead
+        </Button>
+        <Button
+          onClick={handleSendLead}
+          className="font-mono"
+        >
+          Create Lead
+        </Button>
+      </div>
+    )}
+  </div>
+)}
             </div>
           )}
         </CardContent>

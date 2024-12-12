@@ -16,6 +16,10 @@ import { cn } from '@/lib/utils';
 export interface TabContentProps {
   activeTab: string;
   agentId: string;
+  agentSite: {
+    id: string;
+    organizationId: string;
+  };
   items: any[];
   draftNote: string | null;
   draftEmail: DraftEmail | null;
@@ -39,7 +43,6 @@ export interface TabContentProps {
   allowMultipleSessions?: boolean;
   conversationId: string | null;
   connectConversation: () => Promise<void>;
-
   draftLead: DraftLead | null;
   isEditingLead: boolean;
   handleEditLead: () => void;
@@ -51,6 +54,7 @@ export interface TabContentProps {
 export function TabContent({
   activeTab,
   agentId,
+  agentSite, // Add this
   items,
   draftNote,
   draftEmail,
@@ -74,7 +78,6 @@ export function TabContent({
   allowMultipleSessions,
   conversationId,
   connectConversation,
-  // Add the missing lead-related props
   draftLead,
   isEditingLead,
   handleEditLead,
@@ -124,16 +127,16 @@ export function TabContent({
     if (activeTab === 'sessions' && allowMultipleSessions === false) {
       return null;
     }
-
+  
     const requirements = tabRequirements[activeTab] || {
       requiresSession: false,
       requiresConversation: false,
     };
-
+  
     const shouldShowNoSessionPrompt =
       (requirements.requiresSession && !currentSessionId) ||
       (requirements.requiresConversation && !conversationId);
-
+  
     if (shouldShowNoSessionPrompt) {
       return (
         <div className="flex flex-col items-center justify-center py-8 space-y-4">
@@ -161,7 +164,7 @@ export function TabContent({
         </div>
       );
     }
-
+  
     switch (activeTab) {
       case 'workspace':
         return (
@@ -181,13 +184,14 @@ export function TabContent({
             currentSessionId={currentSessionId}
             isRecording={false}
             isListening={false}
-            // Pass through the lead-related props
             draftLead={draftLead}
             isEditingLead={isEditingLead}
             handleEditLead={handleEditLead}
             handleSaveLead={handleSaveLead}
             handleSendLead={handleSendLead}
             setDraftLead={setDraftLead}
+            agentId={agentId}
+            agentSite={agentSite} // Now we can pass this through
           />
         );
 
