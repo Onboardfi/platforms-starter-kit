@@ -74,6 +74,13 @@ export function TabContent({
   allowMultipleSessions,
   conversationId,
   connectConversation,
+  // Add the missing lead-related props
+  draftLead,
+  isEditingLead,
+  handleEditLead,
+  handleSaveLead,
+  handleSendLead,
+  setDraftLead,
 }: TabContentProps) {
   const handleSessionCreated = useCallback(async () => {
     try {
@@ -157,7 +164,6 @@ export function TabContent({
 
     switch (activeTab) {
       case 'workspace':
-        // Provide placeholder lead-related props to avoid TypeScript errors
         return (
           <WorkspaceTab
             draftNote={draftNote}
@@ -175,12 +181,13 @@ export function TabContent({
             currentSessionId={currentSessionId}
             isRecording={false}
             isListening={false}
-            draftLead={null}
-            isEditingLead={false}
-            handleEditLead={() => {}}
-            handleSaveLead={() => {}}
-            handleSendLead={async () => {}}
-            setDraftLead={() => {}}
+            // Pass through the lead-related props
+            draftLead={draftLead}
+            isEditingLead={isEditingLead}
+            handleEditLead={handleEditLead}
+            handleSaveLead={handleSaveLead}
+            handleSendLead={handleSendLead}
+            setDraftLead={setDraftLead}
           />
         );
 

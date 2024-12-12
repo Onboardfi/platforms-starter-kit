@@ -1,5 +1,5 @@
-
-// components/integrations/MondayIntegration.tsx
+//Users/bobbygilbert/Documents/GitHub/platforms-starter-kit/components/integrations/MondayIntegration.tsx
+import React from 'react';
 import { useEffect, useState } from 'react';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,7 @@ interface MondaySettings {
   columnMappings?: Record<string, string>;
 }
 
-export function MondayIntegration() {
+const MondayIntegration = () => {
   const { data: session, status } = useSession();
   const [isConnected, setIsConnected] = useState(false);
   const [settings, setSettings] = useState<MondaySettings>({});
@@ -63,6 +63,8 @@ export function MondayIntegration() {
       toast.error('Please select an organization first');
       return;
     }
+    // Store current URL to return after authentication
+    localStorage.setItem('mondayAuthRedirect', window.location.href);
     window.location.href = '/api/auth/monday';
   };
 
@@ -84,13 +86,20 @@ export function MondayIntegration() {
         body: JSON.stringify(settings)
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const error = await response.json();
         if (response.status === 401) {
-          setIsConnected(false);
+          if (data.requiresAuth) {
+            setIsConnected(false);
+            // Store current settings in localStorage
+            localStorage.setItem('mondayPendingSettings', JSON.stringify(settings));
+            handleConnect();
+            return;
+          }
           throw new Error('Session expired. Please reconnect to Monday.com');
         }
-        throw new Error(error.error || 'Failed to save settings');
+        throw new Error(data.error || 'Failed to save settings');
       }
 
       await fetchIntegrationStatus();
@@ -103,7 +112,6 @@ export function MondayIntegration() {
       toast.error(errorMessage);
       
       if (error instanceof Error && error.message.includes('Session expired')) {
-        // Prompt user to reconnect
         setIsConnected(false);
       }
     } finally {
@@ -111,7 +119,23 @@ export function MondayIntegration() {
     }
   };
 
-  // Show loading state while session is loading
+  // Restore pending settings after reconnection
+  useEffect(() => {
+    if (isConnected) {
+      const pendingSettings = localStorage.getItem('mondayPendingSettings');
+      if (pendingSettings) {
+        try {
+          const parsed = JSON.parse(pendingSettings);
+          setSettings(parsed);
+          handleSaveSettings();
+          localStorage.removeItem('mondayPendingSettings');
+        } catch (e) {
+          console.error('Failed to restore pending settings:', e);
+        }
+      }
+    }
+  }, [isConnected]);
+
   if (status === 'loading') {
     return (
       <Card className="bg-dark-accent-1 border-dark-accent-2">
@@ -124,7 +148,6 @@ export function MondayIntegration() {
     );
   }
 
-  // Show authentication required state
   if (status === 'unauthenticated') {
     return (
       <Card className="bg-dark-accent-1 border-dark-accent-2">
@@ -137,7 +160,6 @@ export function MondayIntegration() {
     );
   }
 
-  // Show organization required state
   if (!session?.organizationId) {
     return (
       <Card className="bg-dark-accent-1 border-dark-accent-2">
@@ -158,11 +180,12 @@ export function MondayIntegration() {
             <img src="/monday.png" alt="Monday.com" className="w-8 h-8" />
             <h3 className="text-lg font-semibold text-white">Monday.com CRM</h3>
           </div>
-          {!isConnected && (
-            <Button onClick={handleConnect} className="shine">
-              Connect Monday.com
-            </Button>
-          )}
+          <Button 
+            onClick={handleConnect} 
+            className={`shine ${!isConnected ? 'bg-dream-cyan' : ''}`}
+          >
+            {isConnected ? 'Reconnect' : 'Connect Monday.com'}
+          </Button>
         </div>
       </CardHeader>
 
@@ -210,4 +233,6 @@ export function MondayIntegration() {
       )}
     </Card>
   );
-}
+};
+
+export { MondayIntegration };

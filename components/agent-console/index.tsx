@@ -576,43 +576,40 @@ case 'response.function_call_arguments.delta':
 
                   
 // Then update the create_lead case with proper typing:
+// In handleWebSocketMessage, update the create_lead case:
+
 case 'create_lead':
   try {
-    // Format the lead data from the AI's response
-    const formattedLead = {
+    // Format the email properly
+    const formattedEmail = args.email?.includes('@') ? 
+      args.email : 
+      `${args.email?.replace(/\s+at\s+/g, '@')}`;
+
+    // Format the lead data
+    const formattedLead: DraftLead = {
       firstName: args.firstName,
       lastName: args.lastName,
       company: args.company || '',
-      email: args.email || '',
+      email: formattedEmail || '',
       phone: args.phone || '',
       source: args.source || '',
       notes: args.notes || ''
     };
     
-    // Show the lead form in workspace tab first (like email)
+    // Update state in a single batch
     setDraftLead(formattedLead);
     setActiveTab('workspace');
     setIsEditingLead(false);
-    
-    // Save the function call metadata
-    const toolCall = {
-      tool: data.item.name || '',
-      input: args,
-      timestamp: new Date().toISOString()
-    };
 
-    // Add the tool call to metadata without the result yet
-    functionMessage.metadata = {
-      ...functionMessage.metadata ?? {},
-      toolCalls: [...(functionMessage.metadata?.toolCalls ?? []), toolCall]
-    };
-    
-    // Note that we don't create the lead yet - that happens when the user clicks the submit button
-    // in the WorkspaceTab component
+    // Log success after state updates
+    console.log('Lead form displayed with data:', formattedLead);
 
   } catch (error) {
-    console.error('Error preparing lead:', error);
+    console.error('Error preparing lead form:', error);
     toast.error('Failed to prepare lead form');
+    // Reset states on error
+    setDraftLead(null);
+    setIsEditingLead(false);
   }
   break;
               }

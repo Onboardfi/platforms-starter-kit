@@ -291,7 +291,6 @@ export interface TabContentProps {
   handleSendLead: () => Promise<void>;
   setDraftLead: (lead: DraftLead | null) => void;
 }
-
 /**
  * **OnboardingProgressSidebarProps Interface**
  */
