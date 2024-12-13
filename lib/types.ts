@@ -13,9 +13,8 @@ export interface BaseStep {
   description: string;
   completed: boolean;
   completedAt?: string;
-  completionTool: 'email' | 'memory' | 'notesTaken' | 'notion' | null;
+  completionTool: 'email' | 'memory' | 'notesTaken' | 'notion' | 'monday' | null;
 }
-
 // Session-specific step interface
 export interface SessionStep extends BaseStep {}
 
@@ -262,7 +261,7 @@ export interface Step {
   description: string;
   completed: boolean;
   completedAt?: string | null;
-  completionTool: 'email' | 'memory' | 'notesTaken' | 'notion' | null;
+  completionTool: 'email' | 'memory' | 'notesTaken' | 'notion' | 'monday' | null;
 }
 
 

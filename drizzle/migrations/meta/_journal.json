@@ -36,6 +36,13 @@
       "when": 1733875643447,
       "tag": "0004_sticky_machine_man",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1734096783656,
+      "tag": "0005_jittery_colleen_wing",
+      "breakpoints": true
     }
   ]
 }

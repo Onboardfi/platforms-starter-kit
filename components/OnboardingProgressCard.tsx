@@ -1,3 +1,5 @@
+///Users/bobbygilbert/Documents/Github/platforms-starter-kit/components/OnboardingProgressCard.tsx
+
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
@@ -10,8 +12,9 @@ interface OnboardingProgressSidebarProps {
   emailSent: boolean;
   notesTaken: boolean;
   notionMessageSent: boolean;
+  mondayLeadCreated: boolean; // Added this line
   memoryKv: { [key: string]: any };
-  steps?: Step[];
+  steps: Step[];
   title?: string;
   logo?: string | null;
   availableTools: string[];
@@ -26,6 +29,7 @@ export default function OnboardingProgressSidebar({
   emailSent,
   notesTaken,
   notionMessageSent,
+  mondayLeadCreated, // Add this line
   memoryKv,
   steps = [],
   title = "401 CRM Agent",
@@ -46,15 +50,16 @@ export default function OnboardingProgressSidebar({
   const getStepCompletion = useCallback((step: Step): boolean => {
     if (!currentSessionId) return false;
     if (!step.completionTool || !availableTools.includes(step.completionTool)) return false;
-
+  
     switch (step.completionTool) {
       case 'email': return emailSent;
       case 'notion': return notionMessageSent;
       case 'notesTaken': return notesTaken;
       case 'memory': return memoryKv[currentSessionId]?.hasMemory || false;
+      case 'monday': return mondayLeadCreated;  // Add this case
       default: return false;
     }
-  }, [emailSent, notionMessageSent, notesTaken, availableTools, currentSessionId, memoryKv]);
+  }, [emailSent, notionMessageSent, notesTaken, mondayLeadCreated, availableTools, currentSessionId, memoryKv]);
 
   const fireConfetti = useCallback(() => {
     setConfettiActive(true);

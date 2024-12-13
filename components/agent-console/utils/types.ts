@@ -298,18 +298,18 @@ export interface OnboardingProgressSidebarProps {
   emailSent: boolean;
   notesTaken: boolean;
   notionMessageSent: boolean;
+  mondayLeadCreated: boolean;  // Add this line
   memoryKv: { [key: string]: any };
-  steps: Step[];
+  steps?: Step[];
   title?: string;
   logo?: string | null;
   availableTools: string[];
   agentId: string;
-  onStepsUpdated: () => Promise<void>;
+  onStepsUpdated: () => void;
   primaryColor: string;
   secondaryColor: string;
   currentSessionId: string | null;
 }
-
 /**
  * **FooterProps Interface**
  */

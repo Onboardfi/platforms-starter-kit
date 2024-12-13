@@ -188,7 +188,7 @@ const [isEditingLead, setIsEditingLead] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [canPushToTalk, setCanPushToTalk] = useState(true);
   const [data, setData] = useState(agent);
-
+  const [mondayLeadCreated, setMondayLeadCreated] = useState(false);
   // Extract allowMultipleSessions from agent settings
   const allowMultipleSessions = agent.settings?.allowMultipleSessions;
 
@@ -604,7 +604,7 @@ case 'create_lead':
 
     // Log success after state updates
     console.log('Lead form displayed with data:', formattedLead);
-
+ 
   } catch (error) {
     console.error('Error preparing lead form:', error);
     toast.error('Failed to prepare lead form');
@@ -613,6 +613,9 @@ case 'create_lead':
     setIsEditingLead(false);
   }
   break;
+
+
+
               }
       
             } catch (error) {
@@ -1232,19 +1235,22 @@ const stopRecording = useCallback(async () => {
 
             // Update based on session progress
             session.stepProgress?.steps?.forEach(step => {
-                if (step.completed) {
-                    switch (step.completionTool) {
-                        case 'email':
-                            setEmailSent(true);
-                            break;
-                        case 'notesTaken':
-                            setNotesTaken(true);
-                            break;
-                        case 'notion':
-                            setNotionMessageSent(true);
-                            break;
-                    }
+              if (step.completed) {
+                switch (step.completionTool) {
+                  case 'email':
+                    setEmailSent(true);
+                    break;
+                  case 'notesTaken':
+                    setNotesTaken(true);
+                    break;
+                  case 'notion':
+                    setNotionMessageSent(true);
+                    break;
+                  case 'monday':  // Add this case
+                    setMondayLeadCreated(true);
+                    break;
                 }
+              }
             });
 
             // Fetch messages for this conversation
@@ -1253,7 +1259,7 @@ const stopRecording = useCallback(async () => {
             console.error('Failed to load session state:', error);
             toast.error('Failed to load session state');
         }
-    }, [sessions, agent.id, data.settings?.initialMessage, data.settings?.tools, fetchMessages]);
+      }, [sessions, agent.id, data.settings?.initialMessage, data.settings?.tools, fetchMessages]);
 
     /**
      * **Handle Session Selection**
@@ -1822,6 +1828,8 @@ const initializeOneToOneSession = useCallback(async () => {
               availableTools={data.settings?.tools || []}
               agentId={data.id}
               onStepsUpdated={fetchSessions}
+              mondayLeadCreated={mondayLeadCreated}  // Add this line
+              // Add this line
               primaryColor={data.settings?.primaryColor || '#3b82f6'}
               secondaryColor={data.settings?.secondaryColor || '#10b981'}
               currentSessionId={currentSessionId}

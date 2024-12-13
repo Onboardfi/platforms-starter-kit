@@ -710,7 +710,6 @@ export type Step = {
   title: string;
   description: string;
   completionTool: 'email' | 'memory' | 'notesTaken' | 'notion' | 'monday' | null;
-
   completed: boolean;
 };
 
