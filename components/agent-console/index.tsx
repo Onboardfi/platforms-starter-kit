@@ -12,7 +12,7 @@ import { AxiosError } from 'axios';
 import { Site } from '@/types/agent';
 // Core React imports
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-
+import { CompletionStatusStorage } from '@/lib/completion-status';
 // Component imports
 import { Navbar } from './Navbar';
 import { TabContent } from './TabContent';
@@ -77,20 +77,29 @@ const getToolConfigurations = (tools: string[]) => {
 
   for (const tool of tools) {
     switch (tool) {
-      case 'memory':
-        toolConfigs.push({
-          type: 'function',
-          name: 'store_memory',
-          description: 'Store a value in memory with a given key',
-          parameters: {
-            type: 'object',
-            properties: {
-              key: { type: 'string' },
-              value: { type: 'string' },
-            },
-            required: ['key', 'value'],
+  // In getToolConfigurations function:
+  case 'memory':
+    toolConfigs.push({
+      type: 'function',
+      name: 'store_memory',
+      description: 'Store or retrieve a value in memory with a given key',
+      parameters: {
+        type: 'object',
+        properties: {
+          key: { 
+            type: 'string',
+            description: 'The key to store or retrieve. Use "steps_completed" to check step completion status.'
           },
-        });
+          value: { 
+            type: 'string',
+            description: 'The value to store. Omit this parameter to retrieve the current value.',
+            optional: true
+          }
+        },
+        required: ['key']
+      }
+    });
+    
         break;
         case 'monday':
         toolConfigs.push({
@@ -180,6 +189,9 @@ const getToolConfigurations = (tools: string[]) => {
  */
 function AgentConsole({ agent }: AgentConsoleProps) {
   // UI State
+  const completionStorage = useRef<CompletionStatusStorage | null>(null);
+
+  
   const agentSite = agent.site as Site | undefined;
   // State for draft lead handling
 const [draftLead, setDraftLead] = useState<DraftLead | null>(null);
@@ -514,127 +526,176 @@ case 'response.function_call_arguments.delta':
     break;
       // Update the function call handling in handleWebSocketMessage
       case 'response.output_item.done':
-        if (data.item && conversationId) {
-          console.log('Response output item done:', data.item.id);
-          
-          if (data.item.type === 'function_call') {
-            try {
-              const args = JSON.parse(data.item.arguments);
-              const functionMessage: ConversationItem = {
-                id: data.item.id,
-                type: 'function_call',
-                role: 'assistant',
-                object: 'realtime.item',
-                status: 'completed',
-                name: data.item.name || '',
-                call_id: data.item.call_id,
-                arguments: data.item.arguments,
-                content: [{
-                  text: JSON.stringify(args),
-                  function_call: {
-                    name: data.item.name || '',
-                    arguments: data.item.arguments,
-                    call_id: data.item.call_id
-                  },
-                  type: ''
-                }],
-                // Initialize metadata with required properties
-                metadata: {
-                  isFinal: true,
-                  toolCalls: []
-                }
-              };
-          
-              await saveMessageToDatabase(functionMessage, conversationId);
-              addUniqueItem(functionMessage);
-      
-              // Handle different function types
-              switch (data.item.name) {
-                case 'store_memory':
-                  setMemoryKv(prev => ({
-                    ...prev,
-                    [args.key]: args.value
-                  }));
-                  break;
-      
-                case 'send_email':
-                  setDraftEmail({
-                    to: args.to,
-                    subject: args.subject,
-                    body: args.body || '',
-                    firstName: args.firstName || ''
-                  });
-                  setActiveTab('workspace');
-                  setIsEditingEmail(true);
-                  break;
-      
-                case 'add_to_notion':
-                  setDraftNote(args.content);
-                  setActiveTab('workspace');
-                  setIsEditingDraft(true);
-                  break;
-
-
-                  
-// Then update the create_lead case with proper typing:
-// In handleWebSocketMessage, update the create_lead case:
-
-case 'create_lead':
-  try {
-    // Format the email properly
-    const formattedEmail = args.email?.includes('@') ? 
-      args.email : 
-      `${args.email?.replace(/\s+at\s+/g, '@')}`;
-
-    // Format the lead data
-    const formattedLead: DraftLead = {
-      firstName: args.firstName,
-      lastName: args.lastName,
-      company: args.company || '',
-      email: formattedEmail || '',
-      phone: args.phone || '',
-      source: args.source || '',
-      notes: args.notes || ''
-    };
+  if (data.item && conversationId) {
+    console.log('Response output item done:', data.item.id);
     
-    // Update state in a single batch
-    setDraftLead(formattedLead);
-    setActiveTab('workspace');
-    setIsEditingLead(false);
+    if (data.item.type === 'function_call') {
+      try {
+        const args = JSON.parse(data.item.arguments);
+        const functionMessage: ConversationItem = {
+          id: data.item.id,
+          type: 'function_call',
+          role: 'assistant',
+          object: 'realtime.item',
+          status: 'completed',
+          name: data.item.name || '',
+          call_id: data.item.call_id,
+          arguments: data.item.arguments,
+          content: [{
+            text: JSON.stringify(args),
+            function_call: {
+              name: data.item.name || '',
+              arguments: data.item.arguments,
+              call_id: data.item.call_id
+            },
+            type: ''
+          }],
+          metadata: {
+            isFinal: true,
+            toolCalls: []
+          }
+        };
+    
+        await saveMessageToDatabase(functionMessage, conversationId);
+        addUniqueItem(functionMessage);
 
-    // Log success after state updates
-    console.log('Lead form displayed with data:', formattedLead);
- 
-  } catch (error) {
-    console.error('Error preparing lead form:', error);
-    toast.error('Failed to prepare lead form');
-    // Reset states on error
-    setDraftLead(null);
-    setIsEditingLead(false);
+        switch (data.item.name) {
+          case 'store_memory':
+            if (!args.value) {
+              // This is a memory retrieval request
+              const stepsCompleted = {
+                email: memoryKv['email_step_completed'] ? 
+                  JSON.parse(memoryKv['email_step_completed']) : null,
+                monday: memoryKv['monday_lead_step_completed'] ? 
+                  JSON.parse(memoryKv['monday_lead_step_completed']) : null,
+                notion: memoryKv['notion_step_completed'] ?
+                  JSON.parse(memoryKv['notion_step_completed']) : null,
+                notes: memoryKv['notes_step_completed'] ?
+                  JSON.parse(memoryKv['notes_step_completed']) : null
+              };
+              
+              // Send memory content back to the assistant
+              if (wsHandler.current?.isConnected()) {
+                wsHandler.current.sendMessage({
+                  type: 'response.create',
+                  messages: [{
+                    role: 'assistant',
+                    content: [{ 
+                      type: 'text',
+                      text: JSON.stringify(stepsCompleted)
+                    }]
+                  }]
+                });
+              }
+            } else {
+              // This is a memory storage request
+              try {
+                const value = JSON.parse(args.value);
+                const processedValue = {
+                  ...value,
+                  timestamp: value.timestamp || new Date().toISOString()
+                };
+          
+                // Update memoryKv state with the new value
+                setMemoryKv(prev => ({
+                  ...prev,
+                  [args.key]: JSON.stringify(processedValue)
+                }));
+          
+                // Log successful memory storage
+                console.log('Memory stored:', {
+                  key: args.key,
+                  value: processedValue
+                });
+              } catch (error) {
+                console.error('Error processing memory storage:', error);
+                toast.error('Failed to store completion status');
+              }
+            }
+            break;
+          case 'send_email':
+            setDraftEmail({
+              to: args.to,
+              subject: args.subject,
+              body: args.body || '',
+              firstName: args.firstName || ''
+            });
+            setActiveTab('workspace');
+            setIsEditingEmail(true);
+            setEmailSent(true);
+
+            // Store email completion
+            await completionStorage.current?.storeEmailCompletion({
+              to: args.to,
+              subject: args.subject
+            });
+            break;
+
+          case 'create_lead':
+            try {
+              const formattedEmail = args.email?.includes('@') ? 
+                args.email : 
+                `${args.email?.replace(/\s+at\s+/g, '@')}`;
+
+              const formattedLead: DraftLead = {
+                firstName: args.firstName,
+                lastName: args.lastName,
+                company: args.company || '',
+                email: formattedEmail || '',
+                phone: args.phone || '',
+                source: args.source || '',
+                notes: args.notes || ''
+              };
+              
+              setDraftLead(formattedLead);
+              setActiveTab('workspace');
+              setIsEditingLead(false);
+              setMondayLeadCreated(true);
+
+              // Store Monday lead completion
+              await completionStorage.current?.storeMondayLeadCompletion({
+                name: `${args.firstName} ${args.lastName}`,
+                company: args.company
+              });
+            } catch (error) {
+              console.error('Error preparing lead form:', error);
+              toast.error('Failed to prepare lead form');
+              setDraftLead(null);
+              setIsEditingLead(false);
+            }
+            break;
+
+          case 'add_to_notion':
+            try {
+              if (args.content) {
+                // Store notion completion
+                await completionStorage.current?.storeNotionCompletion({
+                  pageId: args.pageId
+                });
+              }
+            } catch (error) {
+              console.error('Error handling Notion completion:', error);
+              toast.error('Failed to process Notion completion');
+            }
+            break;
+        }
+      } catch (error) {
+        console.error('Error handling function call:', error);
+        toast.error('Failed to process function call');
+      }
+    } else {
+      // Handle regular assistant messages
+      const assistantMessage = {
+        ...data.item,
+        role: 'assistant',
+        status: 'completed'
+      } as ConversationItem;
+
+      await saveMessageToDatabase(assistantMessage, conversationId);
+      addUniqueItem(assistantMessage);
+    }
   }
   break;
-
-
-
-              }
-      
-            } catch (error) {
-              console.error('Error handling function call:', error);
-              toast.error('Failed to process function call');
-            }
-          } else {
-            // Handle regular assistant messages
-            const assistantMessage = {
-              ...data.item,
-              role: 'assistant',
-              status: 'completed'
-            } as ConversationItem;
-      
-            await saveMessageToDatabase(assistantMessage, conversationId);
-            addUniqueItem(assistantMessage);
-          }
-        }
-        break;
                 case 'response.done':
                     if (data.response?.usage && conversationId && currentSessionId) {
                         const usage = data.response.usage;
@@ -1347,6 +1408,8 @@ const stopRecording = useCallback(async () => {
             if (!wsHandler.current) {
                 throw new Error('Failed to initialize WebSocket handler');
             }
+// Initialize completion storage after WebSocket handler is created
+completionStorage.current = new CompletionStatusStorage(wsHandler.current);
 
             // Await the WebSocket connection
             await wsHandler.current.connect();
@@ -1653,19 +1716,18 @@ const stopRecording = useCallback(async () => {
      * Ensures audio sessions are properly terminated on component unmount.
      */
     useEffect(() => {
-        return () => {
-            // Cleanup function
-            const cleanup = async () => {
-                try {
-                    await cleanupAudioAndWebSocket();
-                } catch (error) {
-                    console.error('Cleanup error:', error);
-                }
-            };
-            cleanup();
+      return () => {
+        const cleanup = async () => {
+          try {
+            completionStorage.current = null;
+            await cleanupAudioAndWebSocket();
+          } catch (error) {
+            console.error('Cleanup error:', error);
+          }
         };
+        cleanup();
+      };
     }, [cleanupAudioAndWebSocket]);
-
     /**
      * **Reset isListening When Switching to Manual Mode**
      */
