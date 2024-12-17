@@ -209,110 +209,122 @@ const handleCreateSite = async (e: React.FormEvent) => {
       needsOnboarding: false,
     });
 
+    if (session?.user?.id && session?.user?.email) {
+      try {
+        // Send welcome email
+        const emailResponse = await fetch('/api/welcome-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: session.user.email,
+            firstName: session.user.name?.split(' ')[0] || '',
+            organizationName: formData.organizationName
+          })
+        });
 
- // Inside handleCreateSite, update the webhook section:
+        if (!emailResponse.ok) {
+          console.error('Failed to send welcome email');
+        }
 
-// Inside handleCreateSite function:
+        // Prepare clean data for Zapier Catch Hook
+        const webhookData = {
+          // User details
+          email: session.user.email,
+          first_name: session.user.name?.split(' ')[0] || '',
+          last_name: session.user.name?.split(' ').slice(1).join(' ') || '',
+          user_id: session.user.id,
+          
+          // Organization details
+          organization_name: formData.organizationName,
+          organization_id: session.organizationId || '',
+          company_size: formData.companySize,
+          industry: formData.industry,
+          
+          // Site details
+          site_id: siteId?.toString(),
+          site_url: `${siteName}.${ROOT_DOMAIN}`,
+          
+          // Metadata
+          completed_at: new Date().toISOString(),
+          source: 'onboarding_form'
+        };
 
-if (session?.user?.id && session?.user?.email) {
-  try {
-    // Prepare clean data for Zapier Catch Hook
-    const webhookData = {
-      // User details
-      email: session.user.email,
-      first_name: session.user.name?.split(' ')[0] || '',
-      last_name: session.user.name?.split(' ').slice(1).join(' ') || '',
-      user_id: session.user.id,
-      
-      // Organization details
-      organization_name: formData.organizationName,
-      organization_id: session.organizationId || '',
-      company_size: formData.companySize,
-      industry: formData.industry,
-      
-      // Site details
-      site_id: siteId?.toString(),
-      site_url: `${siteName}.${ROOT_DOMAIN}`,
-      
-      // Metadata
-      completed_at: new Date().toISOString(),
-      source: 'onboarding_form'
-    };
+        // Send to Zapier
+        const webhookResponse = await fetch('https://hooks.zapier.com/hooks/catch/19167330/2s0zbp5/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(webhookData)
+        });
 
-    // Send directly to Zapier - no need for intermediate API
-    const response = await fetch('https://hooks.zapier.com/hooks/catch/19167330/2s0zbp5/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(webhookData)
-    });
-
-    if (!response.ok) {
-      console.error('Failed to send webhook:', {
-        status: response.status,
-        statusText: response.statusText
-      });
-    } else {
-      console.log('Successfully sent onboarding data:', {
-        email: session.user.email,
-        organization: formData.organizationName
-      });
-    }
-  } catch (webhookError) {
-    console.error('Webhook error:', webhookError);
-    // Don't throw - we don't want webhook failures to break the flow
-  }
-}
-    // Handle Intercom integration
-    if (session?.user?.id) {
-      const INTERCOM_SECRET_KEY = process.env.NEXT_PUBLIC_INTERCOM_IDENTITY_VERIFICATION_SECRET;
-      
-      if (INTERCOM_SECRET_KEY) {
-        try {
-          // Create user traits for Intercom
-          const userTraits: UserTraits = {
-            email: session.user.email || undefined,
-            name: session.user.name || undefined,
-            image: session.user.image || undefined,
-            organizationId: session.organizationId || undefined,
-            organizationName: formData.organizationName,
-            companySize: formData.companySize,
-            industry: formData.industry,
-            onboardingCompleted: true,
-            onboardingCompletedAt: new Date().toISOString(),
-            siteId: siteId.toString(),
-            role: 'owner',
-            lastLogin: new Date().toISOString(),
-          };
-
-          // Create organization traits
-          const orgTraits: OrganizationTraits = {
-            name: formData.organizationName,
-            companySize: formData.companySize,
-            industry: formData.industry,
-            createdAt: new Date().toISOString(),
-            memberCount: 1
-          };
-
-          // Send data to Intercom
-          identifyUserWithIntercom(
-            session.user.id,
-            userTraits,
-            session.organizationId || undefined,
-            session.organizationId ? orgTraits : undefined
-          );
-
-          // Track completion event
-          analyticsClient.track('Onboarding Completed', {
-            siteId: siteId.toString(),
-            organizationName: formData.organizationName,
-            companySize: formData.companySize,
-            industry: formData.industry,
-            completedAt: new Date().toISOString()
+        if (!webhookResponse.ok) {
+          console.error('Failed to send webhook:', {
+            status: webhookResponse.status,
+            statusText: webhookResponse.statusText
           });
-        } catch (analyticsError) {
-          console.error('Analytics error:', analyticsError);
+        } else {
+          console.log('Successfully sent onboarding data:', {
+            email: session.user.email,
+            organization: formData.organizationName
+          });
+        }
+      } catch (integrationError) {
+        console.error('Integration error:', integrationError);
+        // Don't throw - we don't want integration failures to break the flow
+      }
+
+      // Handle Intercom integration
+      if (session.user.id) {
+        const INTERCOM_SECRET_KEY = process.env.NEXT_PUBLIC_INTERCOM_IDENTITY_VERIFICATION_SECRET;
+        
+        if (INTERCOM_SECRET_KEY) {
+          try {
+            // Create user traits for Intercom
+            const userTraits: UserTraits = {
+              email: session.user.email || undefined,
+              name: session.user.name || undefined,
+              image: session.user.image || undefined,
+              organizationId: session.organizationId || undefined,
+              organizationName: formData.organizationName,
+              companySize: formData.companySize,
+              industry: formData.industry,
+              onboardingCompleted: true,
+              onboardingCompletedAt: new Date().toISOString(),
+              siteId: siteId.toString(),
+              role: 'owner',
+              lastLogin: new Date().toISOString(),
+            };
+
+            // Create organization traits
+            const orgTraits: OrganizationTraits = {
+              name: formData.organizationName,
+              companySize: formData.companySize,
+              industry: formData.industry,
+              createdAt: new Date().toISOString(),
+              memberCount: 1
+            };
+
+            // Send data to Intercom
+            identifyUserWithIntercom(
+              session.user.id,
+              userTraits,
+              session.organizationId || undefined,
+              session.organizationId ? orgTraits : undefined
+            );
+
+            // Track completion event
+            analyticsClient.track('Onboarding Completed', {
+              siteId: siteId.toString(),
+              organizationName: formData.organizationName,
+              companySize: formData.companySize,
+              industry: formData.industry,
+              completedAt: new Date().toISOString()
+            });
+          } catch (analyticsError) {
+            console.error('Analytics error:', analyticsError);
+            // Don't throw - we don't want analytics failures to break the flow
+          }
         }
       }
     }
