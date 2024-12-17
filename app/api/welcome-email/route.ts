@@ -17,7 +17,8 @@ export async function POST(request: Request) {
     }
 
     const data = await resend.emails.send({
-      from: 'OnboardFi <welcome@onboardfi.com>',
+        from: 'OnboardFi <welcome@hello.onboardfi.com>', // Updated to use verified domain
+
       to: [email],
       subject: 'Welcome to OnboardFi! 🚀',
       react: OnboardFiWelcomeEmail({ 
