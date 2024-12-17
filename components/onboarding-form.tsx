@@ -12,6 +12,7 @@ import { Building2, Users2, Globe, ArrowLeft, CheckCircle2 } from 'lucide-react'
 import { createSite, CreateSiteResponse } from '@/lib/actions';
 import { identifyUserWithIntercom } from '@/lib/analytics/intercom';
 import { analyticsClient, type UserTraits, type OrganizationTraits } from '@/lib/analytics';
+import { sendOnboardingWebhook } from '@/lib/webhooks';
 
 // Define the component's props interface
 interface OnboardingFormProps {
@@ -185,7 +186,7 @@ const handleCreateSite = async (e: React.FormEvent) => {
   const toastId = toast.loading('Creating your site...');
 
   try {
-    // [Previous site form data preparation remains the same]
+    // Create site
     const siteFormData = new FormData();
     const siteName = formData.organizationName.toLowerCase();
     siteFormData.append('name', formData.organizationName);
@@ -203,19 +204,73 @@ const handleCreateSite = async (e: React.FormEvent) => {
 
     if (!siteId) throw new Error('Failed to get valid site ID from response');
 
+    // Update session
     await updateSession({
       needsOnboarding: false,
     });
 
-    // Handle analytics with proper Intercom integration
+
+ // Inside handleCreateSite, update the webhook section:
+
+// Inside handleCreateSite function:
+
+if (session?.user?.id && session?.user?.email) {
+  try {
+    // Prepare clean data for Zapier Catch Hook
+    const webhookData = {
+      // User details
+      email: session.user.email,
+      first_name: session.user.name?.split(' ')[0] || '',
+      last_name: session.user.name?.split(' ').slice(1).join(' ') || '',
+      user_id: session.user.id,
+      
+      // Organization details
+      organization_name: formData.organizationName,
+      organization_id: session.organizationId || '',
+      company_size: formData.companySize,
+      industry: formData.industry,
+      
+      // Site details
+      site_id: siteId?.toString(),
+      site_url: `${siteName}.${ROOT_DOMAIN}`,
+      
+      // Metadata
+      completed_at: new Date().toISOString(),
+      source: 'onboarding_form'
+    };
+
+    // Send directly to Zapier - no need for intermediate API
+    const response = await fetch('https://hooks.zapier.com/hooks/catch/19167330/2s0zbp5/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(webhookData)
+    });
+
+    if (!response.ok) {
+      console.error('Failed to send webhook:', {
+        status: response.status,
+        statusText: response.statusText
+      });
+    } else {
+      console.log('Successfully sent onboarding data:', {
+        email: session.user.email,
+        organization: formData.organizationName
+      });
+    }
+  } catch (webhookError) {
+    console.error('Webhook error:', webhookError);
+    // Don't throw - we don't want webhook failures to break the flow
+  }
+}
+    // Handle Intercom integration
     if (session?.user?.id) {
       const INTERCOM_SECRET_KEY = process.env.NEXT_PUBLIC_INTERCOM_IDENTITY_VERIFICATION_SECRET;
       
-      if (!INTERCOM_SECRET_KEY) {
-        console.warn('Intercom secret key is not configured');
-      } else {
+      if (INTERCOM_SECRET_KEY) {
         try {
-          // Create user traits
+          // Create user traits for Intercom
           const userTraits: UserTraits = {
             email: session.user.email || undefined,
             name: session.user.name || undefined,
@@ -240,7 +295,7 @@ const handleCreateSite = async (e: React.FormEvent) => {
             memberCount: 1
           };
 
-          // Use enhanced analytics client with proper Intercom hash
+          // Send data to Intercom
           identifyUserWithIntercom(
             session.user.id,
             userTraits,
@@ -248,7 +303,7 @@ const handleCreateSite = async (e: React.FormEvent) => {
             session.organizationId ? orgTraits : undefined
           );
 
-          // Track the completion event separately
+          // Track completion event
           analyticsClient.track('Onboarding Completed', {
             siteId: siteId.toString(),
             organizationName: formData.organizationName,
@@ -258,11 +313,11 @@ const handleCreateSite = async (e: React.FormEvent) => {
           });
         } catch (analyticsError) {
           console.error('Analytics error:', analyticsError);
-          // Don't throw - we don't want analytics errors to break the flow
         }
       }
     }
 
+    // Update form state and cleanup
     setFormData(prev => ({
       ...prev,
       siteCreated: true,
@@ -274,6 +329,7 @@ const handleCreateSite = async (e: React.FormEvent) => {
 
     toast.success('Setup completed successfully!', { id: toastId });
     router.push('/');
+
   } catch (error: any) {
     console.error('Site creation error:', error);
     toast.error(error.message || 'Failed to create site', { id: toastId });

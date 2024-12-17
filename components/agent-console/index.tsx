@@ -199,7 +199,7 @@ const [isEditingLead, setIsEditingLead] = useState(false);
     ...(allowMultipleSessions !== false
       ? [{ name: 'Sessions', id: 'sessions' }]
       : []),
-    { name: 'Integrations', id: 'integrations' },
+ 
   ];
 
   // Conversation State

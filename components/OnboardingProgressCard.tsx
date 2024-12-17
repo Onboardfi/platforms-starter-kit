@@ -1,5 +1,3 @@
-///Users/bobbygilbert/Documents/Github/platforms-starter-kit/components/OnboardingProgressCard.tsx
-
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
@@ -12,7 +10,7 @@ interface OnboardingProgressSidebarProps {
   emailSent: boolean;
   notesTaken: boolean;
   notionMessageSent: boolean;
-  mondayLeadCreated: boolean; // Added this line
+  mondayLeadCreated: boolean;
   memoryKv: { [key: string]: any };
   steps: Step[];
   title?: string;
@@ -29,7 +27,7 @@ export default function OnboardingProgressSidebar({
   emailSent,
   notesTaken,
   notionMessageSent,
-  mondayLeadCreated, // Add this line
+  mondayLeadCreated,
   memoryKv,
   steps = [],
   title = "401 CRM Agent",
@@ -46,7 +44,6 @@ export default function OnboardingProgressSidebar({
   const [imgError, setImgError] = useState(false);
   const [sessionSteps, setSessionSteps] = useState<Step[]>(steps);
 
-  // Get step completion status based on session state
   const getStepCompletion = useCallback((step: Step): boolean => {
     if (!currentSessionId) return false;
     if (!step.completionTool || !availableTools.includes(step.completionTool)) return false;
@@ -56,7 +53,7 @@ export default function OnboardingProgressSidebar({
       case 'notion': return notionMessageSent;
       case 'notesTaken': return notesTaken;
       case 'memory': return memoryKv[currentSessionId]?.hasMemory || false;
-      case 'monday': return mondayLeadCreated;  // Add this case
+      case 'monday': return mondayLeadCreated;
       default: return false;
     }
   }, [emailSent, notionMessageSent, notesTaken, mondayLeadCreated, availableTools, currentSessionId, memoryKv]);
@@ -66,7 +63,6 @@ export default function OnboardingProgressSidebar({
     setTimeout(() => setConfettiActive(false), 4000);
   }, []);
 
-  // Update session steps
   const updateSessionSteps = useCallback(async () => {
     if (!currentSessionId) return;
 
@@ -89,8 +85,6 @@ export default function OnboardingProgressSidebar({
     }
   }, [currentSessionId, agentId, sessionSteps, onStepsUpdated]);
 
-
-  // Track completion progress
   useEffect(() => {
     if (!currentSessionId) return;
 
@@ -103,7 +97,6 @@ export default function OnboardingProgressSidebar({
     }
   }, [sessionSteps, completedStepsCount, getStepCompletion, fireConfetti, currentSessionId]);
 
-  // Reset states when logo changes
   useEffect(() => {
     setImgError(false);
   }, [logo]);
@@ -140,13 +133,34 @@ export default function OnboardingProgressSidebar({
     );
   };
 
+  const renderToolIndicator = (tool: string | null) => {
+    if (!tool) return null;
+
+    if (tool === 'monday') {
+      return (
+        <div className="h-8   w-8  rounded overflow-hidden bg-white/5 border border-white/10 p-0.5">
+          <img
+            src="/monday.png"
+            alt="Monday.com"
+            className="h-full w-full object-contain"
+          />
+        </div>
+      );
+    }
+
+    return (
+      <Badge
+        variant="outline"
+        className="text-[10px] px-2 py-0.5 rounded-lg bg-white/5 border-white/10 text-white/50 shine"
+      >
+        {tool}
+      </Badge>
+    );
+  };
+
   return (
-    <div
-      className="flex-shrink-0 w-full sm:w-96 h-full overflow-scroll bg-background/60 backdrop-blur-dream border-r border-white/10 shadow-dream-lg"
-    >
-      {/* Header Section */}
+    <div className="flex-shrink-0 w-full sm:w-96 h-full overflow-scroll bg-background/60 backdrop-blur-dream border-r border-white/10 shadow-dream-lg">
       <div className="sticky top-0 bg-background/60 backdrop-blur-dream z-20 shine">
-        {/* Banner and Avatar */}
         <div className="relative h-32">
           <div
             className="w-full h-full rounded-t-none"
@@ -182,7 +196,6 @@ export default function OnboardingProgressSidebar({
             </p>
           </div>
 
-          {/* Progress Section */}
           <div className="space-y-2 mt-4 mb-6 p-3 rounded-xl bg-background/70 backdrop-blur-dream shine">
             <div className="flex justify-between text-sm">
               <span className="text-neutral-400">
@@ -208,7 +221,6 @@ export default function OnboardingProgressSidebar({
             </div>
           </div>
 
-          {/* Metadata */}
           <div className="grid grid-cols-2 gap-4 mt-6 pt-4 border-t border-white/[0.08]">
             <div>
               <p className="text-neutral-500 text-xs">Last Updated</p>
@@ -226,7 +238,6 @@ export default function OnboardingProgressSidebar({
         </div>
       </div>
 
-      {/* Steps List */}
       <nav className="px-6 mt-6" aria-label="Progress">
         {sessionSteps.map((step, index) => {
           const isCompleted = getStepCompletion(step);
@@ -265,14 +276,7 @@ export default function OnboardingProgressSidebar({
                       <h3 className="text-sm font-medium text-white/90">
                         {step.title}
                       </h3>
-                      {step.completionTool && (
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] px-2 py-0.5 rounded-lg bg-white/5 border-white/10 text-white/50 shine"
-                        >
-                          {step.completionTool}
-                        </Badge>
-                      )}
+                      {renderToolIndicator(step.completionTool)}
                     </div>
 
                     <p className="mt-2 text-sm text-neutral-400 font-light">
@@ -303,8 +307,6 @@ export default function OnboardingProgressSidebar({
                   </div>
                 </div>
               </div>
-
-              {/* Removed Hover Effect Gradient Border */}
             </div>
           );
         })}

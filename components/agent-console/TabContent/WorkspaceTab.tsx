@@ -1,4 +1,4 @@
-//Users/bobbygilbert/Documents/Github/platforms-starter-kit/components/agent-console/TabContent/WorkspaceTab.tsx
+import { useCallback, useRef, useEffect, useState } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -61,9 +61,106 @@ export default function WorkspaceTab({
   agentId,
   agentSite
 }: WorkspaceTabProps) {
-  const handleSplineLoad = (splineApp: any) => {
-    console.log('Spline scene loaded');
+  const splineRef = useRef<any>(null);
+  const [isAssistantSpeaking, setIsAssistantSpeaking] = useState(false);
+  const animationFrameRef = useRef<number>();
+
+  // Monitor WebSocket responses for audio playback
+ // Monitor WebSocket responses for audio playback
+useEffect(() => {
+  const handleWebSocketMessage = (event: CustomEvent) => {
+    const data = event.detail;
+    
+    // Check if we're receiving audio data from the assistant
+    if (data && data.type === 'response.audio.delta' && data.delta) {
+      // Set speaking state based on actual audio data presence
+      const audioData = data.delta;
+      if (audioData && audioData.length > 0) {
+        setIsAssistantSpeaking(true);
+        
+        // Reset the speaking state after a short delay if no new audio data arrives
+        setTimeout(() => {
+          setIsAssistantSpeaking(false);
+        }, 100); // Short delay to create natural pulsing with the audio stream
+      }
+    }
   };
+
+  // Listen for custom WebSocket events from our WebSocket handler
+  window.addEventListener('websocket-message', handleWebSocketMessage as EventListener);
+  return () => window.removeEventListener('websocket-message', handleWebSocketMessage as EventListener);
+}, []);
+
+  const handleSplineLoad = useCallback((splineApp: any) => {
+    console.log('Spline scene loaded');
+    splineRef.current = splineApp;
+    
+    const sphere = splineApp.findObjectByName('eyes');
+    if (sphere) {
+      sphere.initialScale = { ...sphere.scale };
+      sphere.initialRotation = { ...sphere.rotation };
+    }
+  }, []);
+
+  // Spline animation logic
+  useEffect(() => {
+    if (!splineRef.current) return;
+
+    const sphere = splineRef.current.findObjectByName('eyes');
+    if (!sphere) return;
+
+    const animate = () => {
+      if (isAssistantSpeaking) {
+        // Talking animation - energetic pulsing and rotation
+        const time = Date.now() * 0.003;
+        const pulseScale = Math.sin(time * 2) * 0.15 + 1;
+        
+        sphere.scale.x = sphere.initialScale.x * pulseScale;
+        sphere.scale.y = sphere.initialScale.y * pulseScale;
+        sphere.scale.z = sphere.initialScale.z * pulseScale;
+        
+        sphere.rotation.y += 0.03;
+        sphere.rotation.x = Math.sin(time) * 0.2;
+      } else if (isRecording) {
+        // Recording animation - steady pulse
+        const pulseScale = Math.sin(Date.now() * 0.005) * 0.1 + 1;
+        
+        sphere.scale.x = sphere.initialScale.x * pulseScale;
+        sphere.scale.y = sphere.initialScale.y * pulseScale;
+        sphere.scale.z = sphere.initialScale.z * pulseScale;
+      } else if (isListening) {
+        // Listening animation - gentle sway
+        const time = Date.now() * 0.002;
+        sphere.rotation.y = Math.sin(time) * 0.3;
+        
+        const pulseScale = Math.sin(time) * 0.05 + 1;
+        sphere.scale.x = sphere.initialScale.x * pulseScale;
+        sphere.scale.y = sphere.initialScale.y * pulseScale;
+        sphere.scale.z = sphere.initialScale.z * pulseScale;
+      } else {
+        // Idle animation - subtle movement
+        const time = Date.now() * 0.001;
+        const pulseScale = Math.sin(time) * 0.03 + 1;
+        
+        sphere.scale.x = sphere.initialScale.x * pulseScale;
+        sphere.scale.y = sphere.initialScale.y * pulseScale;
+        sphere.scale.z = sphere.initialScale.z * pulseScale;
+        
+        sphere.rotation.y *= 0.95;
+        sphere.rotation.x *= 0.95;
+      }
+
+      animationFrameRef.current = requestAnimationFrame(animate);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [isAssistantSpeaking, isRecording, isListening]);
 
   if (!currentSessionId) {
     return (
@@ -92,8 +189,10 @@ export default function WorkspaceTab({
           {!draftNote && !draftEmail && !draftLead ? (
             <div className="rounded-lg bg-vc-border-gradient p-px shadow-lg shadow-black/20">
               <div className="relative h-[620px] rounded-lg overflow-hidden bg-black">
+
+            
                 <Spline
-                  scene="https://prod.spline.design/iXkcy912rFIkpvXP/scene.splinecode"
+                  scene="https://prod.spline.design/FJBFDWXZSeOxMYBV/scene.splinecode"
                   onLoad={handleSplineLoad}
                 />
                 <div className="absolute bottom-4 right-4 flex items-center gap-4">
@@ -110,11 +209,13 @@ export default function WorkspaceTab({
                   <div className="flex items-center gap-2">
                     <div 
                       className={`w-3 h-3 rounded-full ${
+                        isAssistantSpeaking ? 'bg-blue-500 animate-pulse' : 
                         isListening ? 'bg-green-500 animate-pulse' : 'bg-gray-400'
                       }`}
                     />
                     <span className="text-sm text-white font-mono">
-                      {isListening ? 'AI Listening' : 'Idle'}
+                      {isAssistantSpeaking ? 'Assistant Speaking' :
+                       isListening ? 'AI Listening' : 'Idle'}
                     </span>
                   </div>
                 </div>

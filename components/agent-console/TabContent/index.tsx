@@ -223,9 +223,7 @@ export function TabContent({
           />
         );
 
-      case 'integrations':
-        return <IntegrationsTab />;
-
+  
       default:
         return null;
     }
