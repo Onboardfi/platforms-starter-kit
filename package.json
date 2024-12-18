@@ -1,8 +1,9 @@
 {
   "private": true,
-  "scripts": {
+"scripts": {
     "dev": "next dev",
-    "build": "drizzle-kit push && next build",
+    "build": "next build",
+    "prebuild": "NODE_ENV=production ts-node -r esbuild-register scripts/db-ops.ts",
     "format:write": "prettier --write \"**/*.{css,js,json,jsx,ts,tsx}\"",
     "format": "prettier \"**/*.{css,js,json,jsx,ts,tsx}\"",
     "start": "next start",

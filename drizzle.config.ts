@@ -8,17 +8,17 @@ dotenv.config({ path: '.env.local' });
 export default defineConfig({
   schema: "./lib/schema.ts",
   out: "./drizzle/migrations",
-  dialect: "postgresql", // Change from driver to dialect
+  dialect: "postgresql",
   dbCredentials: {
     host: process.env.POSTGRES_HOST || "aws-0-us-east-1.pooler.supabase.com",
     user: process.env.POSTGRES_USER,
     password: process.env.POSTGRES_PASSWORD,
     database: process.env.POSTGRES_DATABASE || "postgres",
-    ssl: {
+    ssl: process.env.NODE_ENV === 'production' ? {
       rejectUnauthorized: false
-    },
-    port: 6543
+    } : undefined,
+    port: parseInt(process.env.POSTGRES_PORT || "6543", 10)
   },
-  verbose: true,
+  verbose: process.env.NODE_ENV !== 'production',
   strict: true
 }) satisfies Config;
