@@ -119,7 +119,7 @@ const DEFAULT_EXPIRY = 24 * 60 * 60;
 const CLEANUP_THRESHOLD = 24 * 60 * 60 * 1000;
 
 /**
- * Helper Functions and Default Values
+ * Helper Functions / Default Values
  */
 function ensureStepCompleteness(step: Partial<BaseStep>): BaseStep {
   return {
