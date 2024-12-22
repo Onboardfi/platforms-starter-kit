@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Step } from '@/lib/types';
 import Confetti from './Confetti';
+import { useOnboardingNotification } from '@/hooks/useOnboardingNotification';
 
 interface OnboardingProgressSidebarProps {
   emailSent: boolean;
@@ -39,11 +40,27 @@ export default function OnboardingProgressSidebar({
   secondaryColor,
   currentSessionId,
 }: OnboardingProgressSidebarProps) {
+  // Component state
   const [confettiActive, setConfettiActive] = useState(false);
   const [completedStepsCount, setCompletedStepsCount] = useState(0);
   const [imgError, setImgError] = useState(false);
   const [sessionSteps, setSessionSteps] = useState<Step[]>(steps);
+  const [hasNotifiedCompletion, setHasNotifiedCompletion] = useState(false);
+  
+  const { sendCompletionNotification } = useOnboardingNotification();
 
+  // Update session steps when props change
+  useEffect(() => {
+    setSessionSteps(steps);
+  }, [steps]);
+
+  // Reset completion states when session changes
+  useEffect(() => {
+    setHasNotifiedCompletion(false);
+    setCompletedStepsCount(0);
+  }, [currentSessionId]);
+
+  // Determine if a step is completed
   const getStepCompletion = useCallback((step: Step): boolean => {
     if (!currentSessionId) return false;
     if (!step.completionTool || !availableTools.includes(step.completionTool)) return false;
@@ -56,13 +73,23 @@ export default function OnboardingProgressSidebar({
       case 'monday': return mondayLeadCreated;
       default: return false;
     }
-  }, [emailSent, notionMessageSent, notesTaken, mondayLeadCreated, availableTools, currentSessionId, memoryKv]);
+  }, [
+    emailSent, 
+    notionMessageSent, 
+    notesTaken, 
+    mondayLeadCreated, 
+    availableTools, 
+    currentSessionId, 
+    memoryKv
+  ]);
 
+  // Handle confetti animation
   const fireConfetti = useCallback(() => {
     setConfettiActive(true);
     setTimeout(() => setConfettiActive(false), 4000);
   }, []);
 
+  // Update steps in database
   const updateSessionSteps = useCallback(async () => {
     if (!currentSessionId) return;
 
@@ -85,18 +112,62 @@ export default function OnboardingProgressSidebar({
     }
   }, [currentSessionId, agentId, sessionSteps, onStepsUpdated]);
 
+  // Track completion status and send notifications
   useEffect(() => {
     if (!currentSessionId) return;
 
     const completedCount = sessionSteps.filter(step => getStepCompletion(step)).length;
     if (completedCount > completedStepsCount) {
       setCompletedStepsCount(completedCount);
-      if (completedCount === sessionSteps.length) {
+
+      // Check if all steps are completed
+      if (completedCount === sessionSteps.length && !hasNotifiedCompletion) {
         fireConfetti();
+        // Send notification with agentId
+        sendCompletionNotification({
+          sessionId: currentSessionId,
+          agentId,
+          agentName: title,
+          totalSteps: sessionSteps.length,
+        }).then(() => {
+          setHasNotifiedCompletion(true);
+        }).catch(console.error);
       }
     }
-  }, [sessionSteps, completedStepsCount, getStepCompletion, fireConfetti, currentSessionId]);
+  }, [
+    sessionSteps,
+    completedStepsCount,
+    getStepCompletion,
+    fireConfetti,
+    currentSessionId,
+    hasNotifiedCompletion,
+    agentId,
+    title,
+    sendCompletionNotification
+  ]);
 
+  // Update completion count when states change
+  useEffect(() => {
+    if (!currentSessionId) return;
+    const completedCount = sessionSteps.filter(step => getStepCompletion(step)).length;
+    setCompletedStepsCount(completedCount);
+    if (completedCount === sessionSteps.length && !hasNotifiedCompletion) {
+      fireConfetti();
+    }
+  }, [
+    emailSent,
+    notesTaken,
+    notionMessageSent,
+    mondayLeadCreated,
+    memoryKv,
+    currentSessionId,
+    sessionSteps,
+    getStepCompletion,
+    hasNotifiedCompletion,
+    fireConfetti
+  ]);
+
+  // Reset image error state
   useEffect(() => {
     setImgError(false);
   }, [logo]);
@@ -105,8 +176,8 @@ export default function OnboardingProgressSidebar({
 
   const completedSteps = sessionSteps.filter(step => getStepCompletion(step)).length;
   const progress = (completedSteps / sessionSteps.length) * 100;
-  const isComplete = completedSteps === sessionSteps.length;
 
+  // Helper render functions
   const renderAvatar = () => {
     if (logo && !imgError) {
       return (
@@ -138,7 +209,7 @@ export default function OnboardingProgressSidebar({
 
     if (tool === 'monday') {
       return (
-        <div className="h-8   w-8  rounded overflow-hidden bg-white/5 border border-white/10 p-0.5">
+        <div className="h-8 w-8 rounded overflow-hidden bg-white/5 border border-white/10 p-0.5">
           <img
             src="/monday.png"
             alt="Monday.com"
@@ -161,7 +232,9 @@ export default function OnboardingProgressSidebar({
   return (
     <div className="flex-shrink-0 w-full sm:w-96 h-full overflow-scroll bg-background/60 backdrop-blur-dream border-r border-white/10 shadow-dream-lg">
       <div className="sticky top-0 bg-background/60 backdrop-blur-dream z-20 shine">
+        {/* Header Section */}
         <div className="relative h-32">
+          {/* Background Gradient */}
           <div
             className="w-full h-full rounded-t-none"
             style={{
@@ -169,12 +242,14 @@ export default function OnboardingProgressSidebar({
             }}
           />
 
+          {/* Avatar */}
           <div className="absolute -bottom-12 left-6">
             <div className="h-24 w-24 rounded-2xl border-4 border-background/70 backdrop-blur-dream bg-background/70 shadow-dream overflow-hidden shine">
               {renderAvatar()}
             </div>
           </div>
 
+          {/* Session Status Badge */}
           <div className="absolute top-4 right-4">
             <Badge
               variant="outline"
@@ -188,7 +263,9 @@ export default function OnboardingProgressSidebar({
           </div>
         </div>
 
+        {/* Progress Section */}
         <div className="px-6 pt-16">
+          {/* Title */}
           <div className="space-y-2">
             <h2 className="font-cal text-xl text-white">{title}</h2>
             <p className="text-sm text-neutral-400">
@@ -196,6 +273,7 @@ export default function OnboardingProgressSidebar({
             </p>
           </div>
 
+          {/* Progress Bar */}
           <div className="space-y-2 mt-4 mb-6 p-3 rounded-xl bg-background/70 backdrop-blur-dream shine">
             <div className="flex justify-between text-sm">
               <span className="text-neutral-400">
@@ -221,6 +299,7 @@ export default function OnboardingProgressSidebar({
             </div>
           </div>
 
+          {/* Status Grid */}
           <div className="grid grid-cols-2 gap-4 mt-6 pt-4 border-t border-white/[0.08]">
             <div>
               <p className="text-neutral-500 text-xs">Last Updated</p>
@@ -238,6 +317,7 @@ export default function OnboardingProgressSidebar({
         </div>
       </div>
 
+      {/* Steps List */}
       <nav className="px-6 mt-6" aria-label="Progress">
         {sessionSteps.map((step, index) => {
           const isCompleted = getStepCompletion(step);
@@ -254,6 +334,7 @@ export default function OnboardingProgressSidebar({
                 )}
               >
                 <div className="flex items-start space-x-4">
+                  {/* Step Number */}
                   <div className="flex-shrink-0">
                     <span
                       className={cn(
@@ -271,6 +352,7 @@ export default function OnboardingProgressSidebar({
                     </span>
                   </div>
 
+                  {/* Step Content */}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between">
                       <h3 className="text-sm font-medium text-white/90">
@@ -283,6 +365,7 @@ export default function OnboardingProgressSidebar({
                       {step.description}
                     </p>
 
+                    {/* Step Status */}
                     <div className="mt-3 flex items-center space-x-4 text-[10px] text-neutral-500">
                       <span className="flex items-center">
                         <span

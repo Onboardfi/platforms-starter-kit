@@ -1056,113 +1056,158 @@ const stopRecording = useCallback(async () => {
      * **Create New Session**
      * Creates a new session and an initial conversation for the agent.
      */
+
     const createNewSession = useCallback(async () => {
       if (!agent.id) return null;
       
       try {
-          // Clean up any existing audio before creating new session
-          if (wavStreamPlayerRef.current) {
-              await wavStreamPlayerRef.current.interrupt();
+        // Reset states first
+        setEmailSent(false);
+        setNotesTaken(false);
+        setNotionMessageSent(false);
+        setMondayLeadCreated(false);
+        setMemoryKv({});
+        setItems([]);
+        
+        // Clean up any existing audio and WebSocket connections
+        await cleanupAudioAndWebSocket();
+    
+        // Create the session
+        const sessionResponse = await apiClient.post('/api/createSession', {
+          name: `Session ${new Date().toLocaleString()}`,
+          type: data.settings?.onboardingType || 'internal',
+          agentId: agent.id
+        }, {
+          headers: {
+            'x-agent-id': agent.id,
+            'Content-Type': 'application/json'
           }
-          if (wsHandler.current) {
-              await wsHandler.current.cleanupAudio();
+        });
+    
+        if (!sessionResponse.data?.sessionId) {
+          throw new Error('Failed to create session: No session ID returned');
+        }
+    
+        const sessionId = sessionResponse.data.sessionId;
+    
+        // Create initial conversation
+        const conversationResponse = await apiClient.post('/api/getOrCreateConversation', {
+          sessionId,
+          agentId: agent.id
+        }, {
+          headers: {
+            'x-agent-id': agent.id
           }
-
-          // First create the session
-          const sessionResponse = await apiClient.post('/api/createSession', {
-              name: `Session ${new Date().toLocaleString()}`,
-              type: data.settings?.onboardingType || 'internal',
-              agentId: agent.id
-          }, {
-              headers: {
-                  'x-agent-id': agent.id,
-                  'Content-Type': 'application/json'
-              }
+        });
+    
+        if (!conversationResponse.data?.conversationId) {
+          throw new Error('Failed to create conversation');
+        }
+    
+        const conversationId = conversationResponse.data.conversationId;
+    
+        // Update states
+        setCurrentSessionId(sessionId);
+        setConversationId(conversationId);
+        localStorage.setItem('lastSessionId', sessionId);
+    
+        // Initialize audio
+        const audioInitialized = await initializeAudio();
+        if (!audioInitialized) {
+          throw new Error('Audio initialization failed');
+        }
+    
+        // Initialize WebSocket connection
+        if (!wsHandler.current?.isConnected()) {
+          wsHandler.current = EnhancedWebSocketHandler.getInstance(
+            'wss://openai-relay.onboardfi.workers.dev',
+            agent.id,
+            handleWebSocketMessage,
+            setIsConnected
+          );
+          await wsHandler.current.connect();
+        }
+    
+        // Send session configuration
+        if (wsHandler.current?.isConnected()) {
+          await wsHandler.current.sendMessage({
+            type: 'session.update',
+            session: {
+              modalities: ['text', 'audio'],
+              instructions: data.settings?.initialMessage || "I am a helpful assistant.",
+              voice: "alloy",
+              input_audio_format: "pcm16",
+              output_audio_format: "pcm16",
+              input_audio_transcription: {
+                model: "whisper-1"
+              },
+              turn_detection: {
+                type: 'server_vad',
+                threshold: 0.8,
+                prefix_padding_ms: 300,
+                silence_duration_ms: 800
+              },
+              tools: getToolConfigurations(data.settings?.tools || []),
+              tool_choice: "auto",
+              temperature: 0.8,
+              max_response_output_tokens: 4000
+            }
           });
-          
-          if (sessionResponse.data.error) {
-              throw new Error(sessionResponse.data.error);
-          }
-
-
-          const sessionId = sessionResponse.data.sessionId;
-
-          // Then create an initial conversation for this session
-          const conversationResponse = await apiClient.post('/api/getOrCreateConversation', {
-              sessionId,
-              agentId: agent.id
-          }, {
-              headers: {
-                  'x-agent-id': agent.id,
-                  'Content-Type': 'application/json'
+    
+          // Emit session creation event for real-time updates
+          await wsHandler.current.sendMessage({
+            type: 'session.create',
+            session: {
+              id: sessionId,
+              steps: data.settings?.steps || [],
+              status: 'active',
+              metadata: {
+                agentId: agent.id,
+                type: data.settings?.onboardingType || 'internal'
               }
+            }
           });
-
-          if (conversationResponse.data.error) {
-              throw new Error(conversationResponse.data.error);
-          }
-
-          const conversationId = conversationResponse.data.conversationId;
-          
-          // Set the conversation ID
-          setConversationId(conversationId);
-
-          // Reset states and save session ID
-          setCurrentSessionId(sessionId);
-          localStorage.setItem('lastSessionId', sessionId);
-          setEmailSent(false);
-          setNotesTaken(false);
-          setNotionMessageSent(false);
-          setMemoryKv({});
-          setItems([]);
-          
-          // Initialize audio
-          const audioInitialized = await initializeAudio();
-          if (!audioInitialized) {
-              throw new Error('Audio initialization failed');
-          }
-          
-          // Initialize WebSocket connection with session configuration
-          if (wsHandler.current?.isConnected()) {
-              await wsHandler.current.sendMessage({
-                  type: 'session.update',
-                  session: {
-                      modalities: ['text', 'audio'],
-                      instructions: data.settings?.initialMessage || "I am a helpful assistant.",
-                      voice: "alloy",
-                      input_audio_format: "pcm16",
-                      output_audio_format: "pcm16",
-                      input_audio_transcription: {
-                          model: "whisper-1"
-                      },
-                      turn_detection: {
-                          type: 'server_vad',
-                          threshold: 0.8,
-                          prefix_padding_ms: 300,
-                          silence_duration_ms: 800
-                      },
-                      tools: getToolConfigurations(data.settings?.tools || []),
-                      tool_choice: "auto",
-                      temperature: 0.8,
-                      max_response_output_tokens: 4000
-                  }
-              });
-          }
-          
-          toast.success('New session created');
-          await fetchSessions();
-
-          // Now fetch messages for the new conversation
-          await fetchMessages(conversationId);
-          
-          return sessionId;
+        }
+    
+        // Fetch updated sessions and messages
+        await Promise.all([
+          fetchSessions(),
+          fetchMessages(conversationId)
+        ]);
+    
+        toast.success('New session created');
+        return sessionId;
+    
       } catch (error) {
-          console.error('Failed to create session:', error);
+        console.error('Failed to create session:', error);
+        
+        // Cleanup on error
+        await cleanupAudioAndWebSocket();
+        setCurrentSessionId(null);
+        setConversationId(null);
+        localStorage.removeItem('lastSessionId');
+        
+        // Show specific error message
+        if (error instanceof Error) {
+          toast.error(error.message);
+        } else {
           toast.error('Failed to create session');
-          return null;
+        }
+        
+        return null;
       }
-    }, [agent.id, data.settings?.onboardingType, data.settings?.initialMessage, data.settings?.tools, fetchSessions, initializeAudio, fetchMessages]);
-
+    }, [
+      agent.id,
+      data.settings?.onboardingType,
+      data.settings?.initialMessage,
+      data.settings?.tools,
+      data.settings?.steps,
+      cleanupAudioAndWebSocket,
+      initializeAudio,
+      handleWebSocketMessage,
+      fetchSessions,
+      fetchMessages
+    ]);
     /**
      * **Load Session State**
      * Loads the state of a selected session and fetches its messages.
@@ -1265,17 +1310,123 @@ const stopRecording = useCallback(async () => {
      * **Handle Session Selection**
      * Handles the selection of a session from the sidebar.
      */
-    const handleSessionSelect = useCallback(async (sessionId: string) => {
-        try {
-            setCurrentSessionId(sessionId);
-            localStorage.setItem('lastSessionId', sessionId);
-            await loadSessionState(sessionId);
-        } catch (error) {
-            console.error('Failed to switch session:', error);
-            toast.error('Failed to switch session');
-        }
-    }, [loadSessionState]);
+// Update the session handling in AgentConsole
 
+// Update the session handling in AgentConsole
+
+const handleSessionSelect = useCallback(async (sessionId: string) => {
+  try {
+    // Don't proceed if selecting the same session
+    if (sessionId === currentSessionId) return;
+
+    console.log('Switching to session:', sessionId);
+
+    // Clean up existing connections
+    await cleanupAudioAndWebSocket();
+
+    // Reset all states synchronously
+    const resetStates = () => {
+      setEmailSent(false);
+      setNotesTaken(false);
+      setNotionMessageSent(false);
+      setMondayLeadCreated(false);
+      setMemoryKv({});
+      setItems([]);
+      setConversationId(null);
+      setIsResponseActive(false);
+      setIsListening(false);
+      setIsRecording(false);
+      setDraftEmail(null);
+      setDraftNote(null);
+      setDraftLead(null);
+    };
+
+    resetStates();
+
+    // Update current session
+    setCurrentSessionId(sessionId);
+    localStorage.setItem('lastSessionId', sessionId);
+
+    // Get fresh session data
+    await fetchSessions();
+    const selectedSession = sessions.find(s => s.id === sessionId);
+    
+    if (!selectedSession) {
+      throw new Error('Session not found');
+    }
+
+    console.log('Selected session:', selectedSession);
+
+    // Get or create conversation
+    const conversationResponse = await apiClient.post('/api/getOrCreateConversation', {
+      sessionId,
+      agentId: agent.id
+    }, {
+      headers: {
+        'x-agent-id': agent.id
+      }
+    });
+
+    if (conversationResponse.data.conversationId) {
+      setConversationId(conversationResponse.data.conversationId);
+      await fetchMessages(conversationResponse.data.conversationId);
+    }
+
+    // Initialize audio and WebSocket
+    await initializeAudio();
+    wsHandler.current = EnhancedWebSocketHandler.getInstance(
+      'wss://openai-relay.onboardfi.workers.dev',
+      agent.id,
+      handleWebSocketMessage,
+      setIsConnected
+    );
+
+    await wsHandler.current.connect();
+
+    // Update step states based on session progress
+    selectedSession.stepProgress?.steps?.forEach(step => {
+      if (step.completed) {
+        switch (step.completionTool) {
+          case 'email':
+            setEmailSent(true);
+            break;
+          case 'notesTaken':
+            setNotesTaken(true);
+            break;
+          case 'notion':
+            setNotionMessageSent(true);
+            break;
+          case 'monday':
+            setMondayLeadCreated(true);
+            break;
+        }
+      }
+    });
+
+    // Update session state and force re-render
+    await loadSessionState(sessionId);
+    await fetchSessions(); // Use fetchSessions instead of onStepsUpdated
+    
+  } catch (error) {
+    console.error('Failed to switch session:', error);
+    toast.error('Failed to switch session');
+
+    // Cleanup on error
+    await cleanupAudioAndWebSocket();
+    setCurrentSessionId(null);
+    localStorage.removeItem('lastSessionId');
+  }
+}, [
+  currentSessionId,
+  agent.id,
+  sessions,
+  cleanupAudioAndWebSocket,
+  initializeAudio,
+  loadSessionState,
+  fetchSessions,
+  fetchMessages,
+  handleWebSocketMessage
+]);
     /**
      * **Step Completion Management**
      * Updates the completion status of a step.

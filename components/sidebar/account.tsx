@@ -1,3 +1,5 @@
+//components/sidebar/account.tsx
+
 "use client";
 
 import * as React from "react";
