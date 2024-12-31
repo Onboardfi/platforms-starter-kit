@@ -405,7 +405,80 @@ export interface OnboardingSession {
   createdAt: Date;
   updatedAt: Date;
 }
+// lib/types/daily-bot.ts
 
+export type DailyBotToolName = 'memory' | 'email' | 'notion' | 'monday';
+
+export interface DailyBotToolConfig {
+  type: 'function';
+  name: string;
+  description: string;
+  parameters: {
+    type: 'object';
+    properties: Record<string, unknown>;
+    required: string[];
+  };
+}
+
+export const dailyBotTools: Record<DailyBotToolName, DailyBotToolConfig> = {
+  memory: {
+    type: 'function',
+    name: 'store_memory',
+    description: 'Store a value in memory with a given key',
+    parameters: {
+      type: 'object',
+      properties: {
+        key: { type: 'string' },
+        value: { type: 'string' }
+      },
+      required: ['key', 'value']
+    }
+  },
+  email: {
+    type: 'function',
+    name: 'send_email',
+    description: 'Send an email',
+    parameters: {
+      type: 'object',
+      properties: {
+        to: { type: 'string' },
+        subject: { type: 'string' },
+        body: { type: 'string' }
+      },
+      required: ['to', 'subject', 'body']
+    }
+  },
+  notion: {
+    type: 'function',
+    name: 'add_to_notion',
+    description: 'Add content to Notion',
+    parameters: {
+      type: 'object',
+      properties: {
+        content: { type: 'string' }
+      },
+      required: ['content']
+    }
+  },
+  monday: {
+    type: 'function',
+    name: 'create_lead',
+    description: 'Create a new lead in Monday CRM',
+    parameters: {
+      type: 'object',
+      properties: {
+        firstName: { type: 'string' },
+        lastName: { type: 'string' },
+        company: { type: 'string' },
+        email: { type: 'string' },
+        phone: { type: 'string' },
+        source: { type: 'string' },
+        notes: { type: 'string' }
+      },
+      required: ['firstName', 'lastName']
+    }
+  }
+} as const;
 /**
  * Response Types
  */

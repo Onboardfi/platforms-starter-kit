@@ -10,6 +10,8 @@ export interface Site {
   customDomain: string | null;
   message404: string | null;
   createdBy: string;
+  image: string | null;
+  imageBlurhash: string | null;
   createdAt: Date;
   updatedAt: Date;
   organizationId: string;

@@ -8,6 +8,7 @@ import { SelectAgent } from "@/lib/schema";
 import { debounce } from "lodash";
 import { toast } from "sonner";
 import bcrypt from "bcryptjs";
+import { DailyBotSettings } from './DailyBotSettings';
 
 const DreamLabel = ({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) => (
   <label
@@ -311,6 +312,21 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
       authentication: initialAgent?.settings?.authentication ?? {
         enabled: false,
         message: "Please enter the password to access this internal onboarding"
+      },  // Fixed missing comma
+      useDailyBot: initialAgent?.settings?.useDailyBot ?? false,
+      dailyBot: initialAgent?.settings?.dailyBot ?? {
+        botProfile: "voice_2024_10",
+        maxDuration: 600,
+        services: {
+          llm: "together",
+          tts: "cartesia", 
+          stt: "deepgram"
+        },
+        voice: {
+          model: "sonic-english",
+          voice: "79a125e8-cd45-4c13-8a67-188112f4dd22",
+          language: "en"
+        }
       }
     }
   });
@@ -538,6 +554,20 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
         </div>
       </DreamCard>
 
+      // Add before the Authentication Settings card in the JSX
+<DreamCard title="Voice Interactions">
+  <DailyBotSettings
+    enabled={formState.settings.useDailyBot}
+    config={formState.settings.dailyBot}
+    onToggle={(enabled) => handleUpdate('settings.useDailyBot', enabled)}
+    onUpdate={(key, value) => {
+      handleUpdate('settings.dailyBot', {
+        ...formState.settings.dailyBot,
+        [key]: value
+      });
+    }}
+  />
+</DreamCard>
       {formState.settings.onboardingType === 'internal' && (
         <DreamCard title="Authentication Settings" className="lg:col-span-3">
           <div className="space-y-6">
@@ -642,3 +672,15 @@ export default function AgentForm({ agent: initialAgent }: AgentFormProps) {
     </div>
   );
 }
+// Add at the bottom of agent-form.tsx
+
+export {
+  DreamLabel,
+  DreamInput,
+  DreamTextarea,
+  DreamSelect,
+  DreamCheckbox,
+  DreamCard,
+  DreamButton,
+  DreamColorPicker
+};

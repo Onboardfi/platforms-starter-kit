@@ -8,7 +8,7 @@
     "forceConsistentCasingInFileNames": true,
     "noEmit": true,
     "types": ["canvas-confetti"],
-
+    "typeRoots": ["./types", "./node_modules/@types"],
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "node",

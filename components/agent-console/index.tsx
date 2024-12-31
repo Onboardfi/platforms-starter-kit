@@ -8,11 +8,13 @@ import {
   MessageContent,
   MessageMetadata,
 } from '@/lib/types';
+import { DailyBotMessage, DailyBotError, DailyBotConfig } from '@/types/daily-bot';
+import DailyBotConsole from './DailyBotConsole';
 import { AxiosError } from 'axios';
 import { Site } from '@/types/agent';
 // Core React imports
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-
+import { SelectSite } from '@/lib/schema';
 // Component imports
 import { Navbar } from './Navbar';
 import { TabContent } from './TabContent';
@@ -69,7 +71,6 @@ type ToolCallMetadata = {
  * **Helper Function**
  * Convert agent tool names to WebSocket tool configurations
  */
-
 
 
 const getToolConfigurations = (tools: string[]) => {
@@ -179,6 +180,38 @@ const getToolConfigurations = (tools: string[]) => {
  * **AgentConsole Component**
  */
 function AgentConsole({ agent }: AgentConsoleProps) {
+  // Move the daily bot states inside the component
+  const [useDailyBot, setUseDailyBot] = useState(agent.settings?.useDailyBot || false);
+  const [dailyBotStatus, setDailyBotStatus] = useState<'idle' | 'connected' | 'error'>('idle');
+  
+  // Add type imports
+  const handleDailyBotMessage = useCallback((message: DailyBotMessage) => {
+    console.log('Daily Bot message:', message);
+    
+    switch (message.type) {
+      case 'bot_speaking_started':
+        setIsRecording(true);
+        break;
+      case 'bot_speaking_stopped':
+        setIsRecording(false);
+        break;
+      case 'daily_bot_connected':
+        setIsConnected(true);
+        setDailyBotStatus('connected');
+        break;
+      case 'daily_bot_disconnected':
+        setIsConnected(false);
+        setDailyBotStatus('idle');
+        break;
+    }
+  }, []);
+
+  // Add error handler for Daily Bot
+  const handleDailyBotError = useCallback((error: Error) => {
+    console.error('Daily Bot error:', error);
+    toast.error(`Daily Bot error: ${error.message}`);
+    setDailyBotStatus('error');
+  }, []);
   // UI State
   const agentSite = agent.site as Site | undefined;
   // State for draft lead handling
@@ -404,6 +437,11 @@ const [isEditingLead, setIsEditingLead] = useState(false);
       throw error;
     }
   }, []);
+
+
+
+
+
 
     /**
      * **Handle WebSocket Message**
@@ -1482,10 +1520,14 @@ const handleSessionSelect = useCallback(async (sessionId: string) => {
      * Connects the conversation by establishing WebSocket and audio connections.
      */
     const connectConversation = useCallback(async () => {
-        try {
-            // Clean up any existing connections first
-            await cleanupAudioAndWebSocket();
-
+      try {
+        // Clean up any existing connections first
+        await cleanupAudioAndWebSocket();
+ // Use Daily Bot if enabled in settings
+ if (agent.settings?.useDailyBot) {
+  // Daily Bot will handle its own connection in the DailyBotConsole component
+  return;
+}
             // Create new WebSocket handler using getInstance
             wsHandler.current = EnhancedWebSocketHandler.getInstance(
                'wss://openai-relay.onboardfi.workers.dev', // Updated WebSocket URL
@@ -1569,6 +1611,7 @@ const handleSessionSelect = useCallback(async (sessionId: string) => {
         }
     }, [
         agent.id, 
+        agent.settings?.useDailyBot,
         conversationId, 
         currentSessionId, 
         cleanupAudioAndWebSocket, 
@@ -1957,199 +2000,231 @@ const initializeOneToOneSession = useCallback(async () => {
   }, [agent.id]);
     /**
      * **JSX Return**
-     */return (
-    <PasswordAuthWrapper
-    agentId={agent.id}
-    siteName={agent.name || 'Internal Onboarding'}
-    authMessage={agent.settings?.authentication?.message || undefined}
-  >
-    <TooltipProvider>
-      <div className="min-h-screen bg-gray-1100 bg-[url('/grid.svg')]">
-        {/* Sidebar */}
-        <div className="fixed left-0 top-0 bottom-0 w-96 border-r border-gray-800 bg-black overflow-y-auto">
-          <div className="flex-1 flex flex-col">
-            <OnboardingProgressSidebar
-              emailSent={emailSent}
-              notesTaken={notesTaken}
-              notionMessageSent={notionMessageSent}
-              memoryKv={memoryKv}
-              steps={data.settings?.steps || []}
-              title={data.name || undefined}
-              logo={data.site?.logo || null}
-              availableTools={data.settings?.tools || []}
-              agentId={data.id}
-              onStepsUpdated={fetchSessions}
-              mondayLeadCreated={mondayLeadCreated}  // Add this line
-              // Add this line
-              primaryColor={data.settings?.primaryColor || '#3b82f6'}
-              secondaryColor={data.settings?.secondaryColor || '#10b981'}
-              currentSessionId={currentSessionId}
-            />
-          </div>
-        </div>
-
-        {/* Main Content */}
-        <div className="ml-96 min-h-screen flex flex-col">
-
-<Navbar
-  activeTab={activeTab}
-  setActiveTab={setActiveTab}
-  primaryColor={data.settings?.primaryColor || '#7928CA'}
-  secondaryColor={data.settings?.secondaryColor || '#FF0080'}
-  tabs={tabs} // Pass tabs to Navbar
+     * 
+     * 
+     * 
+     */
+    
+    return (
+      <PasswordAuthWrapper
+        agentId={agent.id}
+        siteName={agent.name || 'Internal Onboarding'}
+        authMessage={agent.settings?.authentication?.message || undefined}
+      >
+        <TooltipProvider>
+          <div className="min-h-screen bg-gray-1100 bg-[url('/grid.svg')]">
+            {/* Sidebar */}
+            <aside className="fixed left-0 top-0 bottom-0 w-96 border-r border-gray-800 bg-black overflow-y-auto">
+              <div className="flex-1 flex flex-col">
+                <OnboardingProgressSidebar
+                  emailSent={emailSent}
+                  notesTaken={notesTaken}
+                  notionMessageSent={notionMessageSent}
+                  mondayLeadCreated={mondayLeadCreated}
+                  memoryKv={memoryKv}
+                  steps={data.settings?.steps || []}
+                  title={data.name || undefined}
+                  logo={data.site?.logo || null}
+                  availableTools={data.settings?.tools || []}
+                  agentId={data.id}
+                  onStepsUpdated={fetchSessions}
+                  primaryColor={data.settings?.primaryColor || '#3b82f6'}
+                  secondaryColor={data.settings?.secondaryColor || '#10b981'}
+                  currentSessionId={currentSessionId}
+                />
+              </div>
+            </aside>
+    
+            {/* Main Content */}
+            <main className="ml-96 min-h-screen flex flex-col">
+              {/* Navigation */}
+              <Navbar
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+                primaryColor={data.settings?.primaryColor || '#7928CA'}
+                secondaryColor={data.settings?.secondaryColor || '#FF0080'}
+                tabs={tabs}
+              />
+    
+              {/* Daily Bot Integration */}
+           {/* Daily Bot Integration */}// Inside AgentConsole component:
+{/* Daily Bot Integration */}
+<DailyBotConsole
+  agent={{
+    name: agent.name ?? null,
+    description: agent.description ?? null,
+    image: agent.image ?? null,
+    imageBlurhash: agent.imageBlurhash ?? null,
+    createdAt: agent.createdAt ?? new Date(),
+    updatedAt: agent.updatedAt ?? new Date(),
+    slug: agent.slug ?? 'untitled-slug',
+    createdBy: agent.createdBy ?? null,
+    published: agent.published ?? false,
+    siteId: agent.siteId ?? null,
+    id: agent.id,
+    site: agentSite,
+    settings: {
+      ...agent.settings,
+      onboardingType: agent.settings.onboardingType || 'internal',
+      authentication: {
+        enabled: agent.settings.authentication?.enabled ?? false,
+        password: agent.settings.authentication?.password,
+        message: agent.settings.authentication?.message,
+      },
+      dailyBot: agent.settings.dailyBot || {
+        botProfile: 'voice_2024_10',
+        maxDuration: 600,
+        services: {
+          llm: 'together',
+          tts: 'cartesia',
+          stt: 'deepgram'
+        },
+        voice: {
+          model: 'sonic-english',
+          voice: '79a125e8-cd45-4c13-8a67-188112f4dd22',
+          language: 'en'
+        }
+      }
+    },
+    // Add the required creator property
+    creator: {
+      id: agent.createdBy ?? '',
+      name: null,
+      username: null,
+      gh_username: null,
+      email: '',
+      emailVerified: null,
+      image: null,
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      metadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date()
+    }
+  }}
+  onMessage={handleDailyBotMessage}
+  onError={handleDailyBotError}
 />
 
-          <TabContent
-            activeTab={activeTab}
-            agentId={agent.id}
-            agentSite={agentSite!} // Add the agentSite prop
-            items={items}
-            draftNote={draftNote}
-            draftEmail={draftEmail}
-            isEditingDraft={isEditingDraft}
-            isEditingEmail={isEditingEmail}
-            handleEditDraft={() => setIsEditingDraft(true)}
-            handleEditEmail={() => setIsEditingEmail(true)}
-            handleSaveDraft={(draft: string) => {
-              setDraftNote(draft);
-              setIsEditingDraft(false);
-            }}
-            handleSaveEmail={(email: DraftEmail) => {
-              setDraftEmail(email);
-              setIsEditingEmail(false);
-            }}
-            handleSendNote={handleSendNote}
-            handleSendEmail={handleSendEmail}
-            setDraftNote={setDraftNote}
-            setDraftEmail={setDraftEmail}
-            sessions={sessions}
-            isLoadingSessions={isLoadingSessions}
-            createNewSession={createNewSession}
-            currentSessionId={currentSessionId}
-            onSessionSelect={handleSessionSelect}
-            primaryColor={data.settings?.primaryColor || '#7928CA'}
-            secondaryColor={data.settings?.secondaryColor || '#FF0080'}
-            conversationId={conversationId}
-            connectConversation={connectConversation}
-            allowMultipleSessions={allowMultipleSessions} // Pass it to TabContent
-            draftLead={draftLead}
-            isEditingLead={isEditingLead}
-            handleEditLead={() => setIsEditingLead(true)}
-            handleSaveLead={(lead: DraftLead) => {
-              setDraftLead(lead);
-              setIsEditingLead(false);
-            }}
-
-
-
-       // Then in the handleSendLead function:
-handleSendLead={async () => {
-  if (!draftLead || !conversationId) return;
-  try {
-    // Log attempt with proper type handling
-    console.log('Attempting to create lead:', {
-      draftLead,
-      agentId: agent.id,
-      organizationId: agentSite?.organizationId
-    });
-
-    // Make the API call with proper type handling
-    const leadResponse = await apiClient.post('/api/monday/create-lead', {
-      leadData: draftLead,
-      agentId: agent.id,
-      siteId: agentSite?.id, // Use the properly typed site reference
-      organizationId: agentSite?.organizationId
-    }, {
-      headers: {
-        'x-agent-id': agent.id,
-        'x-organization-id': agentSite?.organizationId,
-        'Content-Type': 'application/json'
-      }
-    });
-            
-                if (leadResponse.data.success) {
-                  console.log('Lead created successfully:', leadResponse.data);
-                  toast.success('Lead created in Monday.com');
-                  setDraftLead(null);
-                  
-                  // Update metadata with lead creation details
-                  const metadata = {
-                    leadId: leadResponse.data.leadId,
-                    timestamp: new Date().toISOString()
-                  };
-            
-                  // Update step status if needed
-                  await updateStepStatus('monday');
-                }
-              } catch (err) {
-                // Proper error type handling
-                const error = err as Error | AxiosError;
-                
-                // Enhanced error logging with type checking
-                console.error('Failed to send lead:', {
-                  error: error instanceof Error ? error.message : 'Unknown error',
-                  draftLead,
-                  agentId: agent.id,
-                  organizationId: (agent.site as Site)?.organizationId,
-                  response: axios.isAxiosError(error) ? error.response?.data : undefined
-                });
-            
-                // More specific error messages with proper type handling
-                if (axios.isAxiosError(error)) {
-                  const statusCode = error.response?.status;
-                  const errorMessage = error.response?.data?.error || error.message;
-            
-                  switch (statusCode) {
-                    case 400:
-                      toast.error(`Invalid lead data: ${errorMessage}`);
-                      break;
-                    case 401:
-                      toast.error('Monday.com integration not authenticated');
-                      break;
-                    case 404:
-                      toast.error('Monday.com board or integration not found');
-                      break;
-                    case 429:
-                      toast.error('Too many requests to Monday.com. Please try again later.');
-                      break;
-                    default:
-                      toast.error(`Failed to create lead: ${errorMessage}`);
+              {/* Main Content Area */}
+              <TabContent
+                activeTab={activeTab}
+                agentId={agent.id}
+               agentSite={agentSite as SelectSite}
+                items={items}
+                draftNote={draftNote}
+                draftEmail={draftEmail}
+                isEditingDraft={isEditingDraft}
+                isEditingEmail={isEditingEmail}
+                handleEditDraft={() => setIsEditingDraft(true)}
+                handleEditEmail={() => setIsEditingEmail(true)}
+                handleSaveDraft={(draft: string) => {
+                  setDraftNote(draft);
+                  setIsEditingDraft(false);
+                }}
+                handleSaveEmail={(email: DraftEmail) => {
+                  setDraftEmail(email);
+                  setIsEditingEmail(false);
+                }}
+                handleSendNote={handleSendNote}
+                handleSendEmail={handleSendEmail}
+                setDraftNote={setDraftNote}
+                setDraftEmail={setDraftEmail}
+                sessions={sessions}
+                isLoadingSessions={isLoadingSessions}
+                createNewSession={createNewSession}
+                currentSessionId={currentSessionId}
+                onSessionSelect={handleSessionSelect}
+                primaryColor={data.settings?.primaryColor || '#7928CA'}
+                secondaryColor={data.settings?.secondaryColor || '#FF0080'}
+                conversationId={conversationId}
+                connectConversation={connectConversation}
+                allowMultipleSessions={allowMultipleSessions}
+                draftLead={draftLead}
+                isEditingLead={isEditingLead}
+                handleEditLead={() => setIsEditingLead(true)}
+                handleSaveLead={(lead: DraftLead) => {
+                  setDraftLead(lead);
+                  setIsEditingLead(false);
+                }}
+                handleSendLead={async () => {
+                  if (!draftLead || !conversationId) return;
+    
+                  try {
+                    const leadResponse = await apiClient.post('/api/monday/create-lead', {
+                      leadData: draftLead,
+                      agentId: agent.id,
+                      siteId: agentSite?.id,
+                      organizationId: agentSite?.organizationId
+                    }, {
+                      headers: {
+                        'x-agent-id': agent.id,
+                        'x-organization-id': agentSite?.organizationId,
+                        'Content-Type': 'application/json'
+                      }
+                    });
+    
+                    if (leadResponse.data.success) {
+                      toast.success('Lead created in Monday.com');
+                      setDraftLead(null);
+                      await updateStepStatus('monday');
+                    }
+                  } catch (err) {
+                    const error = err as Error | AxiosError;
+    
+                    if (axios.isAxiosError(error)) {
+                      const statusCode = error.response?.status;
+                      const errorMessage = error.response?.data?.error || error.message;
+    
+                      switch (statusCode) {
+                        case 400:
+                          toast.error(`Invalid lead data: ${errorMessage}`);
+                          break;
+                        case 401:
+                          toast.error('Monday.com integration not authenticated');
+                          break;
+                        case 404:
+                          toast.error('Monday.com board or integration not found');
+                          break;
+                        case 429:
+                          toast.error('Too many requests to Monday.com. Please try again later.');
+                          break;
+                        default:
+                          toast.error(`Failed to create lead: ${errorMessage}`);
+                      }
+                    } else {
+                      toast.error('Failed to create lead');
+                    }
+    
+                    setDraftLead(null);
                   }
-                } else {
-                  toast.error('Failed to create lead');
-                }
-            
-                // Reset state on error
-                setDraftLead(null);
-              }
-            }}
-            setDraftLead={setDraftLead}
-          />
-
-          <Footer
-            isConnected={isConnected}
-            isRecording={isRecording}
-            canPushToTalk={canPushToTalk}
-            connectConversation={connectConversation}
-            disconnectConversation={disconnectConversation}
-            startRecording={startRecording}
-            stopRecording={stopRecording}
-            changeTurnEndType={(value: string) =>
-              setCanPushToTalk(value === 'none')
-            }
-            clientCanvasRef={clientCanvasRef}
-            serverCanvasRef={serverCanvasRef}
-            wavRecorder={wavRecorderRef.current!}
-            wavStreamPlayer={wavStreamPlayerRef.current!}
-            primaryColor={data.settings?.primaryColor}
-            secondaryColor={data.settings?.secondaryColor}
-            isListening={isListening}
-          />
-        </div>
-      </div>
-    </TooltipProvider>
-  </PasswordAuthWrapper>
-);
+                }}
+                setDraftLead={setDraftLead}
+              />
+    
+              {/* Footer Controls */}
+              <Footer
+                isConnected={isConnected}
+                isRecording={isRecording}
+                canPushToTalk={canPushToTalk}
+                connectConversation={connectConversation}
+                disconnectConversation={disconnectConversation}
+                startRecording={startRecording}
+                stopRecording={stopRecording}
+                changeTurnEndType={(value: string) => setCanPushToTalk(value === 'none')}
+                clientCanvasRef={clientCanvasRef}
+                serverCanvasRef={serverCanvasRef}
+                wavRecorder={wavRecorderRef.current!}
+                wavStreamPlayer={wavStreamPlayerRef.current!}
+                primaryColor={data.settings?.primaryColor}
+                secondaryColor={data.settings?.secondaryColor}
+                isListening={isListening}
+              />
+            </main>
+          </div>
+        </TooltipProvider>
+      </PasswordAuthWrapper>
+    );
 }
 
 export default AgentConsole;

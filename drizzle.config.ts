@@ -14,9 +14,9 @@ export default defineConfig({
     user: process.env.POSTGRES_USER,
     password: process.env.POSTGRES_PASSWORD,
     database: process.env.POSTGRES_DATABASE || "postgres",
-    ssl: process.env.NODE_ENV === 'production' ? {
-      rejectUnauthorized: false
-    } : undefined,
+    ssl: {
+      rejectUnauthorized: false  // Always accept self-signed certs for Supabase
+    },
     port: parseInt(process.env.POSTGRES_PORT || "6543", 10)
   },
   verbose: process.env.NODE_ENV !== 'production',
