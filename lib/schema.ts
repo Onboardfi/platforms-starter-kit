@@ -719,6 +719,20 @@ export type StepProgress = {
     completedAt?: string;
   }>;
 };
+export interface DailyBotConfig {
+  botProfile: string;
+  maxDuration: number;
+  services: {
+    llm: string;
+    tts: string;
+    stt: string;
+  };
+  voice: {
+    model: string;
+    voice: string;
+    language: string;
+  };
+}
 
 export interface AgentSettings {
   headingText?: string;
@@ -729,7 +743,7 @@ export interface AgentSettings {
   secondaryColor?: string;
   aiModel?: string;
   apiKeys?: {
-    [model: string]: string;
+    [key: string]: string;
   };
   onboardingType: 'internal' | 'external';
   allowMultipleSessions?: boolean;
@@ -738,6 +752,9 @@ export interface AgentSettings {
     password?: string;
     message?: string;
   };
+  // Add Daily Bot settings
+  useDailyBot?: boolean;
+  dailyBot?: DailyBotConfig;
 }
 
 
