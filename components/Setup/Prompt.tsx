@@ -3,8 +3,8 @@ import {
   ConfigOption,
   LLMContextMessage,
   LLMHelper,
-  RTVIClientConfigOption,
-  RTVIEvent,
+  VoiceClientConfigOption,
+  VoiceEvent,
 } from "realtime-ai";
 import { useVoiceClient, useVoiceClientEvent } from "realtime-ai-react";
 
@@ -16,39 +16,31 @@ type PromptProps = {
   handleClose: () => void;
 };
 
-interface LLMMessage {
-  role: string;
-  content: string;
-}
-
 const Prompt: React.FC<PromptProps> = ({ handleClose }) => {
   const voiceClient = useVoiceClient()!;
-  const [prompt, setPrompt] = useState<LLMMessage[] | undefined>(undefined);
+  const [prompt, setPrompt] = useState<LLMContextMessage[] | undefined>(
+    undefined
+  );
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
 
   useVoiceClientEvent(
-    RTVIEvent.Config,
-    (config: RTVIClientConfigOption[]) => {
-      const llmConfig = config.find((c) => c.service === "llm");
-      const initialMessages = llmConfig?.options?.find(
-        (o: ConfigOption) => o.name === "initial_messages"
-      );
+    VoiceEvent.ConfigUpdated,
+    (config: VoiceClientConfigOption[]) => {
+      const p = config
+        .find((c: VoiceClientConfigOption) => c.service === "llm")
+        ?.options?.find((o: ConfigOption) => o.name === "initial_messages")
+        ?.value as LLMContextMessage[] | undefined;
 
-      if (initialMessages?.value) {
-        const messages = initialMessages.value as LLMMessage[];
-        setPrompt(messages);
-      }
+      setPrompt(p);
     }
   );
 
-  const save = () => {
-    if (!voiceClient || !prompt) return;
+  function save() {
+    if (!voiceClient) return;
 
     if (voiceClient.state === "ready") {
-      const llmHelper = voiceClient.getHelper<LLMHelper>("llm");
-      if (llmHelper) {
-        llmHelper.setContext({ messages: prompt }, true);
-      }
+      const llmHelper = voiceClient.getHelper("llm") as LLMHelper;
+      llmHelper.setContext({ messages: prompt }, true);
     } else {
       voiceClient.setServiceOptionInConfig("llm", {
         name: "initial_messages",
@@ -57,16 +49,13 @@ const Prompt: React.FC<PromptProps> = ({ handleClose }) => {
     }
 
     setHasUnsavedChanges(false);
-  };
+  }
 
   const updateContextMessage = (index: number, content: string) => {
     setPrompt((prev) => {
       if (!prev) return prev;
       const newPrompt = [...prev];
-      newPrompt[index] = {
-        ...newPrompt[index],
-        content
-      };
+      newPrompt[index].content = content;
       return newPrompt;
     });
     setHasUnsavedChanges(true);
@@ -85,7 +74,7 @@ const Prompt: React.FC<PromptProps> = ({ handleClose }) => {
                 {message.role}
               </span>
               <Textarea
-                value={message.content?.toString() || ""}
+                value={message.content}
                 rows={prompt?.length <= 1 ? 10 : 5}
                 onChange={(e) => updateContextMessage(i, e.currentTarget.value)}
                 className="text-sm w-full whitespace-pre-wrap"
@@ -98,8 +87,8 @@ const Prompt: React.FC<PromptProps> = ({ handleClose }) => {
         <div className="flex flex-row gap-2">
           <Button onClick={handleClose}>Close</Button>
           <Button
-            variant={hasUnsavedChanges ? "default" : "outline"}
-            onClick={save}
+            variant={hasUnsavedChanges ? "success" : "outline"}
+            onClick={() => save()}
             disabled={!hasUnsavedChanges}
           >
             Update

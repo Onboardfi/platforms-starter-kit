@@ -1,12 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { LineChart, LogOut, Settings, StopCircle } from "lucide-react";
-import { 
-  RTVIEvent, 
-  TransportState,
-  PipecatMetricsData
-} from "realtime-ai";
-import { useRTVIClient, useRTVIClientEvent } from "realtime-ai-react";
+import { PipecatMetrics, TransportState, VoiceEvent } from "realtime-ai";
+import { useVoiceClient, useVoiceClientEvent } from "realtime-ai-react";
 
 import StatsAggregator from "../../utils/stats_aggregator";
 import { Configure } from "../Setup";
@@ -34,53 +30,62 @@ export const Session = ({
   startAudioOff = false,
   fetchingWeather = false,
 }: SessionProps) => {
-  const rtviClient = useRTVIClient()!;
+  const voiceClient = useVoiceClient()!;
   const [hasStarted, setHasStarted] = useState<boolean>(false);
   const [showDevices, setShowDevices] = useState<boolean>(false);
   const [showStats, setShowStats] = useState<boolean>(false);
   const [muted, setMuted] = useState(startAudioOff);
   const modalRef = useRef<HTMLDialogElement>(null);
 
-  useRTVIClientEvent(
-    RTVIEvent.Metrics,
-    useCallback((metrics: PipecatMetricsData) => {
-      if (metrics?.ttfb) {
-        metrics.ttfb.forEach((m) => {
-          stats_aggregator.addStat([m.processor, "ttfb", m.value, Date.now()]);
-        });
-      }
+  // ---- Voice Client Events
+
+  useVoiceClientEvent(
+    VoiceEvent.Metrics,
+    useCallback((metrics: PipecatMetrics) => {
+      metrics?.ttfb?.map((m: { processor: string; value: number }) => {
+        stats_aggregator.addStat([m.processor, "ttfb", m.value, Date.now()]);
+      });
     }, [])
   );
 
-  useRTVIClientEvent(
-    RTVIEvent.BotStoppedSpeaking,
+  useVoiceClientEvent(
+    VoiceEvent.BotStoppedSpeaking,
     useCallback(() => {
       if (hasStarted) return;
       setHasStarted(true);
     }, [hasStarted])
   );
 
+  // ---- Effects
+
   useEffect(() => {
+    // Reset started state on mount
     setHasStarted(false);
   }, []);
 
   useEffect(() => {
+    // If we joined unmuted, enable the mic once in ready state
     if (!hasStarted || startAudioOff) return;
-    rtviClient.enableMic(true);
-  }, [rtviClient, startAudioOff, hasStarted]);
+    voiceClient.enableMic(true);
+  }, [voiceClient, startAudioOff, hasStarted]);
 
   useEffect(() => {
+    // Create new stats aggregator on mount (removes stats from previous session)
     stats_aggregator = new StatsAggregator();
   }, []);
 
   useEffect(() => {
+    // Leave the meeting if there is an error
     if (state === "error") {
       onLeave();
     }
   }, [state, onLeave]);
 
   useEffect(() => {
+    // Modal effect
+    // Note: backdrop doesn't currently work with dialog open, so we use setModal instead
     const current = modalRef.current;
+
     if (current && showDevices) {
       current.inert = true;
       current.showModal();
@@ -90,13 +95,13 @@ export const Session = ({
   }, [showDevices]);
 
   function toggleMute() {
-    rtviClient.enableMic(muted);
+    voiceClient.enableMic(muted);
     setMuted(!muted);
   }
 
   return (
     <>
-      <dialog ref={modalRef} className="bg-transparent shadow-long rounded-3xl">
+      <dialog ref={modalRef}>
         <Card.Card className="w-svw max-w-full md:max-w-md lg:max-w-lg">
           <Card.CardHeader>
             <Card.CardTitle>Configuration</Card.CardTitle>
@@ -120,29 +125,33 @@ export const Session = ({
         )}
 
       <div className="flex-1 flex flex-col items-center justify-center w-full">
-        <div className="w-full max-w-[320px] sm:max-w-[420px] mt-auto shadow-long">
+        <Card.Card
+       
+          className="w-full max-w-[320px] sm:max-w-[420px] mt-auto shadow-long"
+        >
           <Agent
             isReady={state === "ready"}
             fetchingWeather={fetchingWeather}
             statsAggregator={stats_aggregator}
           />
-        </div>
+        </Card.Card>
         <UserMicBubble
           active={hasStarted}
           muted={muted}
-          handleMute={toggleMute}
+          handleMute={() => toggleMute()}
         />
       </div>
 
       <footer className="w-full flex flex-row mt-auto self-end md:w-auto">
         <div className="flex flex-row justify-between gap-3 w-full md:w-auto">
           <Tooltip>
+            <TooltipContent>Interrupt bot</TooltipContent>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => {
-                  rtviClient.action({
+                  voiceClient.action({
                     service: "tts",
                     action: "interrupt",
                     arguments: [],
@@ -152,23 +161,22 @@ export const Session = ({
                 <StopCircle />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Interrupt bot</TooltipContent>
           </Tooltip>
 
           <Tooltip>
+            <TooltipContent>Show bot statistics panel</TooltipContent>
             <TooltipTrigger asChild>
               <Button
-                variant="ghost"
+             
                 size="icon"
                 onClick={() => setShowStats(!showStats)}
               >
                 <LineChart />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Show statistics panel</TooltipContent>
           </Tooltip>
-
           <Tooltip>
+            <TooltipContent>Configure</TooltipContent>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
@@ -178,11 +186,9 @@ export const Session = ({
                 <Settings />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Configure devices</TooltipContent>
           </Tooltip>
-
           <Button onClick={() => onLeave()} className="ml-auto">
-            <LogOut size={16} className="mr-2" />
+            <LogOut size={16} />
             End
           </Button>
         </div>

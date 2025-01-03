@@ -48,6 +48,20 @@ module.exports = {
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         primary: {
+
+          50: '#f8fafc',
+          100: '#f1f5f9',
+          200: '#e2e8f0',
+          300: '#cbd5e1',
+          400: '#94a3b8',
+          500: '#64748b',
+          600: '#475569',
+          700: '#334155',
+          800: '#1e293b',
+          900: '#0f172a',
+          950: '#020617',
+
+
           DEFAULT: 'hsl(var(--primary))',
           foreground: 'hsl(var(--primary-foreground))',
           50: '#f8fafc',
@@ -232,6 +246,8 @@ module.exports = {
         "border-beam": "border-beam 15s linear infinite",
       },
       boxShadow: {
+
+        'stats': '0px -2px 15px 0px rgba(0, 0, 0, 0.07)',
         // DreamUI Shadows (Dark Mode Optimized)
         'dream-sm': '0 2px 8px 0 rgba(0, 0, 0, 0.8)',
         'dream-md': '0 4px 12px 0 rgba(0, 0, 0, 0.8)',
@@ -291,6 +307,7 @@ module.exports = {
     },
   ],
   plugins: [
+    require("@tailwindcss/postcss7-compat"),
     require("tailwindcss-animate"),
     require("@tailwindcss/typography"),
     require("@tailwindcss/forms"),

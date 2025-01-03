@@ -1,20 +1,19 @@
 import React, { memo, useCallback, useEffect, useState } from "react";
+import clsx from "clsx";
 import { Loader2 } from "lucide-react";
-import { RTVIEvent } from "realtime-ai";
-import { useRTVIClientEvent } from "realtime-ai-react";
-import { cn } from "@/lib/utils";
+import { VoiceEvent } from "realtime-ai";
+import { useVoiceClientEvent } from "realtime-ai-react";
 
 import ModelBadge from "./model";
 import WaveForm from "./waveform";
-import StatsAggregator from "@/utils/stats_aggregator";
 
-interface AgentProps {
+import styles from "./styles.module.css";
+
+export const Agent: React.FC<{
   isReady: boolean;
   statsAggregator: StatsAggregator;
   fetchingWeather: boolean;
-}
-
-export const Agent: React.FC<AgentProps> = memo(
+}> = memo(
   ({ isReady, statsAggregator, fetchingWeather = false }) => {
     const [hasStarted, setHasStarted] = useState<boolean>(false);
     const [botStatus, setBotStatus] = useState<
@@ -23,55 +22,55 @@ export const Agent: React.FC<AgentProps> = memo(
     const [botIsTalking, setBotIsTalking] = useState<boolean>(false);
 
     useEffect(() => {
+      // Update the started state when the transport enters the ready state
       if (!isReady) return;
       setHasStarted(true);
       setBotStatus("connected");
     }, [isReady]);
 
-    useRTVIClientEvent(
-      RTVIEvent.BotDisconnected,
+    useVoiceClientEvent(
+      VoiceEvent.BotDisconnected,
       useCallback(() => {
         setHasStarted(false);
         setBotStatus("disconnected");
       }, [])
     );
 
-    useRTVIClientEvent(
-      RTVIEvent.BotStartedSpeaking,
+    useVoiceClientEvent(
+      VoiceEvent.BotStartedSpeaking,
       useCallback(() => {
         setBotIsTalking(true);
       }, [])
     );
 
-    useRTVIClientEvent(
-      RTVIEvent.BotStoppedSpeaking,
+    useVoiceClientEvent(
+      VoiceEvent.BotStoppedSpeaking,
       useCallback(() => {
         setBotIsTalking(false);
       }, [])
     );
 
+    // Cleanup
     useEffect(() => () => setHasStarted(false), []);
 
+    const cx = clsx(
+      styles.agentWindow,
+      hasStarted && styles.ready,
+      botIsTalking && styles.talking
+    );
+
     return (
-      <div className="p-2 relative">
-        <div 
-          className={cn(
-            "min-w-[400px] aspect-square rounded-2xl relative flex items-center justify-center transition-colors duration-2000 overflow-hidden md:min-w-0",
-            "bg-primary-300",
-            hasStarted && "bg-neutral-600",
-            botIsTalking && "bg-primary-950"
-          )}
-        >
+      <div className={styles.agent}>
+        <div className={cx}>
           <ModelBadge />
-          
           {!hasStarted ? (
-            <span className="p-3 inline-block rounded-full bg-primary-600 text-white absolute">
+            <span className={styles.loader}>
               <Loader2 size={32} className="animate-spin" />
             </span>
           ) : (
             <>
               {fetchingWeather && (
-                <span className="p-3 inline-block rounded-full bg-primary-900 text-white absolute">
+                <span className={styles.functionCalling}>
                   <Loader2 size={32} className="animate-spin" />
                 </span>
               )}
@@ -82,11 +81,8 @@ export const Agent: React.FC<AgentProps> = memo(
       </div>
     );
   },
-  (prevProps, nextProps) => 
-    prevProps.isReady === nextProps.isReady && 
-    prevProps.fetchingWeather === nextProps.fetchingWeather
+  (p, n) => p.isReady === n.isReady && p.fetchingWeather === n.fetchingWeather
 );
-
 Agent.displayName = "Agent";
 
 export default Agent;

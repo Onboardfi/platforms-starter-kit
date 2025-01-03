@@ -1,46 +1,29 @@
-import React, { useEffect } from "react";
-import { RTVIEvent, RTVIClientConfigOption, ConfigOption } from "realtime-ai";
-import { useRTVIClient, useRTVIClientEvent } from "realtime-ai-react";
+import React from "react";
+import { VoiceEvent } from "realtime-ai";
+import { useVoiceClient, useVoiceClientEvent } from "realtime-ai-react";
+
+import styles from "./styles.module.css";
 
 const ModelBadge: React.FC = () => {
-  const rtviClient = useRTVIClient()!;
+  const voiceClient = useVoiceClient()!;
   const [model, setModel] = React.useState<string | undefined>(undefined);
 
-  const getModelFromConfig = async () => {
-    if (!rtviClient) return;
+  const getModelFromConfig = () => {
+    if (!voiceClient) return;
 
-    try {
-      const serviceConfig = await rtviClient.getServiceOptionsFromConfig("llm");
-      if (!serviceConfig) return;
-
-      const modelOption = serviceConfig.options.find((option: ConfigOption) => 
-        option.name === "model"
-      );
-
-      if (modelOption) {
-        setModel(modelOption.value as string);
+    voiceClient.getServiceOptionsFromConfig("llm").options.find((option) => {
+      if (option.name === "model") {
+        setModel(option.value as string);
       }
-    } catch (error) {
-      console.error("Failed to get model from config:", error);
-    }
+    });
   };
 
-  useEffect(() => {
+  useVoiceClientEvent(VoiceEvent.ConfigUpdated, () => {
+    if (!voiceClient) return;
     getModelFromConfig();
-  }, []);
+  });
 
-  useRTVIClientEvent(
-    RTVIEvent.Config,
-    () => {
-      getModelFromConfig();
-    }
-  );
-
-  return (
-    <div className="absolute top-3 left-3 right-3 text-center z-[99] text-xs font-semibold uppercase text-primary-500">
-      {model || "Default"}
-    </div>
-  );
+  return <div className={styles.modelBadge}>{model}</div>;
 };
 
 export default ModelBadge;

@@ -1,10 +1,10 @@
 import React, { useEffect, useRef } from "react";
-import { useRTVIClientMediaTrack } from "realtime-ai-react";
+import { useVoiceClientMediaTrack } from "realtime-ai-react";
 
 const WaveForm: React.FC = React.memo(() => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const track: MediaStreamTrack | null = useRTVIClientMediaTrack(
+  const track: MediaStreamTrack | null = useVoiceClientMediaTrack(
     "audio",
     "bot"
   );
@@ -16,11 +16,12 @@ const WaveForm: React.FC = React.memo(() => {
 
     const scaleFactor = 2;
 
+    // Make canvas fill the width and height of its container
     const resizeCanvas = () => {
       const parentElement = canvas.parentElement;
 
-      const containerWidth = parentElement ? parentElement.clientWidth : 300;
-      const containerHeight = parentElement ? parentElement.clientHeight : 150;
+      const containerWidth = parentElement ? parentElement.clientWidth : 300; // Default to 300px width
+      const containerHeight = parentElement ? parentElement.clientHeight : 150; // Default to 150px height
 
       canvas.width = containerWidth * scaleFactor;
       canvas.height = containerHeight * scaleFactor;
@@ -50,16 +51,16 @@ const WaveForm: React.FC = React.memo(() => {
     canvasCtx.lineCap = "round";
 
     const bands = [
-      { startFreq: 85, endFreq: 255, smoothValue: 0 },
-      { startFreq: 255, endFreq: 500, smoothValue: 0 },
-      { startFreq: 500, endFreq: 2000, smoothValue: 0 },
-      { startFreq: 2000, endFreq: 4000, smoothValue: 0 },
-      { startFreq: 4000, endFreq: 8000, smoothValue: 0 },
+      { startFreq: 85, endFreq: 255, smoothValue: 0 }, // Covers fundamental frequencies for male and female voices
+      { startFreq: 255, endFreq: 500, smoothValue: 0 }, // Lower formants and some harmonics
+      { startFreq: 500, endFreq: 2000, smoothValue: 0 }, // Vowel formants and key consonant frequencies
+      { startFreq: 2000, endFreq: 4000, smoothValue: 0 }, // Higher formants, "clarity" of speech
+      { startFreq: 4000, endFreq: 8000, smoothValue: 0 }, // Sibilance and high-frequency consonants
     ];
 
-    const barWidth = 30;
-    const barGap = 12;
-    const maxBarHeight = 160;
+    const barWidth = 30; // Fixed bar width
+    const barGap = 12; // Fixed gap between bars
+    const maxBarHeight = 160; // Set a maximum height for the bars
 
     const getFrequencyBinIndex = (frequency: number) => {
       const nyquist = audioContext.sampleRate / 2;
@@ -81,9 +82,9 @@ const WaveForm: React.FC = React.memo(() => {
 
       const totalBarsWidth =
         bands.length * barWidth + (bands.length - 1) * barGap;
-      const startX = (canvas.width / scaleFactor - totalBarsWidth) / 2;
+      const startX = (canvas.width / scaleFactor - totalBarsWidth) / 2; // Center bars
 
-      const adjustedCircleRadius = barWidth / 2;
+      const adjustedCircleRadius = barWidth / 2; // Fixed radius for reset circles
 
       bands.forEach((band, i) => {
         const startIndex = getFrequencyBinIndex(band.startFreq);
@@ -106,6 +107,7 @@ const WaveForm: React.FC = React.memo(() => {
         }
 
         const x = startX + i * (barWidth + barGap);
+        // Calculate bar height with a maximum cap
         const barHeight = Math.min(
           (band.smoothValue / 255) * maxBarHeight,
           maxBarHeight
@@ -168,6 +170,7 @@ const WaveForm: React.FC = React.memo(() => {
 
     drawSpectrum();
 
+    // Handle resizing
     window.addEventListener("resize", resizeCanvas);
 
     return () => {

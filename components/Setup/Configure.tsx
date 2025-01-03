@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useRTVIClient } from "realtime-ai-react";
+import { useVoiceClient } from "realtime-ai-react";
 
 import HelpTip from "../ui/helptip";
 import { Label } from "../ui/label";
@@ -17,12 +17,15 @@ interface ConfigureProps {
 
 export const Configure: React.FC<ConfigureProps> = React.memo(
   ({ startAudioOff, handleStartAudioOff, state, inSession = false }) => {
-    const rtviClient = useRTVIClient()!;
+    const voiceClient = useVoiceClient()!;
     const [showPrompt, setshowPrompt] = useState<boolean>(false);
     const modalRef = useRef<HTMLDialogElement>(null);
 
     useEffect(() => {
+      // Modal effect
+      // Note: backdrop doesn't currently work with dialog open, so we use setModal instead
       const current = modalRef.current;
+
       if (current && showPrompt) {
         current.inert = true;
         current.showModal();

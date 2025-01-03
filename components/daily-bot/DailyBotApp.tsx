@@ -1,14 +1,18 @@
-///Users/bobbygilbert/Documents/GitHub/platforms-starter-kit/components/daily-bot/DailyBotApp.tsx
-
 "use client";
+
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { LineChart, LogOut, Settings, StopCircle, Ear } from "lucide-react";
-import { RTVIEvent, RTVIMessage, RTVIError, PipecatMetricsData } from "realtime-ai";
+import { LineChart, LogOut, Settings, StopCircle, Ear, Loader2 } from "lucide-react";
 import {
-  useRTVIClient,
-  useRTVIClientEvent,
-  useRTVIClientTransportState,
+  VoiceEvent,
+  VoiceMessage,
+  TransportState,
+  PipecatMetrics
+} from "realtime-ai";
+import {
+  useVoiceClient,
+  useVoiceClientEvent,
+  useVoiceClientTransportState,
 } from "realtime-ai-react";
 
 import { Alert } from "@/components/ui/alert";
@@ -23,14 +27,17 @@ import { DeviceSelect } from "@/components/Setup/DeviceSelect";
 import StatsAggregator from "@/utils/stats_aggregator";
 
 let stats_aggregator = new StatsAggregator();
-let audioContext: AudioContext | null = null;
 
-const status_text = {
+const status_text: Record<TransportState, string> = {
   idle: "Initializing...",
   initializing: "Initializing...",
   initialized: "Start",
   authenticating: "Requesting bot...",
   connecting: "Connecting...",
+  connected: "Connected",
+  ready: "Ready",
+  disconnected: "Start",
+  error: "Error"
 };
 
 interface DailyBotAppProps {
@@ -38,10 +45,9 @@ interface DailyBotAppProps {
 }
 
 export const DailyBotApp: React.FC<DailyBotAppProps> = ({ fetchingWeather }) => {
-  const rtviClient = useRTVIClient();
-  const transportState = useRTVIClientTransportState();
+  const voiceClient = useVoiceClient();
+  const transportState = useVoiceClientTransportState();
 
-  const [appState, setAppState] = useState<"idle" | "ready" | "connecting" | "connected">("idle");
   const [error, setError] = useState<string | null>(null);
   const [showDevices, setShowDevices] = useState(false);
   const [showStats, setShowStats] = useState(false);
@@ -49,171 +55,110 @@ export const DailyBotApp: React.FC<DailyBotAppProps> = ({ fetchingWeather }) => 
   const [hasStarted, setHasStarted] = useState(false);
   const modalRef = useRef<HTMLDialogElement>(null);
 
-  const log = (area: string, message: string, data?: any) => {
-    const timestamp = new Date().toISOString();
-    console.log(`[DailyBotApp ${timestamp}] ${area}: ${message}`);
-    if (data) {
-      console.log(`[DailyBotApp ${timestamp}] Data:`, data);
-    }
-  };
-
-  useRTVIClientEvent(
-    RTVIEvent.Error,
-    useCallback((message: RTVIMessage) => {
+  useVoiceClientEvent(
+    VoiceEvent.Error,
+    useCallback((message: VoiceMessage) => {
       const errorData = message.data as { error: string; fatal: boolean };
-      log('ErrorEvent', 'Received error event', errorData);
       if (!errorData.fatal) return;
       setError(errorData.error);
     }, [])
   );
 
-  useRTVIClientEvent(
-    RTVIEvent.BotStartedSpeaking,
+  useVoiceClientEvent(
+    VoiceEvent.BotStartedSpeaking,
     useCallback(() => {
-      log('BotStartedSpeaking', `hasStarted: ${hasStarted}`);
       if (!hasStarted) setHasStarted(true);
     }, [hasStarted])
   );
 
-  useRTVIClientEvent(
-    RTVIEvent.Metrics,
-    useCallback((metrics: PipecatMetricsData) => {
-      log('Metrics', 'Received metrics data', metrics);
-      if (metrics?.ttfb) {
-        metrics.ttfb.forEach((m) => {
-          stats_aggregator.addStat([m.processor, "ttfb", m.value, Date.now()]);
-        });
-      }
+  useVoiceClientEvent(
+    VoiceEvent.Metrics,
+    useCallback((metrics: PipecatMetrics) => {
+      metrics?.ttfb?.forEach((m) => {
+        stats_aggregator.addStat([m.processor, "ttfb", m.value, Date.now()]);
+      });
     }, [])
   );
 
   useEffect(() => {
-    if (!rtviClient || appState !== "idle") return;
-    log('DeviceInit', 'Initializing devices');
-    rtviClient.initDevices().catch(error => {
-      log('DeviceInit', 'Device initialization error', error);
-    });
-  }, [appState, rtviClient]);
-
-  useEffect(() => {
-    log('TransportState', `Transport state changed to: ${transportState}`);
-    switch (transportState) {
-      case "initialized":
-        setAppState("ready");
-        break;
-      case "authenticating":
-      case "connecting":
-        setAppState("connecting");
-        break;
-      case "connected":
-      case "ready":
-        setAppState("connected");
-        break;
-      default:
-        setAppState("idle");
+    // Initialize devices when client is ready
+    if (voiceClient && transportState === "initialized") {
+      voiceClient.initDevices().catch(error => {
+        console.error("[DailyBotApp] Device init error:", error);
+      });
     }
-    log('AppState', `App state set to: ${appState}`);
-  }, [transportState]);
+  }, [transportState, voiceClient]);
 
   useEffect(() => {
-    log('MicState', `hasStarted: ${hasStarted}, muted: ${muted}`);
     if (!hasStarted || muted) return;
-    rtviClient?.enableMic(true);
-  }, [hasStarted, muted, rtviClient]);
+    voiceClient?.enableMic(true);
+  }, [hasStarted, muted, voiceClient]);
 
   useEffect(() => {
-    log('Init', 'Component mounted, resetting state');
     setHasStarted(false);
     stats_aggregator = new StatsAggregator();
   }, []);
 
   useEffect(() => {
     if (transportState === "error") {
-      log('ErrorState', 'Transport entered error state, disconnecting');
-      rtviClient?.disconnect();
+      voiceClient?.disconnect();
     }
-  }, [transportState, rtviClient]);
+  }, [transportState, voiceClient]);
 
   useEffect(() => {
     const current = modalRef.current;
     if (current && showDevices) {
-      log('DeviceModal', 'Showing device settings modal');
       current.inert = true;
       current.showModal();
       current.inert = false;
     }
     return () => current?.close();
   }, [showDevices]);
-
-  // Clean up AudioContext when component unmounts
   useEffect(() => {
-    return () => {
-      if (audioContext) {
-        log('Cleanup', 'Closing AudioContext');
-        audioContext.close();
-        audioContext = null;
+    // Initialize devices when client is ready and in the initialized state
+    if (!voiceClient || transportState !== "initialized") return;
+    
+    const initDevices = async () => {
+      console.log("[DailyBotApp] Initializing devices...");
+      try {
+        await voiceClient.initDevices();
+        console.log("[DailyBotApp] Devices initialized successfully");
+      } catch (error) {
+        console.error("[DailyBotApp] Device init error:", error);
       }
     };
-  }, []);async function start() {
-    if (!rtviClient) {
-        log('Start', 'No RTVI client available');
-        return;
-    }
-
+  
+    initDevices();
+  }, [transportState, voiceClient]);
+// And update the start function:
+async function start() {
+    if (!voiceClient) return;
+  
     try {
-        log('Start', 'Starting connection process');
-        rtviClient.enableMic(false);
-        
-        // First request - get auth credentials
-        log('Start', 'Requesting auth credentials');
-        const connectResponse = await fetch('/api/daily-bot/connect', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                config: rtviClient.params.config,
-            }),
-        });
-        
-        const responseData = await connectResponse.json();
-        log('Start', 'Received auth response', responseData);
-
-        if (!connectResponse.ok) {
-            throw new Error(responseData.error || "Failed to start bot");
-        }
-
-        // Update params
-        rtviClient.params = {
-            ...rtviClient.params,
-            bot_token: responseData.token,
-            daily: {
-                room_url: responseData.roomUrl,
-                token: responseData.token
-            }
-        };
-
-        log('Start', 'Attempting connection');
-        await rtviClient.connect();
-        log('Start', 'Connection successful');
-
+      console.log("[DailyBotApp] Starting voice client...");
+      voiceClient.enableMic(false);
+      
+      // Make sure we're initialized
+      if (transportState !== "initialized") {
+        console.log("[DailyBotApp] Waiting for initialization...");
+        return;
+      }
+      
+      await voiceClient.start();
+      console.log("[DailyBotApp] Voice client started");
     } catch (error) {
-        log('Start', 'Connection error', {
-            message: error instanceof Error ? error.message : 'Unknown error',
-            stack: error instanceof Error ? error.stack : undefined
-        });
-        setError(error instanceof Error ? error.message : "Failed to start session");
-        rtviClient?.disconnect();
+      console.error("[DailyBotApp] Start error:", error);
+      setError(error instanceof Error ? error.message : "Failed to start session");
+      voiceClient?.disconnect();
     }
-}
+  }
+
   function toggleMute() {
-    log('Mic', `Toggling mute: ${!muted}`);
-    rtviClient?.enableMic(!muted);
+    voiceClient?.enableMic(!muted);
     setMuted(!muted);
   }
 
   if (error) {
-    log('Render', 'Rendering error state', { error });
     return (
       <Alert variant="destructive" title="An error occurred">
         {error}
@@ -221,8 +166,7 @@ export const DailyBotApp: React.FC<DailyBotAppProps> = ({ fetchingWeather }) => 
     );
   }
 
-  if (appState === "connected") {
-    log('Render', 'Rendering connected state');
+  if (transportState === "ready") {
     return (
       <>
         <dialog ref={modalRef} className="bg-transparent shadow-long rounded-3xl">
@@ -251,10 +195,8 @@ export const DailyBotApp: React.FC<DailyBotAppProps> = ({ fetchingWeather }) => 
         <div className="flex-1 flex flex-col items-center justify-center w-full">
           <Card.Card className="w-full max-w-[320px] sm:max-w-[420px] mt-auto shadow-long">
             <Agent
-              isReady={transportState === "ready"}
-              fetchingWeather={fetchingWeather}
-              statsAggregator={stats_aggregator}
-            />
+                        isReady={transportState === "ready"}
+                        fetchingWeather={fetchingWeather} statsAggregator={stats_aggregator}         />
           </Card.Card>
 
           <UserMicBubble active={hasStarted} muted={muted} handleMute={toggleMute} />
@@ -268,8 +210,7 @@ export const DailyBotApp: React.FC<DailyBotAppProps> = ({ fetchingWeather }) => 
                   variant="ghost"
                   size="icon"
                   onClick={() => {
-                    log('Action', 'Interrupting bot');
-                    rtviClient?.action({
+                    voiceClient?.action({
                       service: "tts",
                       action: "interrupt",
                       arguments: [],
@@ -309,10 +250,7 @@ export const DailyBotApp: React.FC<DailyBotAppProps> = ({ fetchingWeather }) => 
             </Tooltip>
 
             <Button 
-              onClick={() => {
-                log('Action', 'Disconnecting');
-                rtviClient?.disconnect();
-              }} 
+              onClick={() => voiceClient?.disconnect()} 
               className="ml-auto"
             >
               <LogOut className="h-4 w-4" />
@@ -324,8 +262,7 @@ export const DailyBotApp: React.FC<DailyBotAppProps> = ({ fetchingWeather }) => 
     );
   }
 
-  const isReady = appState === "ready";
-  log('Render', 'Rendering pre-connection UI', { isReady, transportState });
+  const isReady = transportState === "initialized";
 
   return (
     <Card.Card className="animate-appear max-w-lg mb-14">
@@ -341,23 +278,12 @@ export const DailyBotApp: React.FC<DailyBotAppProps> = ({ fetchingWeather }) => 
       </Card.CardContent>
       <Card.CardFooter>
         <Button 
-          onClick={async () => {
-            try {
-              // Resume AudioContext on button click
-              if (audioContext?.state === 'suspended') {
-                await audioContext.resume();
-                log('ButtonClick', 'AudioContext resumed', { state: audioContext.state });
-              }
-              await start();
-            } catch (error) {
-              log('ButtonClick', 'Error starting session', error);
-              setError("Failed to start session");
-            }
-          }} 
+          onClick={start}
           disabled={!isReady} 
           className="w-full"
         >
-          {status_text[transportState as keyof typeof status_text]}
+          {!isReady && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {status_text[transportState]}
         </Button>
       </Card.CardFooter>
     </Card.Card>
